@@ -5,21 +5,21 @@ import multer from "multer";
 import cookieParser from "cookie-parser";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { readFile, writeFile, mkdir } from "fs/promises";
+import { mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { pool, initSchema } from "./db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_FILE = path.join(__dirname, "data", "products.json");
-const USERS_FILE = path.join(__dirname, "data", "users.json");
 // Las imágenes viven dentro del frontend (carpeta public/) para que Vite
 // las sirva directamente en desarrollo; el backend solo guarda el nombre
 // de archivo y las sirve él mismo cuando corre en producción.
 const IMAGES_DIR = path.join(__dirname, "..", "public", "product-images");
 const DIST_DIR = path.join(__dirname, "..", "dist");
 await mkdir(IMAGES_DIR, { recursive: true });
-await mkdir(path.dirname(DATA_FILE), { recursive: true });
+
+await initSchema();
 
 const isProd = process.env.NODE_ENV === "production";
 const COOKIE_NAME = "nc_admin_token";
@@ -32,17 +32,18 @@ if (!JWT_SECRET) {
 }
 
 // Crea el usuario admin la primera vez que arranca el servidor, si todavía
-// no existe server/data/users.json. Las credenciales salen de variables de
-// entorno, nunca quedan escritas en el código.
+// no existe ningún usuario en la base de datos. Las credenciales salen de
+// variables de entorno, nunca quedan escritas en el código.
 const bootstrapAdminUser = async () => {
-  if (existsSync(USERS_FILE)) return;
+  const { rows } = await pool.query("SELECT 1 FROM users LIMIT 1");
+  if (rows.length > 0) return;
   const username = process.env.ADMIN_USERNAME || "admin";
   const password = process.env.ADMIN_PASSWORD || "admin123";
   if (!process.env.ADMIN_PASSWORD) {
     console.warn(`⚠️  Usando contraseña de admin por defecto ("${password}"). Define ADMIN_PASSWORD.`);
   }
   const passwordHash = await bcrypt.hash(password, 10);
-  await writeFile(USERS_FILE, JSON.stringify([{ username, passwordHash }], null, 2));
+  await pool.query("INSERT INTO users (username, password_hash) VALUES ($1, $2)", [username, passwordHash]);
   console.log(`Usuario admin "${username}" creado.`);
 };
 await bootstrapAdminUser();
@@ -77,9 +78,9 @@ const setAuthCookie = (res, token) => {
 
 app.post("/api/auth/login", async (req, res) => {
   const { username, password } = req.body;
-  const users = JSON.parse(await readFile(USERS_FILE, "utf-8"));
-  const user = users.find((u) => u.username === username);
-  const valid = user && (await bcrypt.compare(password || "", user.passwordHash));
+  const { rows } = await pool.query("SELECT username, password_hash FROM users WHERE username = $1", [username]);
+  const user = rows[0];
+  const valid = user && (await bcrypt.compare(password || "", user.password_hash));
   if (!valid) return res.status(401).json({ error: "Usuario o contraseña incorrectos" });
   setAuthCookie(res, signToken(user.username));
   res.json({ username: user.username });
@@ -115,51 +116,57 @@ app.post("/api/upload", requireAuth, upload.single("image"), (req, res) => {
   res.json({ filename: req.file.filename });
 });
 
-const readProducts = async () => JSON.parse(await readFile(DATA_FILE, "utf-8"));
-const writeProducts = async (products) => writeFile(DATA_FILE, JSON.stringify(products, null, 2));
+const mapProduct = (row) => ({
+  id: row.id,
+  name: row.name,
+  price: Number(row.price),
+  category: row.category,
+  description: row.description,
+  image: row.image,
+  colors: row.colors,
+});
 
 app.get("/api/products", async (req, res) => {
-  res.json(await readProducts());
+  const { rows } = await pool.query("SELECT * FROM products ORDER BY id");
+  res.json(rows.map(mapProduct));
 });
 
 app.get("/api/categories", async (req, res) => {
-  const products = await readProducts();
-  const categories = ["Todos", ...Array.from(new Set(products.map((p) => p.category))).sort()];
-  res.json(categories);
+  const { rows } = await pool.query("SELECT DISTINCT category FROM products ORDER BY category");
+  res.json(["Todos", ...rows.map((r) => r.category)]);
 });
 
 app.get("/api/products/:id", async (req, res) => {
-  const products = await readProducts();
-  const product = products.find((p) => p.id === Number(req.params.id));
-  if (!product) return res.status(404).json({ error: "Producto no encontrado" });
-  res.json(product);
+  const { rows } = await pool.query("SELECT * FROM products WHERE id = $1", [Number(req.params.id)]);
+  if (rows.length === 0) return res.status(404).json({ error: "Producto no encontrado" });
+  res.json(mapProduct(rows[0]));
 });
 
 app.post("/api/products", requireAuth, async (req, res) => {
-  const products = await readProducts();
-  const id = products.length > 0 ? Math.max(...products.map((p) => p.id)) + 1 : 1;
-  const newProduct = { ...req.body, id };
-  products.push(newProduct);
-  await writeProducts(products);
-  res.status(201).json(newProduct);
+  const { name, price, category, description, image, colors } = req.body;
+  const { rows } = await pool.query("SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM products");
+  const id = rows[0].next_id;
+  const { rows: inserted } = await pool.query(
+    "INSERT INTO products (id, name, price, category, description, image, colors) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
+    [id, name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? [])]
+  );
+  res.status(201).json(mapProduct(inserted[0]));
 });
 
 app.put("/api/products/:id", requireAuth, async (req, res) => {
-  const products = await readProducts();
   const id = Number(req.params.id);
-  const index = products.findIndex((p) => p.id === id);
-  if (index === -1) return res.status(404).json({ error: "Producto no encontrado" });
-  products[index] = { ...req.body, id };
-  await writeProducts(products);
-  res.json(products[index]);
+  const { name, price, category, description, image, colors } = req.body;
+  const { rows } = await pool.query(
+    "UPDATE products SET name = $1, price = $2, category = $3, description = $4, image = $5, colors = $6 WHERE id = $7 RETURNING *",
+    [name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? []), id]
+  );
+  if (rows.length === 0) return res.status(404).json({ error: "Producto no encontrado" });
+  res.json(mapProduct(rows[0]));
 });
 
 app.delete("/api/products/:id", requireAuth, async (req, res) => {
-  const products = await readProducts();
-  const id = Number(req.params.id);
-  const filtered = products.filter((p) => p.id !== id);
-  if (filtered.length === products.length) return res.status(404).json({ error: "Producto no encontrado" });
-  await writeProducts(filtered);
+  const { rowCount } = await pool.query("DELETE FROM products WHERE id = $1", [Number(req.params.id)]);
+  if (rowCount === 0) return res.status(404).json({ error: "Producto no encontrado" });
   res.status(204).end();
 });
 

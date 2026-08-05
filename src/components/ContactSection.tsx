@@ -36,7 +36,7 @@ const ContactSection = () => {
             </div>
             <div>
               <h3 className="font-medium text-foreground mb-1">Email</h3>
-              <p className="text-sm text-muted-foreground">ncsneackersperu@gmail.com</p>
+              <p className="text-sm text-muted-foreground">edwinceslev@gmail.com</p>
             </div>
           </div>
           <div className="flex items-start gap-4">

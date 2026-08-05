@@ -16,13 +16,16 @@ const AboutSection = () => {
           </h2>
           <div className="space-y-4 text-muted-foreground leading-relaxed">
             <p>
-              Somos tu tienda de zapatillas de confianza. Desde nuestros inicios, nos hemos dedicado a traer los modelos más exclusivos y buscados del mercado directamente a tus pies.
+              En ChicBags creemos que una cartera es mucho más que un accesorio: es el complemento que refleja tu estilo y personalidad.
             </p>
             <p>
-              Trabajamos con proveedores verificados para garantizar la autenticidad de cada par. Tu satisfacción y confianza son nuestra prioridad.
+              Nos dedicamos a seleccionar carteras, bolsos y accesorios modernos, elegantes y de excelente calidad para acompañarte en cada ocasión. Trabajamos con proveedores cuidadosamente elegidos para ofrecer productos que combinan diseño, durabilidad y precios accesibles.
             </p>
             <p>
-              Nuestra misión es ofrecerte las mejores zapatillas con precios justos, envíos rápidos y un servicio de primera calidad.
+              Nuestra misión es brindarte una experiencia de compra segura, con atención personalizada, envíos rápidos a todo el Perú y la confianza de recibir exactamente lo que esperas.
+            </p>
+            <p>
+              En ChicBags queremos que cada mujer encuentre la cartera perfecta para expresar su esencia con elegancia y estilo.
             </p>
           </div>
         </motion.div>
@@ -35,7 +38,7 @@ const AboutSection = () => {
           className="grid grid-cols-2 gap-6"
         >
           {[
-            { value: "500+", label: "Pares vendidos" },
+            { value: "500+", label: "Carteras vendidas" },
             { value: "100%", label: "Autenticidad" },
             { value: "24h", label: "Envío rápido" },
             { value: "4.9★", label: "Valoración" },

@@ -1,7 +1,9 @@
-import { writeFile, mkdir } from "fs/promises";
+import "dotenv/config";
+import { mkdir } from "fs/promises";
 import { writeFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { pool, initSchema } from "./db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const IMAGES_DIR = path.join(__dirname, "..", "public", "product-images");
@@ -93,8 +95,17 @@ const products = [
   makeProduct(20, "Reebok Nano X3", 360, "Reebok", "Entrenamiento funcional. Blanco y negro, máximo rendimiento.", ["Negro", "Gris", "Rojo", "Blanco", "Azul Marino", out("Beige")]),
 ];
 
-const target = path.join(__dirname, "data", "products.json");
-await mkdir(path.dirname(target), { recursive: true });
-await writeFile(target, JSON.stringify(products, null, 2));
-console.log(`Seed escrito en ${target} (${products.length} productos)`);
+await initSchema();
+for (const p of products) {
+  await pool.query(
+    `INSERT INTO products (id, name, price, category, description, image, colors)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (id) DO UPDATE SET
+       name = EXCLUDED.name, price = EXCLUDED.price, category = EXCLUDED.category,
+       description = EXCLUDED.description, image = EXCLUDED.image, colors = EXCLUDED.colors`,
+    [p.id, p.name, p.price, p.category, p.description, p.image, JSON.stringify(p.colors)]
+  );
+}
+await pool.end();
+console.log(`Seed insertado en la base de datos (${products.length} productos)`);
 console.log(`Imágenes generadas en ${IMAGES_DIR}`);

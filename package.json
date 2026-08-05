@@ -29,6 +29,7 @@
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^1.26.0",
     "multer": "^2.2.0",
+    "pg": "^8.22.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.1",

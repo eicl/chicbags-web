@@ -3,6 +3,8 @@ dist/
 .env
 *.log
 
-# Datos generados en runtime (se re-crean con el seed o al primer arranque)
-server/data/
+# Imágenes generadas en runtime por el seed (se re-crean solas)
 public/product-images/
+
+# Datos legacy del almacenamiento en JSON (ya migrado a PostgreSQL)
+server/data/

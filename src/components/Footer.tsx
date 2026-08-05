@@ -63,7 +63,7 @@ const Footer = () => (
         <div>
           <h4 className="text-sm tracking-widest uppercase mb-4 text-muted-foreground">Contacto</h4>
           <ul className="space-y-2 text-sm text-foreground">
-            <li>ncsneackersperu@gmail.com</li>
+            <li>edwinceslev@gmail.com</li>
             <li>+51 914104629</li>
           </ul>
         </div>
