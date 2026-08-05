@@ -23,9 +23,11 @@ export const initSchema = async () => {
       category TEXT NOT NULL,
       description TEXT NOT NULL DEFAULT '',
       image TEXT NOT NULL DEFAULT '',
-      colors JSONB NOT NULL DEFAULT '[]'
+      colors JSONB NOT NULL DEFAULT '[]',
+      code TEXT
     );
   `);
+  await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS code TEXT;`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,

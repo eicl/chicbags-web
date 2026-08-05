@@ -85,7 +85,10 @@ const ProductCard = ({ product, isNew = false }: { product: Product; isNew?: boo
           )}
         </div>
         <div className="p-4">
-          <p className="text-xs tracking-widest uppercase text-muted-foreground mb-1">{product.category}</p>
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs tracking-widest uppercase text-muted-foreground">{product.category}</p>
+            {product.code && <p className="text-xs text-muted-foreground">{product.code}</p>}
+          </div>
           <h3 className="font-medium text-foreground mb-1" style={{ fontFamily: "var(--font-display)" }}>{product.name}</h3>
           <p className="text-sm text-muted-foreground mb-2">{product.description}</p>
           <div className="flex items-center justify-between">

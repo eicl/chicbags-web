@@ -123,7 +123,10 @@ const ProductDetail = () => {
 
           {/* Info */}
           <div>
-            <p className="text-xs tracking-widest uppercase text-muted-foreground mb-2">{product.category}</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs tracking-widest uppercase text-muted-foreground">{product.category}</p>
+              {product.code && <p className="text-xs text-muted-foreground">Código: {product.code}</p>}
+            </div>
             <h1 className="text-3xl md:text-4xl font-medium mb-3" style={{ fontFamily: "var(--font-display)" }}>
               {product.name}
             </h1>

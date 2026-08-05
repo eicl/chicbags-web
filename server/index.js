@@ -124,6 +124,7 @@ const mapProduct = (row) => ({
   description: row.description,
   image: row.image,
   colors: row.colors,
+  code: row.code,
 });
 
 app.get("/api/products", async (req, res) => {
@@ -143,22 +144,22 @@ app.get("/api/products/:id", async (req, res) => {
 });
 
 app.post("/api/products", requireAuth, async (req, res) => {
-  const { name, price, category, description, image, colors } = req.body;
+  const { name, price, category, description, image, colors, code } = req.body;
   const { rows } = await pool.query("SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM products");
   const id = rows[0].next_id;
   const { rows: inserted } = await pool.query(
-    "INSERT INTO products (id, name, price, category, description, image, colors) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
-    [id, name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? [])]
+    "INSERT INTO products (id, name, price, category, description, image, colors, code) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *",
+    [id, name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null]
   );
   res.status(201).json(mapProduct(inserted[0]));
 });
 
 app.put("/api/products/:id", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
-  const { name, price, category, description, image, colors } = req.body;
+  const { name, price, category, description, image, colors, code } = req.body;
   const { rows } = await pool.query(
-    "UPDATE products SET name = $1, price = $2, category = $3, description = $4, image = $5, colors = $6 WHERE id = $7 RETURNING *",
-    [name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? []), id]
+    "UPDATE products SET name = $1, price = $2, category = $3, description = $4, image = $5, colors = $6, code = $7 WHERE id = $8 RETURNING *",
+    [name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null, id]
   );
   if (rows.length === 0) return res.status(404).json({ error: "Producto no encontrado" });
   res.json(mapProduct(rows[0]));

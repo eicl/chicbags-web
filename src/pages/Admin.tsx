@@ -10,7 +10,7 @@ import { Link } from "react-router-dom";
 import { uploadImage } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
 
-const emptyForm = { name: "", price: 0, category: "", description: "" };
+const emptyForm = { name: "", price: 0, category: "", description: "", code: "" };
 const emptyColor: ProductColor = { name: "", hex: "#161616", image: "", stock: 0 };
 
 const Admin = () => {
@@ -25,7 +25,7 @@ const Admin = () => {
 
   const handleEdit = (product: Product) => {
     setEditing(product);
-    setForm({ name: product.name, price: product.price, category: product.category, description: product.description });
+    setForm({ name: product.name, price: product.price, category: product.category, description: product.description, code: product.code ?? "" });
     setColors(product.colors ?? []);
     setIsAdding(false);
   };
@@ -145,6 +145,10 @@ const Admin = () => {
                 <label className="text-sm text-muted-foreground mb-1 block">Categoría *</label>
                 <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Jordan, Nike, Adidas..." />
               </div>
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">Código</label>
+                <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="SKU-001" />
+              </div>
               <div className="md:col-span-2">
                 <label className="text-sm text-muted-foreground mb-1 block">Descripción</label>
                 <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Descripción del producto..." />
@@ -243,6 +247,7 @@ const Admin = () => {
               <thead>
                 <tr className="border-b border-border bg-muted/30">
                   <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Imagen</th>
+                  <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Código</th>
                   <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Nombre</th>
                   <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Categoría</th>
                   <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Precio</th>
@@ -260,6 +265,7 @@ const Admin = () => {
                           {product.image && <img src={productImageUrl(product.image)} alt={product.name} className="w-full h-full object-cover" />}
                         </div>
                       </td>
+                      <td className="py-3 px-4 text-muted-foreground text-sm">{product.code || "—"}</td>
                       <td className="py-3 px-4 font-medium">{product.name}</td>
                       <td className="py-3 px-4 text-muted-foreground text-sm">{product.category}</td>
                       <td className="py-3 px-4">S/.{product.price.toFixed(2)}</td>
@@ -283,21 +289,21 @@ const Admin = () => {
                 })}
                 {isLoading && (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-muted-foreground">
+                    <td colSpan={7} className="py-12 text-center text-muted-foreground">
                       Cargando productos...
                     </td>
                   </tr>
                 )}
                 {isError && (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-destructive">
+                    <td colSpan={7} className="py-12 text-center text-destructive">
                       No se pudo conectar con la API.
                     </td>
                   </tr>
                 )}
                 {!isLoading && !isError && products.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-muted-foreground">
+                    <td colSpan={7} className="py-12 text-center text-muted-foreground">
                       No hay zapatillas. Agrega una nueva.
                     </td>
                   </tr>

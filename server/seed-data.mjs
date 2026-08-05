@@ -51,10 +51,15 @@ const makeColors = (productId, label, specs) =>
     return { name, hex, stock, image: filename };
   });
 
+const makeCode = (id, category) => {
+  const prefix = category.slice(0, 3).toUpperCase();
+  return `${prefix}-${String(id).padStart(3, "0")}`;
+};
+
 const makeProduct = (id, name, price, category, description, colorSpecs) => {
   const colors = makeColors(id, name, colorSpecs);
   const defaultImage = colors.find((c) => c.stock > 0)?.image ?? colors[0].image;
-  return { id, name, price, category, description, image: defaultImage, colors };
+  return { id, name, price, category, description, image: defaultImage, colors, code: makeCode(id, category) };
 };
 
 // Construye la lista de productos y, como efecto secundario, (re)genera los
