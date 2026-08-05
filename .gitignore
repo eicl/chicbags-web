@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.log
+
+# Datos generados en runtime (se re-crean con el seed o al primer arranque)
+server/data/
+public/product-images/
