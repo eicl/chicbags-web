@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: nc-sneakers-web
+    name: chicbags-web
     runtime: node
     plan: free
     buildCommand: npm install && npm run build
@@ -8,3 +8,11 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 20.20.2
+      - key: NODE_ENV
+        value: production
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
