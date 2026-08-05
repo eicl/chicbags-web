@@ -1,10 +1,7 @@
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { placeholderImage } from "@/lib/placeholder";
 
 const MotionLink = motion(Link);
-
-const heroImage = placeholderImage("ChicBags", 1200, 1500, "#efe3d2", "#a9805a");
 
 const HeroSection = () => (
   <section className="bg-muted/60 overflow-hidden">
@@ -70,11 +67,9 @@ const HeroSection = () => (
         className="relative aspect-[4/5] md:aspect-square rounded-2xl overflow-hidden shadow-xl"
       >
         <img
-          src={heroImage}
+          src="/portada1.png"
           alt="Colección de carteras ChicBags"
           className="w-full h-full object-cover"
-          width={1200}
-          height={1500}
         />
       </motion.div>
     </div>
