@@ -145,8 +145,85 @@ app.get("/api/categories", async (req, res) => {
 });
 
 app.get("/api/brands", async (req, res) => {
-  const { rows } = await pool.query("SELECT name FROM brands ORDER BY name");
-  res.json(rows.map((r) => r.name));
+  const { rows } = await pool.query("SELECT id, name FROM brands ORDER BY name");
+  res.json(rows);
+});
+
+app.post("/api/brands", requireAuth, async (req, res) => {
+  const name = (req.body.name ?? "").trim();
+  if (!name) return res.status(400).json({ error: "El nombre es obligatorio" });
+  const { rows: existing } = await pool.query("SELECT id FROM brands WHERE lower(name) = lower($1)", [name]);
+  if (existing.length > 0) return res.status(409).json({ error: "Ya existe una marca con ese nombre" });
+  const { rows } = await pool.query("INSERT INTO brands (name) VALUES ($1) RETURNING id, name", [name]);
+  res.status(201).json(rows[0]);
+});
+
+app.put("/api/brands/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const name = (req.body.name ?? "").trim();
+  if (!name) return res.status(400).json({ error: "El nombre es obligatorio" });
+  const { rows: existing } = await pool.query("SELECT id FROM brands WHERE lower(name) = lower($1) AND id != $2", [name, id]);
+  if (existing.length > 0) return res.status(409).json({ error: "Ya existe una marca con ese nombre" });
+  const { rows } = await pool.query("UPDATE brands SET name = $1 WHERE id = $2 RETURNING id, name", [name, id]);
+  if (rows.length === 0) return res.status(404).json({ error: "Marca no encontrada" });
+  res.json(rows[0]);
+});
+
+app.delete("/api/brands/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  await pool.query("UPDATE products SET brand_id = NULL WHERE brand_id = $1", [id]);
+  const { rowCount } = await pool.query("DELETE FROM brands WHERE id = $1", [id]);
+  if (rowCount === 0) return res.status(404).json({ error: "Marca no encontrada" });
+  res.status(204).end();
+});
+
+app.get("/api/users", requireAuth, async (req, res) => {
+  const { rows } = await pool.query("SELECT id, username FROM users ORDER BY username");
+  res.json(rows);
+});
+
+app.post("/api/users", requireAuth, async (req, res) => {
+  const username = (req.body.username ?? "").trim();
+  const password = req.body.password ?? "";
+  if (!username || !password) return res.status(400).json({ error: "Usuario y contraseña son obligatorios" });
+  if (password.length < 6) return res.status(400).json({ error: "La contraseña debe tener al menos 6 caracteres" });
+  const { rows: existing } = await pool.query("SELECT id FROM users WHERE lower(username) = lower($1)", [username]);
+  if (existing.length > 0) return res.status(409).json({ error: "Ya existe un usuario con ese nombre" });
+  const passwordHash = await bcrypt.hash(password, 10);
+  const { rows } = await pool.query(
+    "INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id, username",
+    [username, passwordHash]
+  );
+  res.status(201).json(rows[0]);
+});
+
+app.put("/api/users/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const username = (req.body.username ?? "").trim();
+  const password = req.body.password ?? "";
+  if (!username) return res.status(400).json({ error: "El usuario es obligatorio" });
+  if (password && password.length < 6) return res.status(400).json({ error: "La contraseña debe tener al menos 6 caracteres" });
+  const { rows: existing } = await pool.query("SELECT id FROM users WHERE lower(username) = lower($1) AND id != $2", [username, id]);
+  if (existing.length > 0) return res.status(409).json({ error: "Ya existe un usuario con ese nombre" });
+
+  const { rows } = password
+    ? await pool.query(
+        "UPDATE users SET username = $1, password_hash = $2 WHERE id = $3 RETURNING id, username",
+        [username, await bcrypt.hash(password, 10), id]
+      )
+    : await pool.query("UPDATE users SET username = $1 WHERE id = $2 RETURNING id, username", [username, id]);
+
+  if (rows.length === 0) return res.status(404).json({ error: "Usuario no encontrado" });
+  res.json(rows[0]);
+});
+
+app.delete("/api/users/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const { rows: countRows } = await pool.query("SELECT COUNT(*)::int AS count FROM users");
+  if (countRows[0].count <= 1) return res.status(400).json({ error: "No puedes eliminar el único usuario administrador" });
+  const { rowCount } = await pool.query("DELETE FROM users WHERE id = $1", [id]);
+  if (rowCount === 0) return res.status(404).json({ error: "Usuario no encontrado" });
+  res.status(204).end();
 });
 
 app.get("/api/products/:id", async (req, res) => {

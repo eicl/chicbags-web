@@ -16,8 +16,59 @@ export const fetchProducts = (): Promise<Product[]> =>
 export const fetchProduct = (id: number): Promise<Product> =>
   fetch(`${API_URL}/products/${id}`).then((res) => handle<Product>(res));
 
-export const fetchBrands = (): Promise<string[]> =>
-  fetch(`${API_URL}/brands`).then((res) => handle<string[]>(res));
+export interface Brand {
+  id: number;
+  name: string;
+}
+
+export const fetchBrands = (): Promise<Brand[]> =>
+  fetch(`${API_URL}/brands`).then((res) => handle<Brand[]>(res));
+
+export const createBrand = (name: string): Promise<Brand> =>
+  fetch(`${API_URL}/brands`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  }).then((res) => handle<Brand>(res));
+
+export const updateBrand = (brand: Brand): Promise<Brand> =>
+  fetch(`${API_URL}/brands/${brand.id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: brand.name }),
+  }).then((res) => handle<Brand>(res));
+
+export const deleteBrand = (id: number): Promise<void> =>
+  fetch(`${API_URL}/brands/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
+
+export interface UserAccount {
+  id: number;
+  username: string;
+}
+
+export const fetchUsers = (): Promise<UserAccount[]> =>
+  fetch(`${API_URL}/users`, { credentials: "include" }).then((res) => handle<UserAccount[]>(res));
+
+export const createUser = (data: { username: string; password: string }): Promise<UserAccount> =>
+  fetch(`${API_URL}/users`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<UserAccount>(res));
+
+export const updateUser = (id: number, data: { username: string; password?: string }): Promise<UserAccount> =>
+  fetch(`${API_URL}/users/${id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<UserAccount>(res));
+
+export const deleteUser = (id: number): Promise<void> =>
+  fetch(`${API_URL}/users/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
 
 export const createProduct = (product: Omit<Product, "id">): Promise<Product> =>
   fetch(`${API_URL}/products`, {
