@@ -9,7 +9,7 @@ import { mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { pool, initSchema } from "./db.js";
+import { pool, initSchema, getOrCreateBrandId } from "./db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Las imágenes viven dentro del frontend (carpeta public/) para que Vite
@@ -116,6 +116,12 @@ app.post("/api/upload", requireAuth, upload.single("image"), (req, res) => {
   res.json({ filename: req.file.filename });
 });
 
+const PRODUCTS_SELECT = `
+  SELECT p.*, b.name AS brand
+  FROM products p
+  LEFT JOIN brands b ON b.id = p.brand_id
+`;
+
 const mapProduct = (row) => ({
   id: row.id,
   name: row.name,
@@ -125,10 +131,11 @@ const mapProduct = (row) => ({
   image: row.image,
   colors: row.colors,
   code: row.code,
+  brand: row.brand,
 });
 
 app.get("/api/products", async (req, res) => {
-  const { rows } = await pool.query("SELECT * FROM products ORDER BY id");
+  const { rows } = await pool.query(`${PRODUCTS_SELECT} ORDER BY p.id`);
   res.json(rows.map(mapProduct));
 });
 
@@ -137,32 +144,43 @@ app.get("/api/categories", async (req, res) => {
   res.json(["Todos", ...rows.map((r) => r.category)]);
 });
 
+app.get("/api/brands", async (req, res) => {
+  const { rows } = await pool.query("SELECT name FROM brands ORDER BY name");
+  res.json(rows.map((r) => r.name));
+});
+
 app.get("/api/products/:id", async (req, res) => {
-  const { rows } = await pool.query("SELECT * FROM products WHERE id = $1", [Number(req.params.id)]);
+  const { rows } = await pool.query(`${PRODUCTS_SELECT} WHERE p.id = $1`, [Number(req.params.id)]);
   if (rows.length === 0) return res.status(404).json({ error: "Producto no encontrado" });
   res.json(mapProduct(rows[0]));
 });
 
 app.post("/api/products", requireAuth, async (req, res) => {
-  const { name, price, category, description, image, colors, code } = req.body;
+  const { name, price, category, description, image, colors, code, brand } = req.body;
   const { rows } = await pool.query("SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM products");
   const id = rows[0].next_id;
+  const brandId = await getOrCreateBrandId(brand);
   const { rows: inserted } = await pool.query(
-    "INSERT INTO products (id, name, price, category, description, image, colors, code) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *",
-    [id, name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null]
+    `INSERT INTO products (id, name, price, category, description, image, colors, code, brand_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+    [id, name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null, brandId]
   );
-  res.status(201).json(mapProduct(inserted[0]));
+  const { rows: fetched } = await pool.query(`${PRODUCTS_SELECT} WHERE p.id = $1`, [inserted[0].id]);
+  res.status(201).json(mapProduct(fetched[0]));
 });
 
 app.put("/api/products/:id", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
-  const { name, price, category, description, image, colors, code } = req.body;
+  const { name, price, category, description, image, colors, code, brand } = req.body;
+  const brandId = await getOrCreateBrandId(brand);
   const { rows } = await pool.query(
-    "UPDATE products SET name = $1, price = $2, category = $3, description = $4, image = $5, colors = $6, code = $7 WHERE id = $8 RETURNING *",
-    [name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null, id]
+    `UPDATE products SET name = $1, price = $2, category = $3, description = $4, image = $5, colors = $6, code = $7, brand_id = $8
+     WHERE id = $9 RETURNING id`,
+    [name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null, brandId, id]
   );
   if (rows.length === 0) return res.status(404).json({ error: "Producto no encontrado" });
-  res.json(mapProduct(rows[0]));
+  const { rows: fetched } = await pool.query(`${PRODUCTS_SELECT} WHERE p.id = $1`, [id]);
+  res.json(mapProduct(fetched[0]));
 });
 
 app.delete("/api/products/:id", requireAuth, async (req, res) => {

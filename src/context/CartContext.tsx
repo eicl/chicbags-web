@@ -16,6 +16,7 @@ export interface Product {
   description: string;
   colors?: ProductColor[];
   code?: string;
+  brand?: string;
 }
 
 interface CartItem extends Product {

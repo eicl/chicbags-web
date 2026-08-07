@@ -127,6 +127,7 @@ const ProductDetail = () => {
               <p className="text-xs tracking-widest uppercase text-muted-foreground">{product.category}</p>
               {product.code && <p className="text-xs text-muted-foreground">Código: {product.code}</p>}
             </div>
+            {product.brand && <p className="text-sm text-primary font-medium mb-1">{product.brand}</p>}
             <h1 className="text-3xl md:text-4xl font-medium mb-3" style={{ fontFamily: "var(--font-display)" }}>
               {product.name}
             </h1>

@@ -16,6 +16,9 @@ export const fetchProducts = (): Promise<Product[]> =>
 export const fetchProduct = (id: number): Promise<Product> =>
   fetch(`${API_URL}/products/${id}`).then((res) => handle<Product>(res));
 
+export const fetchBrands = (): Promise<string[]> =>
+  fetch(`${API_URL}/brands`).then((res) => handle<string[]>(res));
+
 export const createProduct = (product: Omit<Product, "id">): Promise<Product> =>
   fetch(`${API_URL}/products`, {
     method: "POST",

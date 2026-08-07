@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useProducts } from "@/context/ProductContext";
 import { Product, ProductColor } from "@/context/CartContext";
 import { Plus, Pencil, Trash2, ArrowLeft, Save, X, Upload, Loader2, LogOut } from "lucide-react";
@@ -7,15 +8,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
-import { uploadImage } from "@/lib/api";
+import { uploadImage, fetchBrands } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
 
-const emptyForm = { name: "", price: 0, category: "", description: "", code: "" };
+const emptyForm = { name: "", price: 0, category: "", description: "", code: "", brand: "" };
 const emptyColor: ProductColor = { name: "", hex: "#161616", image: "", stock: 0 };
 
 const Admin = () => {
   const { products, addProduct, updateProduct, deleteProduct, isLoading, isError } = useProducts();
   const { user, logout } = useAuth();
+  const { data: brands = [] } = useQuery({ queryKey: ["brands"], queryFn: fetchBrands });
   const [editing, setEditing] = useState<Product | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -25,7 +27,7 @@ const Admin = () => {
 
   const handleEdit = (product: Product) => {
     setEditing(product);
-    setForm({ name: product.name, price: product.price, category: product.category, description: product.description, code: product.code ?? "" });
+    setForm({ name: product.name, price: product.price, category: product.category, description: product.description, code: product.code ?? "", brand: product.brand ?? "" });
     setColors(product.colors ?? []);
     setIsAdding(false);
   };
@@ -149,6 +151,20 @@ const Admin = () => {
                 <label className="text-sm text-muted-foreground mb-1 block">Código</label>
                 <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="SKU-001" />
               </div>
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">Marca</label>
+                <Input
+                  value={form.brand}
+                  onChange={(e) => setForm({ ...form, brand: e.target.value })}
+                  placeholder="ChicBags, Michael Kors..."
+                  list="brand-options"
+                />
+                <datalist id="brand-options">
+                  {brands.map((b) => (
+                    <option key={b} value={b} />
+                  ))}
+                </datalist>
+              </div>
               <div className="md:col-span-2">
                 <label className="text-sm text-muted-foreground mb-1 block">Descripción</label>
                 <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Descripción del producto..." />
@@ -248,6 +264,7 @@ const Admin = () => {
                 <tr className="border-b border-border bg-muted/30">
                   <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Imagen</th>
                   <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Código</th>
+                  <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Marca</th>
                   <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Nombre</th>
                   <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Categoría</th>
                   <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Precio</th>
@@ -266,6 +283,7 @@ const Admin = () => {
                         </div>
                       </td>
                       <td className="py-3 px-4 text-muted-foreground text-sm">{product.code || "—"}</td>
+                      <td className="py-3 px-4 text-muted-foreground text-sm">{product.brand || "—"}</td>
                       <td className="py-3 px-4 font-medium">{product.name}</td>
                       <td className="py-3 px-4 text-muted-foreground text-sm">{product.category}</td>
                       <td className="py-3 px-4">S/.{product.price.toFixed(2)}</td>
@@ -289,21 +307,21 @@ const Admin = () => {
                 })}
                 {isLoading && (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-muted-foreground">
+                    <td colSpan={8} className="py-12 text-center text-muted-foreground">
                       Cargando productos...
                     </td>
                   </tr>
                 )}
                 {isError && (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-destructive">
+                    <td colSpan={8} className="py-12 text-center text-destructive">
                       No se pudo conectar con la API.
                     </td>
                   </tr>
                 )}
                 {!isLoading && !isError && products.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-muted-foreground">
+                    <td colSpan={8} className="py-12 text-center text-muted-foreground">
                       No hay zapatillas. Agrega una nueva.
                     </td>
                   </tr>
