@@ -70,6 +70,33 @@ export const updateUser = (id: number, data: { username: string; password?: stri
 export const deleteUser = (id: number): Promise<void> =>
   fetch(`${API_URL}/users/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
 
+export interface Category {
+  id: number;
+  name: string;
+}
+
+export const fetchCategories = (): Promise<Category[]> =>
+  fetch(`${API_URL}/categories`).then((res) => handle<Category[]>(res));
+
+export const createCategory = (name: string): Promise<Category> =>
+  fetch(`${API_URL}/categories`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  }).then((res) => handle<Category>(res));
+
+export const updateCategory = (category: Category): Promise<Category> =>
+  fetch(`${API_URL}/categories/${category.id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: category.name }),
+  }).then((res) => handle<Category>(res));
+
+export const deleteCategory = (id: number): Promise<void> =>
+  fetch(`${API_URL}/categories/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
+
 export const createProduct = (product: Omit<Product, "id">): Promise<Product> =>
   fetch(`${API_URL}/products`, {
     method: "POST",

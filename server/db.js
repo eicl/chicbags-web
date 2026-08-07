@@ -47,6 +47,19 @@ export const initSchema = async () => {
       password_hash TEXT NOT NULL
     );
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS categories (
+      id SERIAL PRIMARY KEY,
+      name TEXT UNIQUE NOT NULL
+    );
+  `);
+  // Precarga la tabla con las categorías que ya estén en uso en productos
+  // existentes, para no partir de una lista vacía.
+  await pool.query(`
+    INSERT INTO categories (name)
+    SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND category != ''
+    ON CONFLICT (name) DO NOTHING;
+  `);
 };
 
 // Busca una marca por nombre (sin distinguir mayúsculas/minúsculas) o la crea
@@ -61,4 +74,15 @@ export const getOrCreateBrandId = async (name) => {
     [trimmed]
   );
   return inserted[0].id;
+};
+
+// Asegura que una categoría exista en la tabla de mantenimiento (sin
+// distinguir mayúsculas/minúsculas). No devuelve nada: products.category
+// sigue guardando el texto tal cual, esto solo mantiene la lista al día.
+export const ensureCategoryExists = async (name) => {
+  const trimmed = (name ?? "").trim();
+  if (!trimmed) return;
+  const { rows } = await pool.query("SELECT id FROM categories WHERE lower(name) = lower($1)", [trimmed]);
+  if (rows.length > 0) return;
+  await pool.query("INSERT INTO categories (name) VALUES ($1)", [trimmed]);
 };

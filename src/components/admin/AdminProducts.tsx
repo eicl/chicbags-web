@@ -6,7 +6,7 @@ import { Plus, Pencil, Trash2, X, Upload, Loader2, Video as VideoIcon } from "lu
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { uploadImage, uploadVideo, fetchBrands } from "@/lib/api";
+import { uploadImage, uploadVideo, fetchBrands, fetchCategories } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
 
 const emptyForm = { name: "", price: 0, category: "", description: "", code: "", brand: "" };
@@ -17,6 +17,7 @@ const MAX_VIDEOS = 2;
 const AdminProducts = () => {
   const { products, addProduct, updateProduct, deleteProduct, isLoading, isError } = useProducts();
   const { data: brands = [] } = useQuery({ queryKey: ["brands"], queryFn: fetchBrands });
+  const { data: categories = [] } = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
   const [editing, setEditing] = useState<Product | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -174,7 +175,17 @@ const AdminProducts = () => {
             </div>
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">Categoría *</label>
-              <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Carteras, Bolsos..." />
+              <Input
+                value={form.category}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                placeholder="Carteras, Bolsos..."
+                list="category-options"
+              />
+              <datalist id="category-options">
+                {categories.map((c) => (
+                  <option key={c.id} value={c.name} />
+                ))}
+              </datalist>
             </div>
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">Código</label>

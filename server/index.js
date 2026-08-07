@@ -9,7 +9,7 @@ import { mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { pool, initSchema, getOrCreateBrandId } from "./db.js";
+import { pool, initSchema, getOrCreateBrandId, ensureCategoryExists } from "./db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Las imágenes viven dentro del frontend (carpeta public/) para que Vite
@@ -169,8 +169,42 @@ app.get("/api/products", async (req, res) => {
 });
 
 app.get("/api/categories", async (req, res) => {
-  const { rows } = await pool.query("SELECT DISTINCT category FROM products ORDER BY category");
-  res.json(["Todos", ...rows.map((r) => r.category)]);
+  const { rows } = await pool.query("SELECT id, name FROM categories ORDER BY name");
+  res.json(rows);
+});
+
+app.post("/api/categories", requireAuth, async (req, res) => {
+  const name = (req.body.name ?? "").trim();
+  if (!name) return res.status(400).json({ error: "El nombre es obligatorio" });
+  const { rows: existing } = await pool.query("SELECT id FROM categories WHERE lower(name) = lower($1)", [name]);
+  if (existing.length > 0) return res.status(409).json({ error: "Ya existe una categoría con ese nombre" });
+  const { rows } = await pool.query("INSERT INTO categories (name) VALUES ($1) RETURNING id, name", [name]);
+  res.status(201).json(rows[0]);
+});
+
+app.put("/api/categories/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const name = (req.body.name ?? "").trim();
+  if (!name) return res.status(400).json({ error: "El nombre es obligatorio" });
+  const { rows: existing } = await pool.query("SELECT id, name FROM categories WHERE lower(name) = lower($1) AND id != $2", [name, id]);
+  if (existing.length > 0) return res.status(409).json({ error: "Ya existe una categoría con ese nombre" });
+  const { rows: current } = await pool.query("SELECT name FROM categories WHERE id = $1", [id]);
+  if (current.length === 0) return res.status(404).json({ error: "Categoría no encontrada" });
+  await pool.query("UPDATE products SET category = $1 WHERE category = $2", [name, current[0].name]);
+  const { rows } = await pool.query("UPDATE categories SET name = $1 WHERE id = $2 RETURNING id, name", [name, id]);
+  res.json(rows[0]);
+});
+
+app.delete("/api/categories/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const { rows: current } = await pool.query("SELECT name FROM categories WHERE id = $1", [id]);
+  if (current.length === 0) return res.status(404).json({ error: "Categoría no encontrada" });
+  const { rows: inUse } = await pool.query("SELECT COUNT(*)::int AS count FROM products WHERE category = $1", [current[0].name]);
+  if (inUse[0].count > 0) {
+    return res.status(409).json({ error: "No puedes eliminar una categoría que está en uso por productos" });
+  }
+  await pool.query("DELETE FROM categories WHERE id = $1", [id]);
+  res.status(204).end();
 });
 
 app.get("/api/brands", async (req, res) => {
@@ -268,6 +302,7 @@ app.post("/api/products", requireAuth, async (req, res) => {
   const { rows } = await pool.query("SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM products");
   const id = rows[0].next_id;
   const brandId = await getOrCreateBrandId(brand);
+  await ensureCategoryExists(category);
   const { rows: inserted } = await pool.query(
     `INSERT INTO products (id, name, price, category, description, image, colors, code, brand_id, photos, videos)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
@@ -286,6 +321,7 @@ app.put("/api/products/:id", requireAuth, async (req, res) => {
   const mediaError = validateMedia(photos, videos);
   if (mediaError) return res.status(400).json({ error: mediaError });
   const brandId = await getOrCreateBrandId(brand);
+  await ensureCategoryExists(category);
   const { rows } = await pool.query(
     `UPDATE products SET name = $1, price = $2, category = $3, description = $4, image = $5, colors = $6, code = $7, brand_id = $8, photos = $9, videos = $10
      WHERE id = $11 RETURNING id`,
