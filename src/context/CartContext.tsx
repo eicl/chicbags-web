@@ -19,6 +19,7 @@ export interface Product {
   brand?: string;
   photos?: string[];
   videos?: string[];
+  extraDescription?: string;
 }
 
 interface CartItem extends Product {

@@ -224,6 +224,22 @@ const ProductDetail = () => {
             </div>
           </div>
         </div>
+        {product.extraDescription?.trim() && (
+          <div className="mt-12 lg:mt-16 pt-8 border-t border-border max-w-3xl">
+            <h2 className="text-xl font-medium mb-4" style={{ fontFamily: "var(--font-display)" }}>
+              Más sobre este producto
+            </h2>
+            <div className="space-y-4 text-muted-foreground leading-relaxed">
+              {product.extraDescription
+                .split(/\n+/)
+                .map((paragraph) => paragraph.trim())
+                .filter(Boolean)
+                .map((paragraph, index) => (
+                  <p key={index}>{paragraph}</p>
+                ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <CartDrawer />

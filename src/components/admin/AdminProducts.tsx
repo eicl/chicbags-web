@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { uploadImage, uploadVideo, fetchBrands, fetchCategories } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
 
-const emptyForm = { name: "", price: 0, category: "", description: "", code: "", brand: "" };
+const emptyForm = { name: "", price: 0, category: "", description: "", code: "", brand: "", extraDescription: "" };
 const emptyColor: ProductColor = { name: "", hex: "#161616", image: "", stock: 0 };
 const MAX_PHOTOS = 5;
 const MAX_VIDEOS = 2;
@@ -33,7 +33,15 @@ const AdminProducts = () => {
 
   const handleEdit = (product: Product) => {
     setEditing(product);
-    setForm({ name: product.name, price: product.price, category: product.category, description: product.description, code: product.code ?? "", brand: product.brand ?? "" });
+    setForm({
+      name: product.name,
+      price: product.price,
+      category: product.category,
+      description: product.description,
+      code: product.code ?? "",
+      brand: product.brand ?? "",
+      extraDescription: product.extraDescription ?? "",
+    });
     setColors(product.colors ?? []);
     setPhotos(product.photos ?? []);
     setVideos(product.videos ?? []);
@@ -208,6 +216,19 @@ const AdminProducts = () => {
             <div className="md:col-span-2">
               <label className="text-sm text-muted-foreground mb-1 block">Descripción</label>
               <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Descripción del producto..." />
+            </div>
+            <div className="md:col-span-2">
+              <label className="text-sm text-muted-foreground mb-1 block">
+                Descripción adicional
+                <span className="text-xs font-normal"> — se muestra al final de la página de detalle del producto, admite varios párrafos</span>
+              </label>
+              <textarea
+                value={form.extraDescription}
+                onChange={(e) => setForm({ ...form, extraDescription: e.target.value })}
+                placeholder="Información detallada, materiales, cuidados, medidas..."
+                rows={6}
+                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-y"
+              />
             </div>
           </div>
 
