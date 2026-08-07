@@ -2,15 +2,17 @@ import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useProducts } from "@/context/ProductContext";
 import { Product, ProductColor } from "@/context/CartContext";
-import { Plus, Pencil, Trash2, X, Upload, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Upload, Loader2, Video as VideoIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { uploadImage, fetchBrands } from "@/lib/api";
+import { uploadImage, uploadVideo, fetchBrands } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
 
 const emptyForm = { name: "", price: 0, category: "", description: "", code: "", brand: "" };
 const emptyColor: ProductColor = { name: "", hex: "#161616", image: "", stock: 0 };
+const MAX_PHOTOS = 5;
+const MAX_VIDEOS = 2;
 
 const AdminProducts = () => {
   const { products, addProduct, updateProduct, deleteProduct, isLoading, isError } = useProducts();
@@ -19,13 +21,21 @@ const AdminProducts = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [colors, setColors] = useState<ProductColor[]>([]);
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [videos, setVideos] = useState<string[]>([]);
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
   const fileInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const videoInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleEdit = (product: Product) => {
     setEditing(product);
     setForm({ name: product.name, price: product.price, category: product.category, description: product.description, code: product.code ?? "", brand: product.brand ?? "" });
     setColors(product.colors ?? []);
+    setPhotos(product.photos ?? []);
+    setVideos(product.videos ?? []);
     setIsAdding(false);
   };
 
@@ -34,6 +44,8 @@ const AdminProducts = () => {
     setEditing(null);
     setForm(emptyForm);
     setColors([{ ...emptyColor }]);
+    setPhotos([]);
+    setVideos([]);
   };
 
   const handleAddColorRow = () => setColors((prev) => [...prev, { ...emptyColor }]);
@@ -56,6 +68,42 @@ const AdminProducts = () => {
     }
   };
 
+  const handlePhotoUpload = async (file: File) => {
+    if (photos.length >= MAX_PHOTOS) {
+      toast.error(`Máximo ${MAX_PHOTOS} fotos por producto`);
+      return;
+    }
+    setUploadingPhoto(true);
+    try {
+      const { filename } = await uploadImage(file);
+      setPhotos((prev) => [...prev, filename]);
+    } catch {
+      toast.error("No se pudo subir la foto");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const handleRemovePhoto = (index: number) => setPhotos((prev) => prev.filter((_, i) => i !== index));
+
+  const handleVideoUpload = async (file: File) => {
+    if (videos.length >= MAX_VIDEOS) {
+      toast.error(`Máximo ${MAX_VIDEOS} videos por producto`);
+      return;
+    }
+    setUploadingVideo(true);
+    try {
+      const { filename } = await uploadVideo(file);
+      setVideos((prev) => [...prev, filename]);
+    } catch {
+      toast.error("No se pudo subir el video");
+    } finally {
+      setUploadingVideo(false);
+    }
+  };
+
+  const handleRemoveVideo = (index: number) => setVideos((prev) => prev.filter((_, i) => i !== index));
+
   const handleSave = () => {
     if (!form.name || !form.category || form.price <= 0) {
       toast.error("Completa todos los campos requeridos");
@@ -68,7 +116,7 @@ const AdminProducts = () => {
     }
     const image = validColors.find((c) => c.stock > 0)?.image ?? validColors[0]?.image ?? "";
 
-    const payload = { ...form, image, colors: validColors };
+    const payload = { ...form, image, colors: validColors, photos, videos };
 
     if (editing) {
       updateProduct({ ...editing, ...payload });
@@ -98,6 +146,8 @@ const AdminProducts = () => {
     setIsAdding(false);
     setForm(emptyForm);
     setColors([]);
+    setPhotos([]);
+    setVideos([]);
   };
 
   return (
@@ -226,6 +276,91 @@ const AdminProducts = () => {
                   </button>
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div className="border-t border-border pt-4 mt-4">
+            <label className="text-sm font-medium mb-3 block">
+              Fotos del producto ({photos.length}/{MAX_PHOTOS})
+              <span className="text-xs text-muted-foreground font-normal"> — aparte de las fotos de color</span>
+            </label>
+            <div className="flex flex-wrap gap-3">
+              {photos.map((photo, index) => (
+                <div key={photo} className="relative w-20 h-20 rounded-sm overflow-hidden bg-muted border border-border group">
+                  <img src={productImageUrl(photo)} alt={`Foto ${index + 1}`} className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => handleRemovePhoto(index)}
+                    className="absolute top-1 right-1 p-0.5 rounded-full bg-background/90 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                    aria-label="Quitar foto"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+              {photos.length < MAX_PHOTOS && (
+                <>
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handlePhotoUpload(file);
+                      e.target.value = "";
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    className="w-20 h-20 rounded-sm border border-dashed border-border flex items-center justify-center text-muted-foreground hover:border-muted-foreground/50 transition-colors"
+                  >
+                    {uploadingPhoto ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="border-t border-border pt-4 mt-4">
+            <label className="text-sm font-medium mb-3 block">Videos ({videos.length}/{MAX_VIDEOS})</label>
+            <div className="flex flex-wrap gap-3">
+              {videos.map((video, index) => (
+                <div key={video} className="relative w-32 h-20 rounded-sm overflow-hidden bg-muted border border-border group">
+                  <video src={productImageUrl(video)} className="w-full h-full object-cover" muted />
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveVideo(index)}
+                    className="absolute top-1 right-1 p-0.5 rounded-full bg-background/90 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                    aria-label="Quitar video"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+              {videos.length < MAX_VIDEOS && (
+                <>
+                  <input
+                    ref={videoInputRef}
+                    type="file"
+                    accept="video/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleVideoUpload(file);
+                      e.target.value = "";
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => videoInputRef.current?.click()}
+                    className="w-32 h-20 rounded-sm border border-dashed border-border flex items-center justify-center text-muted-foreground hover:border-muted-foreground/50 transition-colors"
+                  >
+                    {uploadingVideo ? <Loader2 className="w-4 h-4 animate-spin" /> : <VideoIcon className="w-4 h-4" />}
+                  </button>
+                </>
+              )}
             </div>
           </div>
 

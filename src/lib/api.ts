@@ -99,6 +99,14 @@ export const uploadImage = (file: File): Promise<{ filename: string }> => {
   );
 };
 
+export const uploadVideo = (file: File): Promise<{ filename: string }> => {
+  const formData = new FormData();
+  formData.append("video", file);
+  return fetch(`${API_URL}/upload-video`, { method: "POST", credentials: "include", body: formData }).then(
+    (res) => handle<{ filename: string }>(res)
+  );
+};
+
 export interface AuthUser {
   username: string;
 }

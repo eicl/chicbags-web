@@ -31,11 +31,15 @@ export const initSchema = async () => {
       image TEXT NOT NULL DEFAULT '',
       colors JSONB NOT NULL DEFAULT '[]',
       code TEXT,
-      brand_id INTEGER REFERENCES brands(id)
+      brand_id INTEGER REFERENCES brands(id),
+      photos JSONB NOT NULL DEFAULT '[]',
+      videos JSONB NOT NULL DEFAULT '[]'
     );
   `);
   await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS code TEXT;`);
   await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS brand_id INTEGER REFERENCES brands(id);`);
+  await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS photos JSONB NOT NULL DEFAULT '[]';`);
+  await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS videos JSONB NOT NULL DEFAULT '[]';`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,

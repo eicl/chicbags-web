@@ -119,6 +119,31 @@ const ProductDetail = () => {
                 ))}
               </div>
             )}
+
+            {((product.photos?.length ?? 0) > 0 || (product.videos?.length ?? 0) > 0) && (
+              <div className="mt-6 pt-6 border-t border-border">
+                <p className="text-sm font-medium mb-3">Más fotos y videos</p>
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                  {product.photos?.map((photo, index) => (
+                    <img
+                      key={photo}
+                      src={productImageUrl(photo)}
+                      alt={`${product.name} - foto ${index + 1}`}
+                      className="w-full aspect-square object-cover rounded-sm bg-muted"
+                    />
+                  ))}
+                  {product.videos?.map((video, index) => (
+                    <video
+                      key={video}
+                      src={productImageUrl(video)}
+                      controls
+                      className="w-full aspect-square object-cover rounded-sm bg-muted"
+                      aria-label={`${product.name} - video ${index + 1}`}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Info */}

@@ -116,6 +116,20 @@ app.post("/api/upload", requireAuth, upload.single("image"), (req, res) => {
   res.json({ filename: req.file.filename });
 });
 
+const uploadVideo = multer({
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith("video/")) return cb(new Error("Solo se permiten videos"));
+    cb(null, true);
+  },
+});
+
+app.post("/api/upload-video", requireAuth, uploadVideo.single("video"), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "No se recibió ningún video" });
+  res.json({ filename: req.file.filename });
+});
+
 const PRODUCTS_SELECT = `
   SELECT p.*, b.name AS brand
   FROM products p
@@ -132,7 +146,22 @@ const mapProduct = (row) => ({
   colors: row.colors,
   code: row.code,
   brand: row.brand,
+  photos: row.photos,
+  videos: row.videos,
 });
+
+const MAX_PHOTOS = 5;
+const MAX_VIDEOS = 2;
+
+const validateMedia = (photos, videos) => {
+  if (Array.isArray(photos) && photos.length > MAX_PHOTOS) {
+    return `Máximo ${MAX_PHOTOS} fotos por producto`;
+  }
+  if (Array.isArray(videos) && videos.length > MAX_VIDEOS) {
+    return `Máximo ${MAX_VIDEOS} videos por producto`;
+  }
+  return null;
+};
 
 app.get("/api/products", async (req, res) => {
   const { rows } = await pool.query(`${PRODUCTS_SELECT} ORDER BY p.id`);
@@ -233,14 +262,19 @@ app.get("/api/products/:id", async (req, res) => {
 });
 
 app.post("/api/products", requireAuth, async (req, res) => {
-  const { name, price, category, description, image, colors, code, brand } = req.body;
+  const { name, price, category, description, image, colors, code, brand, photos, videos } = req.body;
+  const mediaError = validateMedia(photos, videos);
+  if (mediaError) return res.status(400).json({ error: mediaError });
   const { rows } = await pool.query("SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM products");
   const id = rows[0].next_id;
   const brandId = await getOrCreateBrandId(brand);
   const { rows: inserted } = await pool.query(
-    `INSERT INTO products (id, name, price, category, description, image, colors, code, brand_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-    [id, name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null, brandId]
+    `INSERT INTO products (id, name, price, category, description, image, colors, code, brand_id, photos, videos)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+    [
+      id, name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null,
+      brandId, JSON.stringify(photos ?? []), JSON.stringify(videos ?? []),
+    ]
   );
   const { rows: fetched } = await pool.query(`${PRODUCTS_SELECT} WHERE p.id = $1`, [inserted[0].id]);
   res.status(201).json(mapProduct(fetched[0]));
@@ -248,12 +282,17 @@ app.post("/api/products", requireAuth, async (req, res) => {
 
 app.put("/api/products/:id", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
-  const { name, price, category, description, image, colors, code, brand } = req.body;
+  const { name, price, category, description, image, colors, code, brand, photos, videos } = req.body;
+  const mediaError = validateMedia(photos, videos);
+  if (mediaError) return res.status(400).json({ error: mediaError });
   const brandId = await getOrCreateBrandId(brand);
   const { rows } = await pool.query(
-    `UPDATE products SET name = $1, price = $2, category = $3, description = $4, image = $5, colors = $6, code = $7, brand_id = $8
-     WHERE id = $9 RETURNING id`,
-    [name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null, brandId, id]
+    `UPDATE products SET name = $1, price = $2, category = $3, description = $4, image = $5, colors = $6, code = $7, brand_id = $8, photos = $9, videos = $10
+     WHERE id = $11 RETURNING id`,
+    [
+      name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null,
+      brandId, JSON.stringify(photos ?? []), JSON.stringify(videos ?? []), id,
+    ]
   );
   if (rows.length === 0) return res.status(404).json({ error: "Producto no encontrado" });
   const { rows: fetched } = await pool.query(`${PRODUCTS_SELECT} WHERE p.id = $1`, [id]);

@@ -17,6 +17,8 @@ export interface Product {
   colors?: ProductColor[];
   code?: string;
   brand?: string;
+  photos?: string[];
+  videos?: string[];
 }
 
 interface CartItem extends Product {
