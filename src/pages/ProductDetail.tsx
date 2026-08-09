@@ -11,6 +11,7 @@ import Footer from "@/components/Footer";
 import { toast } from "sonner";
 import { productImageUrl } from "@/lib/images";
 import { CART_ENABLED } from "@/lib/config";
+import { sortColors } from "@/lib/colors";
 
 const ProductDetail = () => {
   const { id } = useParams();
@@ -43,7 +44,7 @@ const ProductDetail = () => {
     );
   }
 
-  const colors = product.colors ?? [];
+  const colors = sortColors(product.colors ?? []);
   const displayImage = colors[selectedColor]?.image ?? product.image;
 
   const handleAddToCart = () => {

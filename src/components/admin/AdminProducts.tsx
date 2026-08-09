@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { uploadImage, uploadVideo, fetchBrands, fetchCategories } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
 
-const emptyForm = { name: "", price: 0, category: "", description: "", code: "", brand: "", extraDescription: "" };
+const emptyForm = { name: "", price: 0, category: "", description: "", code: "", brand: "", extraDescription: "", sortOrder: "" };
 const emptyColor: ProductColor = { name: "", hex: "#161616", image: "", stock: 0 };
 const MAX_PHOTOS = 5;
 const MAX_VIDEOS = 2;
@@ -41,8 +41,9 @@ const AdminProducts = () => {
       code: product.code ?? "",
       brand: product.brand ?? "",
       extraDescription: product.extraDescription ?? "",
+      sortOrder: String(product.sortOrder ?? ""),
     });
-    setColors(product.colors ?? []);
+    setColors((product.colors ?? []).map((c, i) => ({ ...c, order: c.order ?? i })));
     setPhotos(product.photos ?? []);
     setVideos(product.videos ?? []);
     setIsAdding(false);
@@ -52,12 +53,12 @@ const AdminProducts = () => {
     setIsAdding(true);
     setEditing(null);
     setForm(emptyForm);
-    setColors([{ ...emptyColor }]);
+    setColors([{ ...emptyColor, order: 0 }]);
     setPhotos([]);
     setVideos([]);
   };
 
-  const handleAddColorRow = () => setColors((prev) => [...prev, { ...emptyColor }]);
+  const handleAddColorRow = () => setColors((prev) => [...prev, { ...emptyColor, order: prev.length }]);
 
   const handleRemoveColorRow = (index: number) => setColors((prev) => prev.filter((_, i) => i !== index));
 
@@ -118,14 +119,23 @@ const AdminProducts = () => {
       toast.error("Completa todos los campos requeridos");
       return;
     }
-    const validColors = colors.filter((c) => c.name.trim());
+    const validColors = colors
+      .filter((c) => c.name.trim())
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     if (validColors.some((c) => !c.image)) {
       toast.error("Cada color debe tener una imagen");
       return;
     }
     const image = validColors.find((c) => c.stock > 0)?.image ?? validColors[0]?.image ?? "";
 
-    const payload = { ...form, image, colors: validColors, photos, videos };
+    const payload = {
+      ...form,
+      image,
+      colors: validColors,
+      photos,
+      videos,
+      sortOrder: form.sortOrder === "" ? undefined : Number(form.sortOrder),
+    };
 
     if (editing) {
       updateProduct({ ...editing, ...payload });
@@ -198,6 +208,18 @@ const AdminProducts = () => {
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">Código</label>
               <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="SKU-001" />
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">
+                Orden en el catálogo
+                <span className="text-xs font-normal"> — menor número aparece primero</span>
+              </label>
+              <Input
+                type="number"
+                value={form.sortOrder}
+                onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
+                placeholder="Automático (al final)"
+              />
             </div>
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">Marca</label>
@@ -295,6 +317,16 @@ const AdminProducts = () => {
                       value={color.stock}
                       onChange={(e) => handleColorChange(index, "stock", Number(e.target.value))}
                       className="w-20"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-muted-foreground">Orden</label>
+                    <Input
+                      type="number"
+                      value={color.order ?? index}
+                      onChange={(e) => handleColorChange(index, "order", Number(e.target.value))}
+                      className="w-16"
                     />
                   </div>
 
@@ -409,6 +441,7 @@ const AdminProducts = () => {
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Imagen</th>
+                <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Orden</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Código</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Marca</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Nombre</th>
@@ -428,6 +461,7 @@ const AdminProducts = () => {
                         {product.image && <img src={productImageUrl(product.image)} alt={product.name} className="w-full h-full object-cover" />}
                       </div>
                     </td>
+                    <td className="py-3 px-4 text-muted-foreground text-sm">{product.sortOrder ?? "—"}</td>
                     <td className="py-3 px-4 text-muted-foreground text-sm">{product.code || "—"}</td>
                     <td className="py-3 px-4 text-muted-foreground text-sm">{product.brand || "—"}</td>
                     <td className="py-3 px-4 font-medium">{product.name}</td>
@@ -453,21 +487,21 @@ const AdminProducts = () => {
               })}
               {isLoading && (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-muted-foreground">
+                  <td colSpan={9} className="py-12 text-center text-muted-foreground">
                     Cargando productos...
                   </td>
                 </tr>
               )}
               {isError && (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-destructive">
+                  <td colSpan={9} className="py-12 text-center text-destructive">
                     No se pudo conectar con la API.
                   </td>
                 </tr>
               )}
               {!isLoading && !isError && products.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-muted-foreground">
+                  <td colSpan={9} className="py-12 text-center text-muted-foreground">
                     No hay productos. Agrega uno nuevo.
                   </td>
                 </tr>

@@ -5,6 +5,7 @@ export interface ProductColor {
   hex: string;
   image: string;
   stock: number;
+  order?: number;
 }
 
 export interface Product {
@@ -20,6 +21,7 @@ export interface Product {
   photos?: string[];
   videos?: string[];
   extraDescription?: string;
+  sortOrder?: number;
 }
 
 interface CartItem extends Product {

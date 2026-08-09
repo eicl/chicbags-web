@@ -5,13 +5,14 @@ import { Plus } from "lucide-react";
 import { Product, useCart } from "@/context/CartContext";
 import { productImageUrl } from "@/lib/images";
 import { CART_ENABLED } from "@/lib/config";
+import { sortColors } from "@/lib/colors";
 
 const ProductCard = ({ product, isNew = false }: { product: Product; isNew?: boolean }) => {
   const { addToCart } = useCart();
   const [selectedColor, setSelectedColor] = useState(0);
   const [hoveredColor, setHoveredColor] = useState<number | null>(null);
 
-  const colors = product.colors ?? [];
+  const colors = sortColors(product.colors ?? []);
   const activeColor = hoveredColor ?? selectedColor;
   const displayImage = colors[activeColor]?.image ?? product.image;
 

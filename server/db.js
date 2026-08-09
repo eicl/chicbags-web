@@ -34,7 +34,8 @@ export const initSchema = async () => {
       brand_id INTEGER REFERENCES brands(id),
       photos JSONB NOT NULL DEFAULT '[]',
       videos JSONB NOT NULL DEFAULT '[]',
-      extra_description TEXT NOT NULL DEFAULT ''
+      extra_description TEXT NOT NULL DEFAULT '',
+      sort_order INTEGER
     );
   `);
   await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS code TEXT;`);
@@ -42,6 +43,10 @@ export const initSchema = async () => {
   await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS photos JSONB NOT NULL DEFAULT '[]';`);
   await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS videos JSONB NOT NULL DEFAULT '[]';`);
   await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS extra_description TEXT NOT NULL DEFAULT '';`);
+  await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS sort_order INTEGER;`);
+  // Los productos que todavía no tienen un orden manual asignado se ordenan
+  // por su id, para no romper el orden actual del catálogo.
+  await pool.query(`UPDATE products SET sort_order = id WHERE sort_order IS NULL;`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,

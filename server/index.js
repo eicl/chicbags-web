@@ -149,6 +149,7 @@ const mapProduct = (row) => ({
   photos: row.photos,
   videos: row.videos,
   extraDescription: row.extra_description,
+  sortOrder: row.sort_order,
 });
 
 const MAX_PHOTOS = 5;
@@ -165,7 +166,7 @@ const validateMedia = (photos, videos) => {
 };
 
 app.get("/api/products", async (req, res) => {
-  const { rows } = await pool.query(`${PRODUCTS_SELECT} ORDER BY p.id`);
+  const { rows } = await pool.query(`${PRODUCTS_SELECT} ORDER BY p.sort_order, p.id`);
   res.json(rows.map(mapProduct));
 });
 
@@ -297,7 +298,7 @@ app.get("/api/products/:id", async (req, res) => {
 });
 
 app.post("/api/products", requireAuth, async (req, res) => {
-  const { name, price, category, description, image, colors, code, brand, photos, videos, extraDescription } = req.body;
+  const { name, price, category, description, image, colors, code, brand, photos, videos, extraDescription, sortOrder } = req.body;
   const mediaError = validateMedia(photos, videos);
   if (mediaError) return res.status(400).json({ error: mediaError });
   const { rows } = await pool.query("SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM products");
@@ -305,11 +306,12 @@ app.post("/api/products", requireAuth, async (req, res) => {
   const brandId = await getOrCreateBrandId(brand);
   await ensureCategoryExists(category);
   const { rows: inserted } = await pool.query(
-    `INSERT INTO products (id, name, price, category, description, image, colors, code, brand_id, photos, videos, extra_description)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+    `INSERT INTO products (id, name, price, category, description, image, colors, code, brand_id, photos, videos, extra_description, sort_order)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
     [
       id, name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null,
       brandId, JSON.stringify(photos ?? []), JSON.stringify(videos ?? []), extraDescription ?? "",
+      Number.isFinite(sortOrder) ? sortOrder : id,
     ]
   );
   const { rows: fetched } = await pool.query(`${PRODUCTS_SELECT} WHERE p.id = $1`, [inserted[0].id]);
@@ -318,17 +320,18 @@ app.post("/api/products", requireAuth, async (req, res) => {
 
 app.put("/api/products/:id", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
-  const { name, price, category, description, image, colors, code, brand, photos, videos, extraDescription } = req.body;
+  const { name, price, category, description, image, colors, code, brand, photos, videos, extraDescription, sortOrder } = req.body;
   const mediaError = validateMedia(photos, videos);
   if (mediaError) return res.status(400).json({ error: mediaError });
   const brandId = await getOrCreateBrandId(brand);
   await ensureCategoryExists(category);
   const { rows } = await pool.query(
-    `UPDATE products SET name = $1, price = $2, category = $3, description = $4, image = $5, colors = $6, code = $7, brand_id = $8, photos = $9, videos = $10, extra_description = $11
-     WHERE id = $12 RETURNING id`,
+    `UPDATE products SET name = $1, price = $2, category = $3, description = $4, image = $5, colors = $6, code = $7, brand_id = $8, photos = $9, videos = $10, extra_description = $11, sort_order = $12
+     WHERE id = $13 RETURNING id`,
     [
       name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null,
-      brandId, JSON.stringify(photos ?? []), JSON.stringify(videos ?? []), extraDescription ?? "", id,
+      brandId, JSON.stringify(photos ?? []), JSON.stringify(videos ?? []), extraDescription ?? "",
+      Number.isFinite(sortOrder) ? sortOrder : id, id,
     ]
   );
   if (rows.length === 0) return res.status(404).json({ error: "Producto no encontrado" });
