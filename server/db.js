@@ -67,6 +67,25 @@ export const initSchema = async () => {
     SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND category != ''
     ON CONFLICT (name) DO NOTHING;
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS customers (
+      id SERIAL PRIMARY KEY,
+      email TEXT NOT NULL,
+      document_type TEXT NOT NULL,
+      document_number TEXT NOT NULL,
+      first_name TEXT NOT NULL,
+      paternal_surname TEXT NOT NULL,
+      maternal_surname TEXT NOT NULL DEFAULT '',
+      mobile TEXT NOT NULL,
+      country TEXT NOT NULL DEFAULT 'Perú',
+      department TEXT NOT NULL,
+      province TEXT NOT NULL,
+      delivery_type TEXT NOT NULL,
+      delivery_mode TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (document_type, document_number)
+    );
+  `);
 };
 
 // Busca una marca por nombre (sin distinguir mayúsculas/minúsculas) o la crea

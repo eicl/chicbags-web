@@ -291,6 +291,96 @@ app.delete("/api/users/:id", requireAuth, async (req, res) => {
   res.status(204).end();
 });
 
+const DELIVERY_TYPES = ["Motorizado Express", "Motorizado Rango Horario", "Shalom", "Olva", "Marvisur"];
+const DELIVERY_MODE_REQUIRED = ["Shalom", "Olva"];
+const DELIVERY_MODES = ["Terrestre", "Aéreo"];
+
+const mapCustomer = (row) => ({
+  id: row.id,
+  email: row.email,
+  documentType: row.document_type,
+  documentNumber: row.document_number,
+  firstName: row.first_name,
+  paternalSurname: row.paternal_surname,
+  maternalSurname: row.maternal_surname,
+  mobile: row.mobile,
+  country: row.country,
+  department: row.department,
+  province: row.province,
+  deliveryType: row.delivery_type,
+  deliveryMode: row.delivery_mode,
+});
+
+const validateCustomer = (body) => {
+  const { email, documentType, documentNumber, firstName, paternalSurname, mobile, department, province, deliveryType, deliveryMode } = body;
+  if (!email?.trim() || !documentType?.trim() || !documentNumber?.trim() || !firstName?.trim() || !paternalSurname?.trim() || !mobile?.trim() || !department?.trim() || !province?.trim()) {
+    return "Completa todos los campos requeridos";
+  }
+  if (!DELIVERY_TYPES.includes(deliveryType)) {
+    return "Tipo de delivery inválido";
+  }
+  if (DELIVERY_MODE_REQUIRED.includes(deliveryType) && !DELIVERY_MODES.includes(deliveryMode)) {
+    return "Selecciona si el envío es terrestre o aéreo";
+  }
+  return null;
+};
+
+app.get("/api/customers", requireAuth, async (req, res) => {
+  const { rows } = await pool.query("SELECT * FROM customers ORDER BY id DESC");
+  res.json(rows.map(mapCustomer));
+});
+
+app.post("/api/customers", requireAuth, async (req, res) => {
+  const error = validateCustomer(req.body);
+  if (error) return res.status(400).json({ error });
+  const {
+    email, documentType, documentNumber, firstName, paternalSurname, maternalSurname,
+    mobile, department, province, deliveryType, deliveryMode,
+  } = req.body;
+  const deliveryModeValue = DELIVERY_MODE_REQUIRED.includes(deliveryType) ? deliveryMode : null;
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO customers (email, document_type, document_number, first_name, paternal_surname, maternal_surname, mobile, country, department, province, delivery_type, delivery_mode)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'Perú', $8, $9, $10, $11) RETURNING *`,
+      [email.trim(), documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, deliveryType, deliveryModeValue]
+    );
+    res.status(201).json(mapCustomer(rows[0]));
+  } catch (err) {
+    if (err.code === "23505") return res.status(409).json({ error: "Ya existe un cliente con ese tipo y número de documento" });
+    throw err;
+  }
+});
+
+app.put("/api/customers/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const error = validateCustomer(req.body);
+  if (error) return res.status(400).json({ error });
+  const {
+    email, documentType, documentNumber, firstName, paternalSurname, maternalSurname,
+    mobile, department, province, deliveryType, deliveryMode,
+  } = req.body;
+  const deliveryModeValue = DELIVERY_MODE_REQUIRED.includes(deliveryType) ? deliveryMode : null;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE customers SET email = $1, document_type = $2, document_number = $3, first_name = $4, paternal_surname = $5,
+         maternal_surname = $6, mobile = $7, department = $8, province = $9, delivery_type = $10, delivery_mode = $11
+       WHERE id = $12 RETURNING *`,
+      [email.trim(), documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, deliveryType, deliveryModeValue, id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "Cliente no encontrado" });
+    res.json(mapCustomer(rows[0]));
+  } catch (err) {
+    if (err.code === "23505") return res.status(409).json({ error: "Ya existe un cliente con ese tipo y número de documento" });
+    throw err;
+  }
+});
+
+app.delete("/api/customers/:id", requireAuth, async (req, res) => {
+  const { rowCount } = await pool.query("DELETE FROM customers WHERE id = $1", [Number(req.params.id)]);
+  if (rowCount === 0) return res.status(404).json({ error: "Cliente no encontrado" });
+  res.status(204).end();
+});
+
 app.get("/api/products/:id", async (req, res) => {
   const { rows } = await pool.query(`${PRODUCTS_SELECT} WHERE p.id = $1`, [Number(req.params.id)]);
   if (rows.length === 0) return res.status(404).json({ error: "Producto no encontrado" });

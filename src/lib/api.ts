@@ -97,6 +97,49 @@ export const updateCategory = (category: Category): Promise<Category> =>
 export const deleteCategory = (id: number): Promise<void> =>
   fetch(`${API_URL}/categories/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
 
+export type DeliveryType = "Motorizado Express" | "Motorizado Rango Horario" | "Shalom" | "Olva" | "Marvisur";
+export type DeliveryMode = "Terrestre" | "Aéreo";
+
+export interface Customer {
+  id: number;
+  email: string;
+  documentType: string;
+  documentNumber: string;
+  firstName: string;
+  paternalSurname: string;
+  maternalSurname: string;
+  mobile: string;
+  country: string;
+  department: string;
+  province: string;
+  deliveryType: DeliveryType;
+  deliveryMode: DeliveryMode | null;
+}
+
+export type CustomerInput = Omit<Customer, "id" | "country">;
+
+export const fetchCustomers = (): Promise<Customer[]> =>
+  fetch(`${API_URL}/customers`, { credentials: "include" }).then((res) => handle<Customer[]>(res));
+
+export const createCustomer = (data: CustomerInput): Promise<Customer> =>
+  fetch(`${API_URL}/customers`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<Customer>(res));
+
+export const updateCustomer = (id: number, data: CustomerInput): Promise<Customer> =>
+  fetch(`${API_URL}/customers/${id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<Customer>(res));
+
+export const deleteCustomer = (id: number): Promise<void> =>
+  fetch(`${API_URL}/customers/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
+
 export const createProduct = (product: Omit<Product, "id">): Promise<Product> =>
   fetch(`${API_URL}/products`, {
     method: "POST",
