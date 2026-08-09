@@ -122,10 +122,32 @@ export type CustomerInput = Omit<Customer, "id" | "country">;
 export const fetchCustomers = (): Promise<Customer[]> =>
   fetch(`${API_URL}/customers`, { credentials: "include" }).then((res) => handle<Customer[]>(res));
 
-export const fetchDistrictSuggestions = (province: string): Promise<string[]> =>
-  fetch(`${API_URL}/customers/districts?province=${encodeURIComponent(province)}`, { credentials: "include" }).then(
-    (res) => handle<string[]>(res)
-  );
+export interface District {
+  id: number;
+  name: string;
+}
+
+export const fetchDistricts = (province: string): Promise<District[]> =>
+  fetch(`${API_URL}/districts?province=${encodeURIComponent(province)}`).then((res) => handle<District[]>(res));
+
+export const createDistrict = (province: string, name: string): Promise<District> =>
+  fetch(`${API_URL}/districts`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ province, name }),
+  }).then((res) => handle<District>(res));
+
+export const updateDistrict = (id: number, name: string): Promise<District> =>
+  fetch(`${API_URL}/districts/${id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  }).then((res) => handle<District>(res));
+
+export const deleteDistrict = (id: number): Promise<void> =>
+  fetch(`${API_URL}/districts/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
 
 export const createCustomer = (data: CustomerInput): Promise<Customer> =>
   fetch(`${API_URL}/customers`, {

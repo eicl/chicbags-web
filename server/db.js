@@ -88,6 +88,21 @@ export const initSchema = async () => {
     );
   `);
   await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS district TEXT NOT NULL DEFAULT '';`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS districts (
+      id SERIAL PRIMARY KEY,
+      province TEXT NOT NULL,
+      name TEXT NOT NULL,
+      UNIQUE (province, name)
+    );
+  `);
+  // Precarga distritos ya usados por clientes existentes, para no partir
+  // de una lista vacía.
+  await pool.query(`
+    INSERT INTO districts (province, name)
+    SELECT DISTINCT province, district FROM customers WHERE district IS NOT NULL AND district != ''
+    ON CONFLICT (province, name) DO NOTHING;
+  `);
 };
 
 // Busca una marca por nombre (sin distinguir mayúsculas/minúsculas) o la crea
@@ -113,4 +128,19 @@ export const ensureCategoryExists = async (name) => {
   const { rows } = await pool.query("SELECT id FROM categories WHERE lower(name) = lower($1)", [trimmed]);
   if (rows.length > 0) return;
   await pool.query("INSERT INTO categories (name) VALUES ($1)", [trimmed]);
+};
+
+// Igual que ensureCategoryExists, pero el listado de distritos es propio
+// de cada provincia (dos provincias pueden tener un distrito con el mismo
+// nombre sin que sea el mismo registro).
+export const ensureDistrictExists = async (province, name) => {
+  const trimmedProvince = (province ?? "").trim();
+  const trimmedName = (name ?? "").trim();
+  if (!trimmedProvince || !trimmedName) return;
+  const { rows } = await pool.query(
+    "SELECT id FROM districts WHERE province = $1 AND lower(name) = lower($2)",
+    [trimmedProvince, trimmedName]
+  );
+  if (rows.length > 0) return;
+  await pool.query("INSERT INTO districts (province, name) VALUES ($1, $2)", [trimmedProvince, trimmedName]);
 };

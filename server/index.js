@@ -9,7 +9,7 @@ import { mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { pool, initSchema, getOrCreateBrandId, ensureCategoryExists } from "./db.js";
+import { pool, initSchema, getOrCreateBrandId, ensureCategoryExists, ensureDistrictExists } from "./db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Las imágenes viven dentro del frontend (carpeta public/) para que Vite
@@ -209,6 +209,66 @@ app.delete("/api/categories/:id", requireAuth, async (req, res) => {
   res.status(204).end();
 });
 
+// Los distritos son propios de cada provincia (no hay una lista oficial
+// cargada), así que siempre se filtran/gestionan con ?province=.
+app.get("/api/districts", async (req, res) => {
+  const province = (req.query.province ?? "").toString();
+  if (!province) return res.json([]);
+  const { rows } = await pool.query("SELECT id, name FROM districts WHERE province = $1 ORDER BY name", [province]);
+  res.json(rows);
+});
+
+app.post("/api/districts", requireAuth, async (req, res) => {
+  const province = (req.body.province ?? "").trim();
+  const name = (req.body.name ?? "").trim();
+  if (!province) return res.status(400).json({ error: "La provincia es obligatoria" });
+  if (!name) return res.status(400).json({ error: "El nombre es obligatorio" });
+  const { rows: existing } = await pool.query(
+    "SELECT id FROM districts WHERE province = $1 AND lower(name) = lower($2)",
+    [province, name]
+  );
+  if (existing.length > 0) return res.status(409).json({ error: "Ya existe ese distrito en esa provincia" });
+  const { rows } = await pool.query(
+    "INSERT INTO districts (province, name) VALUES ($1, $2) RETURNING id, name",
+    [province, name]
+  );
+  res.status(201).json(rows[0]);
+});
+
+app.put("/api/districts/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const name = (req.body.name ?? "").trim();
+  if (!name) return res.status(400).json({ error: "El nombre es obligatorio" });
+  const { rows: current } = await pool.query("SELECT province, name FROM districts WHERE id = $1", [id]);
+  if (current.length === 0) return res.status(404).json({ error: "Distrito no encontrado" });
+  const { rows: existing } = await pool.query(
+    "SELECT id FROM districts WHERE province = $1 AND lower(name) = lower($2) AND id != $3",
+    [current[0].province, name, id]
+  );
+  if (existing.length > 0) return res.status(409).json({ error: "Ya existe ese distrito en esa provincia" });
+  await pool.query(
+    "UPDATE customers SET district = $1 WHERE province = $2 AND district = $3",
+    [name, current[0].province, current[0].name]
+  );
+  const { rows } = await pool.query("UPDATE districts SET name = $1 WHERE id = $2 RETURNING id, name", [name, id]);
+  res.json(rows[0]);
+});
+
+app.delete("/api/districts/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const { rows: current } = await pool.query("SELECT province, name FROM districts WHERE id = $1", [id]);
+  if (current.length === 0) return res.status(404).json({ error: "Distrito no encontrado" });
+  const { rows: inUse } = await pool.query(
+    "SELECT COUNT(*)::int AS count FROM customers WHERE province = $1 AND district = $2",
+    [current[0].province, current[0].name]
+  );
+  if (inUse[0].count > 0) {
+    return res.status(409).json({ error: "No puedes eliminar un distrito que está en uso por clientes" });
+  }
+  await pool.query("DELETE FROM districts WHERE id = $1", [id]);
+  res.status(204).end();
+});
+
 app.get("/api/brands", async (req, res) => {
   const { rows } = await pool.query("SELECT id, name FROM brands ORDER BY name");
   res.json(rows);
@@ -331,18 +391,6 @@ app.get("/api/customers", requireAuth, async (req, res) => {
   res.json(rows.map(mapCustomer));
 });
 
-// Distritos que ya se hayan escrito antes para una provincia, para
-// sugerirlos como autocompletado (no hay un catálogo oficial cargado).
-app.get("/api/customers/districts", requireAuth, async (req, res) => {
-  const province = (req.query.province ?? "").toString();
-  if (!province) return res.json([]);
-  const { rows } = await pool.query(
-    "SELECT DISTINCT district FROM customers WHERE province = $1 AND district != '' ORDER BY district",
-    [province]
-  );
-  res.json(rows.map((r) => r.district));
-});
-
 app.post("/api/customers", requireAuth, async (req, res) => {
   const error = validateCustomer(req.body);
   if (error) return res.status(400).json({ error });
@@ -351,6 +399,7 @@ app.post("/api/customers", requireAuth, async (req, res) => {
     mobile, department, province, district, deliveryType, deliveryMode,
   } = req.body;
   const deliveryModeValue = DELIVERY_MODE_REQUIRED.includes(deliveryType) ? deliveryMode : null;
+  await ensureDistrictExists(province, district);
   try {
     const { rows } = await pool.query(
       `INSERT INTO customers (email, document_type, document_number, first_name, paternal_surname, maternal_surname, mobile, country, department, province, district, delivery_type, delivery_mode)
@@ -373,6 +422,7 @@ app.put("/api/customers/:id", requireAuth, async (req, res) => {
     mobile, department, province, district, deliveryType, deliveryMode,
   } = req.body;
   const deliveryModeValue = DELIVERY_MODE_REQUIRED.includes(deliveryType) ? deliveryMode : null;
+  await ensureDistrictExists(province, district);
   try {
     const { rows } = await pool.query(
       `UPDATE customers SET email = $1, document_type = $2, document_number = $3, first_name = $4, paternal_surname = $5,

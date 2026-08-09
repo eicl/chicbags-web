@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
-  fetchCustomers, createCustomer, updateCustomer, deleteCustomer, fetchDistrictSuggestions,
+  fetchCustomers, createCustomer, updateCustomer, deleteCustomer, fetchDistricts, createDistrict,
   Customer, CustomerInput, DeliveryType, DeliveryMode,
 } from "@/lib/api";
 import { PERU_DEPARTMENTS, PERU_LOCATIONS } from "@/lib/peru-locations";
@@ -133,11 +133,25 @@ const AdminCustomers = () => {
 
   const provinces = form.department ? PERU_LOCATIONS[form.department] ?? [] : [];
 
-  const { data: districtSuggestions = [] } = useQuery({
-    queryKey: ["district-suggestions", form.province],
-    queryFn: () => fetchDistrictSuggestions(form.province),
+  const { data: districts = [] } = useQuery({
+    queryKey: ["districts", form.province],
+    queryFn: () => fetchDistricts(form.province),
     enabled: !!form.province,
   });
+
+  const addDistrictMutation = useMutation({
+    mutationFn: (n: string) => createDistrict(form.province, n),
+    onSuccess: (district) => {
+      queryClient.invalidateQueries({ queryKey: ["districts", form.province] });
+      setForm((prev) => ({ ...prev, district: district.name }));
+    },
+    onError,
+  });
+
+  const handleAddDistrict = () => {
+    const n = prompt(`Nuevo distrito en ${form.province}:`)?.trim();
+    if (n) addDistrictMutation.mutate(n);
+  };
 
   return (
     <div>
@@ -231,18 +245,22 @@ const AdminCustomers = () => {
             </div>
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">Distrito *</label>
-              <Input
-                value={form.district}
-                onChange={(e) => setForm({ ...form, district: e.target.value })}
-                placeholder={form.province ? "Escribe el distrito..." : "Elige antes la provincia"}
-                disabled={!form.province}
-                list="district-options"
-              />
-              <datalist id="district-options">
-                {districtSuggestions.map((d) => (
-                  <option key={d} value={d} />
-                ))}
-              </datalist>
+              <div className="flex gap-2">
+                <select
+                  value={form.district}
+                  onChange={(e) => setForm({ ...form, district: e.target.value })}
+                  disabled={!form.province}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">{form.province ? "Selecciona..." : "Elige antes la provincia"}</option>
+                  {districts.map((d) => (
+                    <option key={d.id} value={d.name}>{d.name}</option>
+                  ))}
+                </select>
+                <Button type="button" variant="outline" size="icon" onClick={handleAddDistrict} disabled={!form.province} className="shrink-0" title="Agregar distrito nuevo">
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">Tipo de delivery *</label>

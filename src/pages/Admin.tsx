@@ -1,21 +1,23 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, LogOut, Package, Tag, Layers, Users, IdCard } from "lucide-react";
+import { ArrowLeft, LogOut, Package, Tag, Layers, Users, IdCard, MapPin } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import AdminProducts from "@/components/admin/AdminProducts";
 import AdminBrands from "@/components/admin/AdminBrands";
 import AdminCategories from "@/components/admin/AdminCategories";
 import AdminCustomers from "@/components/admin/AdminCustomers";
+import AdminDistricts from "@/components/admin/AdminDistricts";
 import AdminUsers from "@/components/admin/AdminUsers";
 
-type Tab = "products" | "brands" | "categories" | "customers" | "users";
+type Tab = "products" | "brands" | "categories" | "customers" | "districts" | "users";
 
 const TABS: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "products", label: "Productos", icon: Package },
   { id: "brands", label: "Marcas", icon: Tag },
   { id: "categories", label: "Categorías", icon: Layers },
   { id: "customers", label: "Clientes", icon: IdCard },
+  { id: "districts", label: "Distritos", icon: MapPin },
   { id: "users", label: "Usuarios", icon: Users },
 ];
 
@@ -68,6 +70,7 @@ const Admin = () => {
         {tab === "brands" && <AdminBrands />}
         {tab === "categories" && <AdminCategories />}
         {tab === "customers" && <AdminCustomers />}
+        {tab === "districts" && <AdminDistricts />}
         {tab === "users" && <AdminUsers />}
       </div>
     </div>
