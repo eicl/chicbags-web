@@ -112,6 +112,7 @@ export interface Customer {
   country: string;
   department: string;
   province: string;
+  district: string;
   deliveryType: DeliveryType;
   deliveryMode: DeliveryMode | null;
 }
@@ -120,6 +121,11 @@ export type CustomerInput = Omit<Customer, "id" | "country">;
 
 export const fetchCustomers = (): Promise<Customer[]> =>
   fetch(`${API_URL}/customers`, { credentials: "include" }).then((res) => handle<Customer[]>(res));
+
+export const fetchDistrictSuggestions = (province: string): Promise<string[]> =>
+  fetch(`${API_URL}/customers/districts?province=${encodeURIComponent(province)}`, { credentials: "include" }).then(
+    (res) => handle<string[]>(res)
+  );
 
 export const createCustomer = (data: CustomerInput): Promise<Customer> =>
   fetch(`${API_URL}/customers`, {

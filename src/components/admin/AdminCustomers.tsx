@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
-  fetchCustomers, createCustomer, updateCustomer, deleteCustomer,
+  fetchCustomers, createCustomer, updateCustomer, deleteCustomer, fetchDistrictSuggestions,
   Customer, CustomerInput, DeliveryType, DeliveryMode,
 } from "@/lib/api";
 import { PERU_DEPARTMENTS, PERU_LOCATIONS } from "@/lib/peru-locations";
@@ -25,6 +25,7 @@ const emptyForm: CustomerInput = {
   mobile: "",
   department: "",
   province: "",
+  district: "",
   deliveryType: "Motorizado Express",
   deliveryMode: null,
 };
@@ -90,6 +91,7 @@ const AdminCustomers = () => {
       mobile: customer.mobile,
       department: customer.department,
       province: customer.province,
+      district: customer.district,
       deliveryType: customer.deliveryType,
       deliveryMode: customer.deliveryMode,
     });
@@ -106,7 +108,7 @@ const AdminCustomers = () => {
   const handleSave = () => {
     if (
       !form.email.trim() || !form.documentNumber.trim() || !form.firstName.trim() ||
-      !form.paternalSurname.trim() || !form.mobile.trim() || !form.department || !form.province
+      !form.paternalSurname.trim() || !form.mobile.trim() || !form.department || !form.province || !form.district.trim()
     ) {
       toast.error("Completa todos los campos requeridos");
       return;
@@ -130,6 +132,12 @@ const AdminCustomers = () => {
   };
 
   const provinces = form.department ? PERU_LOCATIONS[form.department] ?? [] : [];
+
+  const { data: districtSuggestions = [] } = useQuery({
+    queryKey: ["district-suggestions", form.province],
+    queryFn: () => fetchDistrictSuggestions(form.province),
+    enabled: !!form.province,
+  });
 
   return (
     <div>
@@ -211,7 +219,7 @@ const AdminCustomers = () => {
               <label className="text-sm text-muted-foreground mb-1 block">Provincia *</label>
               <select
                 value={form.province}
-                onChange={(e) => setForm({ ...form, province: e.target.value })}
+                onChange={(e) => setForm({ ...form, province: e.target.value, district: "" })}
                 disabled={!form.department}
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -220,6 +228,21 @@ const AdminCustomers = () => {
                   <option key={p} value={p}>{p}</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">Distrito *</label>
+              <Input
+                value={form.district}
+                onChange={(e) => setForm({ ...form, district: e.target.value })}
+                placeholder={form.province ? "Escribe el distrito..." : "Elige antes la provincia"}
+                disabled={!form.province}
+                list="district-options"
+              />
+              <datalist id="district-options">
+                {districtSuggestions.map((d) => (
+                  <option key={d} value={d} />
+                ))}
+              </datalist>
             </div>
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">Tipo de delivery *</label>
@@ -297,7 +320,7 @@ const AdminCustomers = () => {
                   </td>
                   <td className="py-3 px-4 text-muted-foreground text-sm">{customer.mobile}</td>
                   <td className="py-3 px-4 text-muted-foreground text-sm">{customer.email}</td>
-                  <td className="py-3 px-4 text-muted-foreground text-sm">{customer.province}, {customer.department}</td>
+                  <td className="py-3 px-4 text-muted-foreground text-sm">{customer.district}, {customer.province}, {customer.department}</td>
                   <td className="py-3 px-4 text-muted-foreground text-sm">
                     {customer.deliveryType}
                     {customer.deliveryMode && <span> ({customer.deliveryMode})</span>}

@@ -307,13 +307,14 @@ const mapCustomer = (row) => ({
   country: row.country,
   department: row.department,
   province: row.province,
+  district: row.district,
   deliveryType: row.delivery_type,
   deliveryMode: row.delivery_mode,
 });
 
 const validateCustomer = (body) => {
-  const { email, documentType, documentNumber, firstName, paternalSurname, mobile, department, province, deliveryType, deliveryMode } = body;
-  if (!email?.trim() || !documentType?.trim() || !documentNumber?.trim() || !firstName?.trim() || !paternalSurname?.trim() || !mobile?.trim() || !department?.trim() || !province?.trim()) {
+  const { email, documentType, documentNumber, firstName, paternalSurname, mobile, department, province, district, deliveryType, deliveryMode } = body;
+  if (!email?.trim() || !documentType?.trim() || !documentNumber?.trim() || !firstName?.trim() || !paternalSurname?.trim() || !mobile?.trim() || !department?.trim() || !province?.trim() || !district?.trim()) {
     return "Completa todos los campos requeridos";
   }
   if (!DELIVERY_TYPES.includes(deliveryType)) {
@@ -330,19 +331,31 @@ app.get("/api/customers", requireAuth, async (req, res) => {
   res.json(rows.map(mapCustomer));
 });
 
+// Distritos que ya se hayan escrito antes para una provincia, para
+// sugerirlos como autocompletado (no hay un catálogo oficial cargado).
+app.get("/api/customers/districts", requireAuth, async (req, res) => {
+  const province = (req.query.province ?? "").toString();
+  if (!province) return res.json([]);
+  const { rows } = await pool.query(
+    "SELECT DISTINCT district FROM customers WHERE province = $1 AND district != '' ORDER BY district",
+    [province]
+  );
+  res.json(rows.map((r) => r.district));
+});
+
 app.post("/api/customers", requireAuth, async (req, res) => {
   const error = validateCustomer(req.body);
   if (error) return res.status(400).json({ error });
   const {
     email, documentType, documentNumber, firstName, paternalSurname, maternalSurname,
-    mobile, department, province, deliveryType, deliveryMode,
+    mobile, department, province, district, deliveryType, deliveryMode,
   } = req.body;
   const deliveryModeValue = DELIVERY_MODE_REQUIRED.includes(deliveryType) ? deliveryMode : null;
   try {
     const { rows } = await pool.query(
-      `INSERT INTO customers (email, document_type, document_number, first_name, paternal_surname, maternal_surname, mobile, country, department, province, delivery_type, delivery_mode)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'Perú', $8, $9, $10, $11) RETURNING *`,
-      [email.trim(), documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, deliveryType, deliveryModeValue]
+      `INSERT INTO customers (email, document_type, document_number, first_name, paternal_surname, maternal_surname, mobile, country, department, province, district, delivery_type, delivery_mode)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'Perú', $8, $9, $10, $11, $12) RETURNING *`,
+      [email.trim(), documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue]
     );
     res.status(201).json(mapCustomer(rows[0]));
   } catch (err) {
@@ -357,15 +370,15 @@ app.put("/api/customers/:id", requireAuth, async (req, res) => {
   if (error) return res.status(400).json({ error });
   const {
     email, documentType, documentNumber, firstName, paternalSurname, maternalSurname,
-    mobile, department, province, deliveryType, deliveryMode,
+    mobile, department, province, district, deliveryType, deliveryMode,
   } = req.body;
   const deliveryModeValue = DELIVERY_MODE_REQUIRED.includes(deliveryType) ? deliveryMode : null;
   try {
     const { rows } = await pool.query(
       `UPDATE customers SET email = $1, document_type = $2, document_number = $3, first_name = $4, paternal_surname = $5,
-         maternal_surname = $6, mobile = $7, department = $8, province = $9, delivery_type = $10, delivery_mode = $11
-       WHERE id = $12 RETURNING *`,
-      [email.trim(), documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, deliveryType, deliveryModeValue, id]
+         maternal_surname = $6, mobile = $7, department = $8, province = $9, district = $10, delivery_type = $11, delivery_mode = $12
+       WHERE id = $13 RETURNING *`,
+      [email.trim(), documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue, id]
     );
     if (rows.length === 0) return res.status(404).json({ error: "Cliente no encontrado" });
     res.json(mapCustomer(rows[0]));

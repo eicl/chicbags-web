@@ -80,12 +80,14 @@ export const initSchema = async () => {
       country TEXT NOT NULL DEFAULT 'Perú',
       department TEXT NOT NULL,
       province TEXT NOT NULL,
+      district TEXT NOT NULL DEFAULT '',
       delivery_type TEXT NOT NULL,
       delivery_mode TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE (document_type, document_number)
     );
   `);
+  await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS district TEXT NOT NULL DEFAULT '';`);
 };
 
 // Busca una marca por nombre (sin distinguir mayúsculas/minúsculas) o la crea
