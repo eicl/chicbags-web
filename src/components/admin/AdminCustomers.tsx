@@ -141,6 +141,15 @@ const AdminCustomers = () => {
 
       {(isAdding || editingId !== null) && (
         <div className="mb-8 p-6 border border-border rounded-lg bg-card">
+          {editingId !== null ? (
+            <span className="inline-block mb-3 px-3 py-1.5 rounded-md bg-primary/10 text-primary font-semibold text-sm tracking-wide">
+              Código de cliente: #{editingId}
+            </span>
+          ) : (
+            <span className="inline-block mb-3 px-3 py-1.5 rounded-md bg-muted text-muted-foreground text-sm">
+              El código de cliente se asigna automáticamente al guardar
+            </span>
+          )}
           <h2 className="text-lg font-medium mb-4" style={{ fontFamily: "var(--font-display)" }}>
             {editingId !== null ? "Editar cliente" : "Nuevo cliente"}
           </h2>
@@ -265,6 +274,7 @@ const AdminCustomers = () => {
           <table className="w-full">
             <thead>
               <tr className="border-b border-border bg-muted/30">
+                <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Código</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Documento</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Nombre</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Celular</th>
@@ -277,6 +287,7 @@ const AdminCustomers = () => {
             <tbody>
               {customers.map((customer) => (
                 <tr key={customer.id} className="border-b border-border last:border-0 hover:bg-muted/10 transition-colors">
+                  <td className="py-3 px-4 text-sm font-medium text-primary">#{customer.id}</td>
                   <td className="py-3 px-4 text-sm">
                     <div className="text-muted-foreground text-xs">{customer.documentType}</div>
                     {customer.documentNumber}
@@ -305,17 +316,17 @@ const AdminCustomers = () => {
               ))}
               {isLoading && (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-muted-foreground">Cargando clientes...</td>
+                  <td colSpan={8} className="py-12 text-center text-muted-foreground">Cargando clientes...</td>
                 </tr>
               )}
               {isError && (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
+                  <td colSpan={8} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
                 </tr>
               )}
               {!isLoading && !isError && customers.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-muted-foreground">No hay clientes registrados.</td>
+                  <td colSpan={8} className="py-12 text-center text-muted-foreground">No hay clientes registrados.</td>
                 </tr>
               )}
             </tbody>
