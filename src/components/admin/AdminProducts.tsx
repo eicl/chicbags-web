@@ -126,6 +126,10 @@ const AdminProducts = () => {
       toast.error("Cada color debe tener una imagen");
       return;
     }
+    if (validColors.some((c) => !/^#[0-9a-fA-F]{6}$/.test(c.hex))) {
+      toast.error("Cada color debe tener un código HTML válido (#RRGGBB)");
+      return;
+    }
     const image = validColors.find((c) => c.stock > 0)?.image ?? validColors[0]?.image ?? "";
 
     const payload = {
@@ -301,13 +305,23 @@ const AdminProducts = () => {
                     className="flex-1 min-w-[7rem]"
                   />
 
-                  <input
-                    type="color"
-                    value={color.hex}
-                    onChange={(e) => handleColorChange(index, "hex", e.target.value)}
-                    className="w-9 h-9 rounded border border-border bg-transparent cursor-pointer"
-                    title="Color de referencia"
-                  />
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="color"
+                      value={/^#[0-9a-fA-F]{6}$/.test(color.hex) ? color.hex : "#000000"}
+                      onChange={(e) => handleColorChange(index, "hex", e.target.value)}
+                      className="w-9 h-9 rounded border border-border bg-transparent cursor-pointer shrink-0"
+                      title="Elegir color"
+                    />
+                    <Input
+                      value={color.hex}
+                      onChange={(e) => handleColorChange(index, "hex", e.target.value)}
+                      placeholder="#RRGGBB"
+                      maxLength={7}
+                      className="w-24 font-mono text-sm"
+                      title="Código de color HTML"
+                    />
+                  </div>
 
                   <div className="flex items-center gap-2">
                     <label className="text-xs text-muted-foreground">Stock</label>
