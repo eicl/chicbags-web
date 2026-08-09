@@ -165,7 +165,7 @@ const ProductDetail = () => {
                 <p className="text-sm font-medium mb-3">
                   Color: <span className="text-muted-foreground font-normal">{colors[selectedColor]?.name}</span>
                   {colors[selectedColor] && colors[selectedColor].stock > 0 && (
-                    <span className="text-muted-foreground font-normal"> · {colors[selectedColor].stock} disponibles</span>
+                    <span className="text-muted-foreground font-normal"> · Disponible</span>
                   )}
                 </p>
                 <div className="flex flex-wrap gap-3">
