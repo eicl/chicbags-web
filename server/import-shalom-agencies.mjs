@@ -18,7 +18,10 @@ import { pool, initSchema } from "./db.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROVIDER = "Shalom";
 
-const SOURCE_FILES = ["shalom-lima.txt", "shalom-arequipa.txt", "shalom-la-libertad.txt", "shalom-piura.txt", "shalom-cusco.txt"];
+const SOURCE_FILES = [
+  "shalom-lima.txt", "shalom-arequipa.txt", "shalom-la-libertad.txt", "shalom-piura.txt",
+  "shalom-cusco.txt", "shalom-san-martin.txt", "shalom-junin.txt",
+];
 
 // Copia de src/lib/peru-locations.ts (departamento -> provincias). Se usa
 // solo para decidir, en una línea de ubicación de 2 partes ("Depto · X"),
@@ -109,6 +112,16 @@ const cleanText = (s) => s.replace(/�+$/g, "…").replace(/�/g, "-");
 const foldAscii = (s) =>
   s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().trim();
 
+// Los archivos fuente no siempre traen el departamento con su tilde
+// oficial ("San Martin", "Junin"), así que la lista de provincias se busca
+// comparando sin tildes/mayúsculas, no con la clave exacta.
+const departmentKeyByFold = new Map();
+for (const dept of Object.keys(PERU_LOCATIONS)) departmentKeyByFold.set(foldAscii(dept), dept);
+const provincesOf = (department) => {
+  const officialKey = departmentKeyByFold.get(foldAscii(department));
+  return officialKey ? PERU_LOCATIONS[officialKey] : [];
+};
+
 // Resuelve departamento/provincia/distrito de una línea de ubicación como
 // "Arequipa", "Lima · Cercado Lima" o "Arequipa · Caraveli · Chala".
 // Con 2 partes, la segunda puede ser un distrito de la provincia
@@ -124,8 +137,7 @@ const resolveLocation = (locationLine) => {
   }
   if (parts.length === 2) {
     const [department, second] = parts;
-    const provinces = PERU_LOCATIONS[department] ?? [];
-    const isOtherProvince = provinces.some((p) => foldAscii(p) === foldAscii(second));
+    const isOtherProvince = provincesOf(department).some((p) => foldAscii(p) === foldAscii(second));
     if (isOtherProvince) return { department, province: second, district: second };
     return { department, province: department, district: second };
   }
