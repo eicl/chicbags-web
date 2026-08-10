@@ -18,7 +18,7 @@ import { pool, initSchema } from "./db.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROVIDER = "Shalom";
 
-const SOURCE_FILES = ["shalom-lima.txt", "shalom-arequipa.txt", "shalom-la-libertad.txt", "shalom-piura.txt"];
+const SOURCE_FILES = ["shalom-lima.txt", "shalom-arequipa.txt", "shalom-la-libertad.txt", "shalom-piura.txt", "shalom-cusco.txt"];
 
 // Copia de src/lib/peru-locations.ts (departamento -> provincias). Se usa
 // solo para decidir, en una línea de ubicación de 2 partes ("Depto · X"),
