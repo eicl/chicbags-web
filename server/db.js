@@ -53,9 +53,13 @@ export const initSchema = async () => {
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'Administrador'
     );
   `);
+  // Por ahora el perfil es solo informativo (no restringe accesos dentro
+  // del panel admin).
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'Administrador';`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS categories (
       id SERIAL PRIMARY KEY,

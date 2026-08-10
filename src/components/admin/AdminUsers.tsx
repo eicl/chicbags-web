@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
-import { fetchUsers, createUser, updateUser, deleteUser, UserAccount } from "@/lib/api";
+import { fetchUsers, createUser, updateUser, deleteUser, UserAccount, UserRole } from "@/lib/api";
 import { errorLabelClass, errorInputClass } from "@/lib/utils";
 
-const emptyForm = { username: "", password: "" };
+const USER_ROLES: UserRole[] = ["Administrador", "Vendedor"];
+const emptyForm = { username: "", password: "", role: "Vendedor" as UserRole };
 
 const AdminUsers = () => {
   const { user: currentUser } = useAuth();
@@ -37,7 +38,7 @@ const AdminUsers = () => {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, ...data }: { id: number; username: string; password?: string }) => updateUser(id, data),
+    mutationFn: ({ id, ...data }: { id: number; username: string; password?: string; role: UserRole }) => updateUser(id, data),
     onSuccess: () => {
       invalidate();
       toast.success("Usuario actualizado");
@@ -66,7 +67,7 @@ const AdminUsers = () => {
   const handleEdit = (user: UserAccount) => {
     setEditingId(user.id);
     setIsAdding(false);
-    setForm({ username: user.username, password: "" });
+    setForm({ username: user.username, password: "", role: user.role });
     setAttemptedSubmit(false);
   };
 
@@ -87,9 +88,9 @@ const AdminUsers = () => {
       return;
     }
     if (editingId !== null) {
-      updateMutation.mutate({ id: editingId, username: form.username, password: form.password || undefined });
+      updateMutation.mutate({ id: editingId, username: form.username, password: form.password || undefined, role: form.role });
     } else {
-      createMutation.mutate({ username: form.username, password: form.password });
+      createMutation.mutate({ username: form.username, password: form.password, role: form.role });
     }
   };
 
@@ -134,6 +135,18 @@ const AdminUsers = () => {
                 className={errorInputClass(passwordError)}
               />
             </div>
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">Perfil *</label>
+              <select
+                value={form.role}
+                onChange={(e) => setForm({ ...form, role: e.target.value as UserRole })}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                {USER_ROLES.map((role) => (
+                  <option key={role} value={role}>{role}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="flex gap-3">
             <Button onClick={handleSave} className="gap-2"><Save className="w-4 h-4" /> Guardar</Button>
@@ -148,6 +161,7 @@ const AdminUsers = () => {
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Usuario</th>
+                <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Perfil</th>
                 <th className="text-right text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Acciones</th>
               </tr>
             </thead>
@@ -160,6 +174,7 @@ const AdminUsers = () => {
                       <span className="ml-2 text-xs text-muted-foreground">(tú)</span>
                     )}
                   </td>
+                  <td className="py-3 px-4 text-muted-foreground text-sm">{user.role}</td>
                   <td className="py-3 px-4">
                     <div className="flex gap-2 justify-end">
                       <Button variant="ghost" size="icon" onClick={() => handleEdit(user)}>
@@ -181,17 +196,17 @@ const AdminUsers = () => {
               ))}
               {isLoading && (
                 <tr>
-                  <td colSpan={2} className="py-12 text-center text-muted-foreground">Cargando usuarios...</td>
+                  <td colSpan={3} className="py-12 text-center text-muted-foreground">Cargando usuarios...</td>
                 </tr>
               )}
               {isError && (
                 <tr>
-                  <td colSpan={2} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
+                  <td colSpan={3} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
                 </tr>
               )}
               {!isLoading && !isError && users.length === 0 && (
                 <tr>
-                  <td colSpan={2} className="py-12 text-center text-muted-foreground">No hay usuarios.</td>
+                  <td colSpan={3} className="py-12 text-center text-muted-foreground">No hay usuarios.</td>
                 </tr>
               )}
             </tbody>

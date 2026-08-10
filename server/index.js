@@ -331,22 +331,27 @@ app.delete("/api/brands/:id", requireAuth, async (req, res) => {
   res.status(204).end();
 });
 
+// El perfil es solo informativo por ahora: no restringe qué puede ver o
+// hacer cada usuario dentro del panel admin.
+const USER_ROLES = ["Administrador", "Vendedor"];
+
 app.get("/api/users", requireAuth, async (req, res) => {
-  const { rows } = await pool.query("SELECT id, username FROM users ORDER BY username");
+  const { rows } = await pool.query("SELECT id, username, role FROM users ORDER BY username");
   res.json(rows);
 });
 
 app.post("/api/users", requireAuth, async (req, res) => {
   const username = (req.body.username ?? "").trim();
   const password = req.body.password ?? "";
+  const role = USER_ROLES.includes(req.body.role) ? req.body.role : "Vendedor";
   if (!username || !password) return res.status(400).json({ error: "Usuario y contraseña son obligatorios" });
   if (password.length < 6) return res.status(400).json({ error: "La contraseña debe tener al menos 6 caracteres" });
   const { rows: existing } = await pool.query("SELECT id FROM users WHERE lower(username) = lower($1)", [username]);
   if (existing.length > 0) return res.status(409).json({ error: "Ya existe un usuario con ese nombre" });
   const passwordHash = await bcrypt.hash(password, 10);
   const { rows } = await pool.query(
-    "INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id, username",
-    [username, passwordHash]
+    "INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING id, username, role",
+    [username, passwordHash, role]
   );
   res.status(201).json(rows[0]);
 });
@@ -355,6 +360,7 @@ app.put("/api/users/:id", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   const username = (req.body.username ?? "").trim();
   const password = req.body.password ?? "";
+  const role = USER_ROLES.includes(req.body.role) ? req.body.role : "Vendedor";
   if (!username) return res.status(400).json({ error: "El usuario es obligatorio" });
   if (password && password.length < 6) return res.status(400).json({ error: "La contraseña debe tener al menos 6 caracteres" });
   const { rows: existing } = await pool.query("SELECT id FROM users WHERE lower(username) = lower($1) AND id != $2", [username, id]);
@@ -362,10 +368,10 @@ app.put("/api/users/:id", requireAuth, async (req, res) => {
 
   const { rows } = password
     ? await pool.query(
-        "UPDATE users SET username = $1, password_hash = $2 WHERE id = $3 RETURNING id, username",
-        [username, await bcrypt.hash(password, 10), id]
+        "UPDATE users SET username = $1, password_hash = $2, role = $3 WHERE id = $4 RETURNING id, username, role",
+        [username, await bcrypt.hash(password, 10), role, id]
       )
-    : await pool.query("UPDATE users SET username = $1 WHERE id = $2 RETURNING id, username", [username, id]);
+    : await pool.query("UPDATE users SET username = $1, role = $2 WHERE id = $3 RETURNING id, username, role", [username, role, id]);
 
   if (rows.length === 0) return res.status(404).json({ error: "Usuario no encontrado" });
   res.json(rows[0]);

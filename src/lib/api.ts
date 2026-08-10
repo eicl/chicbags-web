@@ -43,15 +43,18 @@ export const updateBrand = (brand: Brand): Promise<Brand> =>
 export const deleteBrand = (id: number): Promise<void> =>
   fetch(`${API_URL}/brands/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
 
+export type UserRole = "Administrador" | "Vendedor";
+
 export interface UserAccount {
   id: number;
   username: string;
+  role: UserRole;
 }
 
 export const fetchUsers = (): Promise<UserAccount[]> =>
   fetch(`${API_URL}/users`, { credentials: "include" }).then((res) => handle<UserAccount[]>(res));
 
-export const createUser = (data: { username: string; password: string }): Promise<UserAccount> =>
+export const createUser = (data: { username: string; password: string; role: UserRole }): Promise<UserAccount> =>
   fetch(`${API_URL}/users`, {
     method: "POST",
     credentials: "include",
@@ -59,7 +62,7 @@ export const createUser = (data: { username: string; password: string }): Promis
     body: JSON.stringify(data),
   }).then((res) => handle<UserAccount>(res));
 
-export const updateUser = (id: number, data: { username: string; password?: string }): Promise<UserAccount> =>
+export const updateUser = (id: number, data: { username: string; password?: string; role: UserRole }): Promise<UserAccount> =>
   fetch(`${API_URL}/users/${id}`, {
     method: "PUT",
     credentials: "include",
