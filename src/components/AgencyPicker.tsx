@@ -9,6 +9,10 @@ interface AgencyPickerProps {
   value: string;
   onChange: (name: string) => void;
   hasError?: boolean;
+  // Provincia/distrito ya elegidos en el formulario: se usan para
+  // preseleccionar las sedes cercanas.
+  province?: string;
+  district?: string;
 }
 
 const matches = (agency: Agency, query: string) => {
@@ -16,6 +20,18 @@ const matches = (agency: Agency, query: string) => {
   if (!q) return true;
   return [agency.name, agency.department, agency.province, agency.district, agency.address, agency.reference, agency.phone, agency.schedule]
     .some((field) => (field ?? "").toLowerCase().includes(q));
+};
+
+// Los nombres de provincia/distrito de Shalom no siempre coinciden letra
+// por letra con los oficiales (ej. "Brena" vs "Breña", "San Vicente de
+// Canet" vs "San Vicente de Cañete"), así que la comparación ignora
+// mayúsculas/tildes/ñ y acepta que uno sea prefijo del otro.
+const normalize = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+const looseMatch = (a: string, b: string) => {
+  if (!a || !b) return false;
+  const na = normalize(a);
+  const nb = normalize(b);
+  return na === nb || na.includes(nb) || nb.includes(na);
 };
 
 const AgencyCard = ({ agency, onClick }: { agency: Agency; onClick?: () => void }) => (
@@ -50,9 +66,10 @@ const AgencyCard = ({ agency, onClick }: { agency: Agency; onClick?: () => void 
   </div>
 );
 
-const AgencyPicker = ({ agencies, value, onChange, hasError }: AgencyPickerProps) => {
+const AgencyPicker = ({ agencies, value, onChange, hasError, province, district }: AgencyPickerProps) => {
   const [isSearching, setIsSearching] = useState(!value);
   const [query, setQuery] = useState("");
+  const [showAll, setShowAll] = useState(false);
 
   const selected = agencies.find((a) => a.name === value);
 
@@ -74,7 +91,13 @@ const AgencyPicker = ({ agencies, value, onChange, hasError }: AgencyPickerProps
     );
   }
 
-  const filtered = agencies.filter((a) => matches(a, query));
+  const nearby = agencies.filter(
+    (a) => looseMatch(a.province, province ?? "") && looseMatch(a.district, district ?? "")
+  );
+  // Si hay sedes cerca de la ubicación ya elegida, se muestran esas primero
+  // (a menos que el usuario pida ver todas o esté escribiendo algo).
+  const pool = nearby.length > 0 && !showAll ? nearby : agencies;
+  const filtered = pool.filter((a) => matches(a, query));
 
   return (
     <div>
@@ -86,6 +109,22 @@ const AgencyPicker = ({ agencies, value, onChange, hasError }: AgencyPickerProps
         className={errorInputClass(hasError)}
         autoFocus={!!value}
       />
+      {nearby.length > 0 && (
+        <p className="text-xs text-muted-foreground mt-1">
+          {showAll ? (
+            <button type="button" onClick={() => setShowAll(false)} className="text-primary hover:underline">
+              Ver solo sedes de {district}
+            </button>
+          ) : (
+            <>
+              Mostrando sedes de {district}.{" "}
+              <button type="button" onClick={() => setShowAll(true)} className="text-primary hover:underline">
+                Ver todas ({agencies.length})
+              </button>
+            </>
+          )}
+        </p>
+      )}
       <div className="mt-2 max-h-80 overflow-y-auto space-y-2 pr-1">
         {filtered.length === 0 && (
           <p className="text-sm text-muted-foreground py-4 text-center">No se encontró ninguna sede con ese texto.</p>

@@ -328,6 +328,8 @@ const CustomerRegister = () => {
                   value={form.agency}
                   onChange={(agency) => setForm({ ...form, agency })}
                   hasError={hasError("agency")}
+                  province={form.province}
+                  district={form.district}
                 />
               </div>
             )}
