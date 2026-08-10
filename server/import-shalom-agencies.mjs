@@ -16,6 +16,11 @@ const PROVIDER = "Shalom";
 
 const fixMojibake = (s) => Buffer.from(s, "latin1").toString("utf8");
 
+// Solo el nombre de la sede se muestra sin tildes en vocales (á é í ó ú),
+// para que sea más fácil de escribir/filtrar. La ñ NO es un acento (es otra
+// letra), así que se conserva: "Cañete" sigue siendo "Cañete".
+const stripVowelAccents = (s) => s.normalize("NFD").replace(/́/g, "").normalize("NFC");
+
 // Cada registro tiene el nombre en la línea anterior a "Disponible", seguido
 // de una línea de ubicación ("Depto · Distrito" o "Depto · Provincia ·
 // Distrito") y 0+ líneas de dirección/referencia/teléfono/horario, que se
@@ -56,7 +61,7 @@ const parseAgencies = (raw) => {
     }
 
     if (name && district) {
-      records.push({ name, department, province, district, details });
+      records.push({ name: stripVowelAccents(name), department, province, district, details });
     }
     i = j - 1;
   }
