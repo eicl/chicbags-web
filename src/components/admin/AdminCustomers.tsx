@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, X, Save } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Save, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -360,6 +360,18 @@ const AdminCustomers = () => {
                   <option key={t} value={t}>{t}</option>
                 ))}
               </select>
+              {form.deliveryType === "Motorizado Express" && (
+                <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+                  <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  Para saber el costo de tu envío, cotiza indicando tu ubicación actual.
+                </p>
+              )}
+              {form.deliveryType === "Motorizado Delivery" && (
+                <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+                  <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  Entregas al día siguiente en el rango horario de 11:00 AM a 9:00 PM. Envía tu ubicación actual.
+                </p>
+              )}
             </div>
             {needsDeliveryMode && (
               <div>
