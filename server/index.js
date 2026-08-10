@@ -510,6 +510,25 @@ app.delete("/api/customers/:id", requireAuth, async (req, res) => {
   res.status(204).end();
 });
 
+// Búsqueda pública de un cliente por su propio código o número de documento
+// (el cliente se identifica a sí mismo). Pensada para el registro de
+// pedidos fuera del panel admin: no expone el listado completo.
+app.get("/api/customers/lookup", async (req, res) => {
+  const code = (req.query.code ?? "").toString().trim();
+  const documentNumber = (req.query.documentNumber ?? "").toString().trim();
+  if (!code && !documentNumber) {
+    return res.status(400).json({ error: "Indica el código de cliente o el número de documento" });
+  }
+  if (code && !Number.isInteger(Number(code))) {
+    return res.status(404).json({ error: "No se encontró ningún cliente con ese dato" });
+  }
+  const { rows } = code
+    ? await pool.query("SELECT * FROM customers WHERE id = $1", [Number(code)])
+    : await pool.query("SELECT * FROM customers WHERE document_number = $1", [documentNumber]);
+  if (rows.length === 0) return res.status(404).json({ error: "No se encontró ningún cliente con ese dato" });
+  res.json(mapCustomer(rows[0]));
+});
+
 app.get("/api/products/:id", async (req, res) => {
   const includeCost = isAuthenticated(req);
   const { rows } = await pool.query(`${PRODUCTS_SELECT} WHERE p.id = $1`, [Number(req.params.id)]);
@@ -563,6 +582,112 @@ app.delete("/api/products/:id", requireAuth, async (req, res) => {
   const { rowCount } = await pool.query("DELETE FROM products WHERE id = $1", [Number(req.params.id)]);
   if (rowCount === 0) return res.status(404).json({ error: "Producto no encontrado" });
   res.status(204).end();
+});
+
+const mapOrder = (order, items) => ({
+  id: order.id,
+  customerId: order.customer_id,
+  total: Number(order.total),
+  createdAt: order.created_at,
+  items: items.map((i) => ({
+    id: i.id,
+    productId: i.product_id,
+    productName: i.product_name,
+    colorName: i.color_name,
+    unitPrice: Number(i.unit_price),
+    quantity: i.quantity,
+    subtotal: Number(i.subtotal),
+  })),
+});
+
+// Registro público de pedidos: fuera del panel admin. Valida el stock de
+// cada producto/color dentro de una transacción (con FOR UPDATE para
+// evitar que dos pedidos a la vez vendan el mismo stock), lo descuenta y
+// recién ahí crea el pedido — si algo falla, no se descuenta nada.
+app.post("/api/orders/register", async (req, res) => {
+  const { customerId, items } = req.body;
+  if (!Number.isInteger(customerId)) {
+    return res.status(400).json({ error: "Cliente inválido" });
+  }
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: "El pedido no tiene productos" });
+  }
+  for (const item of items) {
+    if (!Number.isInteger(item?.productId) || !item?.colorName || !Number.isInteger(item?.quantity) || item.quantity <= 0) {
+      return res.status(400).json({ error: "Hay un producto inválido en el pedido" });
+    }
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const { rows: customerRows } = await client.query("SELECT id FROM customers WHERE id = $1", [customerId]);
+    if (customerRows.length === 0) {
+      throw new Error("El cliente no existe");
+    }
+
+    const lineItems = [];
+    let total = 0;
+
+    for (const item of items) {
+      const { rows: productRows } = await client.query(
+        "SELECT id, name, price, colors FROM products WHERE id = $1 FOR UPDATE",
+        [item.productId]
+      );
+      if (productRows.length === 0) {
+        throw new Error(`El producto #${item.productId} ya no existe`);
+      }
+      const product = productRows[0];
+      const colors = product.colors ?? [];
+      const colorIndex = colors.findIndex((c) => c.name === item.colorName);
+      if (colorIndex === -1) {
+        throw new Error(`"${product.name}" ya no tiene el color "${item.colorName}"`);
+      }
+      const color = colors[colorIndex];
+      if (color.stock < item.quantity) {
+        throw new Error(`No hay suficiente stock de "${product.name}" (${item.colorName}): quedan ${color.stock}`);
+      }
+      colors[colorIndex] = { ...color, stock: color.stock - item.quantity };
+      await client.query("UPDATE products SET colors = $1 WHERE id = $2", [JSON.stringify(colors), product.id]);
+
+      const unitPrice = Number(product.price);
+      const subtotal = unitPrice * item.quantity;
+      total += subtotal;
+      lineItems.push({
+        productId: product.id,
+        productName: product.name,
+        colorName: item.colorName,
+        unitPrice,
+        quantity: item.quantity,
+        subtotal,
+      });
+    }
+
+    const { rows: orderRows } = await client.query(
+      "INSERT INTO orders (customer_id, total) VALUES ($1, $2) RETURNING *",
+      [customerId, total]
+    );
+    const order = orderRows[0];
+
+    const insertedItems = [];
+    for (const li of lineItems) {
+      const { rows } = await client.query(
+        `INSERT INTO order_items (order_id, product_id, product_name, color_name, unit_price, quantity, subtotal)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+        [order.id, li.productId, li.productName, li.colorName, li.unitPrice, li.quantity, li.subtotal]
+      );
+      insertedItems.push(rows[0]);
+    }
+
+    await client.query("COMMIT");
+    res.status(201).json(mapOrder(order, insertedItems));
+  } catch (err) {
+    await client.query("ROLLBACK");
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
 });
 
 // En producción, este mismo servicio sirve la web ya compilada (dist/) y

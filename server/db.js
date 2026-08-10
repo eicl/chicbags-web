@@ -134,6 +134,26 @@ export const initSchema = async () => {
     SELECT DISTINCT province, district FROM customers WHERE district IS NOT NULL AND district != ''
     ON CONFLICT (province, name) DO NOTHING;
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS orders (
+      id SERIAL PRIMARY KEY,
+      customer_id INTEGER NOT NULL REFERENCES customers(id),
+      total NUMERIC NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS order_items (
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      product_name TEXT NOT NULL,
+      color_name TEXT NOT NULL,
+      unit_price NUMERIC NOT NULL,
+      quantity INTEGER NOT NULL,
+      subtotal NUMERIC NOT NULL
+    );
+  `);
 };
 
 // Busca una marca por nombre (sin distinguir mayúsculas/minúsculas) o la crea

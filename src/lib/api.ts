@@ -127,6 +127,15 @@ export type CustomerInput = Omit<Customer, "id" | "country">;
 export const fetchCustomers = (): Promise<Customer[]> =>
   fetch(`${API_URL}/customers`, { credentials: "include" }).then((res) => handle<Customer[]>(res));
 
+// Búsqueda pública de un cliente por su propio código o DNI (para el
+// registro de pedidos fuera del panel admin). Pasa uno de los dos.
+export const lookupCustomer = (query: { code?: string; documentNumber?: string }): Promise<Customer> => {
+  const params = new URLSearchParams();
+  if (query.code) params.set("code", query.code);
+  if (query.documentNumber) params.set("documentNumber", query.documentNumber);
+  return fetch(`${API_URL}/customers/lookup?${params.toString()}`).then((res) => handle<Customer>(res));
+};
+
 export interface District {
   id: number;
   name: string;
@@ -196,6 +205,39 @@ export const updateCustomer = (id: number, data: CustomerInput): Promise<Custome
 
 export const deleteCustomer = (id: number): Promise<void> =>
   fetch(`${API_URL}/customers/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
+
+export interface OrderItem {
+  id: number;
+  productId: number;
+  productName: string;
+  colorName: string;
+  unitPrice: number;
+  quantity: number;
+  subtotal: number;
+}
+
+export interface Order {
+  id: number;
+  customerId: number;
+  total: number;
+  createdAt: string;
+  items: OrderItem[];
+}
+
+export interface OrderItemInput {
+  productId: number;
+  colorName: string;
+  quantity: number;
+}
+
+// Registro público de pedidos (fuera del panel admin): valida stock,
+// lo descuenta por color y crea el pedido, todo en el servidor.
+export const registerOrder = (data: { customerId: number; items: OrderItemInput[] }): Promise<Order> =>
+  fetch(`${API_URL}/orders/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<Order>(res));
 
 export const createProduct = (product: Omit<Product, "id">): Promise<Product> =>
   fetch(`${API_URL}/products`, {

@@ -15,6 +15,7 @@ import Admin from "./pages/Admin.tsx";
 import Checkout from "./pages/Checkout.tsx";
 import ProductDetail from "./pages/ProductDetail.tsx";
 import CustomerRegister from "./pages/CustomerRegister.tsx";
+import OrderRegister from "./pages/OrderRegister.tsx";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ const App = () => (
                 <Route path="/producto/:id" element={<ProductDetail />} />
                 <Route path="/checkout" element={<Checkout />} />
                 <Route path="/registro-cliente" element={<CustomerRegister />} />
+                <Route path="/registro-pedido" element={<OrderRegister />} />
                 <Route
                   path="/admin"
                   element={
