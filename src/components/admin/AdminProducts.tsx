@@ -36,6 +36,8 @@ const AdminProducts = () => {
   const nameError = attemptedSubmit && !form.name.trim();
   const categoryError = attemptedSubmit && !form.category.trim();
   const priceError = attemptedSubmit && !(form.price > 0);
+  const codeError = attemptedSubmit && !form.code.trim();
+  const brandError = attemptedSubmit && !form.brand.trim();
   const colorsHaveError =
     attemptedSubmit && colors.some((c) => c.name.trim() && (!c.image || !/^#[0-9a-fA-F]{6}$/.test(c.hex)));
 
@@ -130,6 +132,8 @@ const AdminProducts = () => {
     if (!form.name.trim()) missing.push("Nombre");
     if (!form.category.trim()) missing.push("Categoría");
     if (!(form.price > 0)) missing.push("Precio");
+    if (!form.code.trim()) missing.push("Código");
+    if (!form.brand.trim()) missing.push("Marca");
     if (missing.length > 0) {
       setAttemptedSubmit(true);
       toast.error(`Faltan campos obligatorios: ${missing.join(", ")}`);
@@ -254,8 +258,13 @@ const AdminProducts = () => {
               </datalist>
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Código</label>
-              <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="SKU-001" />
+              <label className={errorLabelClass(codeError)}>Código *</label>
+              <Input
+                value={form.code}
+                onChange={(e) => setForm({ ...form, code: e.target.value })}
+                placeholder="SKU-001"
+                className={errorInputClass(codeError)}
+              />
             </div>
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">
@@ -270,12 +279,13 @@ const AdminProducts = () => {
               />
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Marca</label>
+              <label className={errorLabelClass(brandError)}>Marca *</label>
               <Input
                 value={form.brand}
                 onChange={(e) => setForm({ ...form, brand: e.target.value })}
                 placeholder="ChicBags, Michael Kors..."
                 list="brand-options"
+                className={errorInputClass(brandError)}
               />
               <datalist id="brand-options">
                 {brands.map((b) => (
