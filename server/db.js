@@ -92,6 +92,22 @@ export const initSchema = async () => {
   // columna (y cualquier dato ya guardado) para bases de datos existentes.
   await pool.query(`ALTER TABLE customers DROP COLUMN IF EXISTS email;`);
   await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS district TEXT NOT NULL DEFAULT '';`);
+  // Sede de recojo (por ahora solo tiene sentido con Shalom). Queda vacía
+  // para otros tipos de delivery.
+  await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS agency TEXT NOT NULL DEFAULT '';`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS agencies (
+      id SERIAL PRIMARY KEY,
+      provider TEXT NOT NULL,
+      name TEXT NOT NULL,
+      department TEXT NOT NULL DEFAULT '',
+      province TEXT NOT NULL DEFAULT '',
+      district TEXT NOT NULL DEFAULT '',
+      address TEXT NOT NULL DEFAULT '',
+      details TEXT NOT NULL DEFAULT '',
+      UNIQUE (provider, name, district)
+    );
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS districts (
       id SERIAL PRIMARY KEY,

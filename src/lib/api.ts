@@ -114,6 +114,9 @@ export interface Customer {
   district: string;
   deliveryType: DeliveryType;
   deliveryMode: DeliveryMode | null;
+  // Sede de recojo, solo aplica (y es obligatorio) cuando deliveryType es
+  // un courrier con sedes cargadas (por ahora, Shalom).
+  agency: string;
 }
 
 export type CustomerInput = Omit<Customer, "id" | "country">;
@@ -128,6 +131,17 @@ export interface District {
 
 export const fetchDistricts = (province: string): Promise<District[]> =>
   fetch(`${API_URL}/districts?province=${encodeURIComponent(province)}`).then((res) => handle<District[]>(res));
+
+export interface Agency {
+  id: number;
+  name: string;
+  department: string;
+  province: string;
+  district: string;
+}
+
+export const fetchAgencies = (provider: string): Promise<Agency[]> =>
+  fetch(`${API_URL}/agencies?provider=${encodeURIComponent(provider)}`).then((res) => handle<Agency[]>(res));
 
 export const createDistrict = (province: string, name: string): Promise<District> =>
   fetch(`${API_URL}/districts`, {

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
-  fetchCustomers, createCustomer, updateCustomer, deleteCustomer, fetchDistricts, createDistrict,
+  fetchCustomers, createCustomer, updateCustomer, deleteCustomer, fetchDistricts, createDistrict, fetchAgencies,
   Customer, CustomerInput, DeliveryType, DeliveryMode,
 } from "@/lib/api";
 import { PERU_DEPARTMENTS, PERU_LOCATIONS } from "@/lib/peru-locations";
@@ -15,6 +15,8 @@ const DOCUMENT_TYPES = ["DNI", "Carné de Extranjería", "Pasaporte", "RUC"];
 const DELIVERY_TYPES: DeliveryType[] = ["Motorizado Express", "Motorizado Rango Horario", "Shalom", "Olva", "Marvisur"];
 const DELIVERY_MODE_REQUIRED: DeliveryType[] = ["Shalom", "Olva"];
 const DELIVERY_MODES: DeliveryMode[] = ["Terrestre", "Aéreo"];
+// Solo Shalom tiene sedes cargadas por ahora.
+const AGENCY_REQUIRED: DeliveryType[] = ["Shalom"];
 
 const emptyForm: CustomerInput = {
   documentType: "DNI",
@@ -28,6 +30,7 @@ const emptyForm: CustomerInput = {
   district: "",
   deliveryType: "Motorizado Express",
   deliveryMode: null,
+  agency: "",
 };
 
 const AdminCustomers = () => {
@@ -96,6 +99,7 @@ const AdminCustomers = () => {
       district: customer.district,
       deliveryType: customer.deliveryType,
       deliveryMode: customer.deliveryMode,
+      agency: customer.agency,
     });
   };
 
@@ -107,6 +111,13 @@ const AdminCustomers = () => {
   };
 
   const needsDeliveryMode = DELIVERY_MODE_REQUIRED.includes(form.deliveryType);
+  const needsAgency = AGENCY_REQUIRED.includes(form.deliveryType);
+
+  const { data: agencies = [] } = useQuery({
+    queryKey: ["agencies", form.deliveryType],
+    queryFn: () => fetchAgencies(form.deliveryType),
+    enabled: needsAgency,
+  });
 
   const REQUIRED_FIELD_LABELS: Record<string, string> = {
     documentNumber: "Número de documento",
@@ -117,6 +128,7 @@ const AdminCustomers = () => {
     province: "Provincia",
     district: "Distrito",
     deliveryMode: "Vía de envío (terrestre/aéreo)",
+    agency: "Sede",
   };
 
   const getMissingFields = () => {
@@ -129,6 +141,7 @@ const AdminCustomers = () => {
     if (!form.province) missing.push("province");
     if (!form.district.trim()) missing.push("district");
     if (needsDeliveryMode && !form.deliveryMode) missing.push("deliveryMode");
+    if (needsAgency && !form.agency.trim()) missing.push("agency");
     return missing;
   };
 
@@ -142,7 +155,11 @@ const AdminCustomers = () => {
       toast.error(`Faltan campos obligatorios: ${missing.map((f) => REQUIRED_FIELD_LABELS[f]).join(", ")}`);
       return;
     }
-    const payload: CustomerInput = { ...form, deliveryMode: needsDeliveryMode ? form.deliveryMode : null };
+    const payload: CustomerInput = {
+      ...form,
+      deliveryMode: needsDeliveryMode ? form.deliveryMode : null,
+      agency: needsAgency ? form.agency.trim() : "",
+    };
 
     if (editingId !== null) {
       updateMutation.mutate({ id: editingId, data: payload });
@@ -355,6 +372,23 @@ const AdminCustomers = () => {
                 </div>
               </div>
             )}
+            {needsAgency && (
+              <div>
+                <label className={errorLabelClass(hasError("agency"))}>Sede de recojo (Shalom) *</label>
+                <Input
+                  value={form.agency}
+                  onChange={(e) => setForm({ ...form, agency: e.target.value })}
+                  placeholder="Escribe para filtrar por nombre de sede..."
+                  list="agency-options"
+                  className={errorInputClass(hasError("agency"))}
+                />
+                <datalist id="agency-options">
+                  {agencies.map((a) => (
+                    <option key={a.id} value={a.name}>{a.district}</option>
+                  ))}
+                </datalist>
+              </div>
+            )}
           </div>
           <div className="flex gap-3">
             <Button onClick={handleSave} className="gap-2"><Save className="w-4 h-4" /> Guardar</Button>
@@ -393,6 +427,7 @@ const AdminCustomers = () => {
                   <td className="py-3 px-4 text-muted-foreground text-sm">
                     {customer.deliveryType}
                     {customer.deliveryMode && <span> ({customer.deliveryMode})</span>}
+                    {customer.agency && <div className="text-xs">Sede: {customer.agency}</div>}
                   </td>
                   <td className="py-3 px-4">
                     <div className="flex gap-2 justify-end">

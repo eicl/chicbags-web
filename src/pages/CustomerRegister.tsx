@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import Header from "@/components/Header";
 import {
-  registerCustomer, fetchDistricts, Customer, CustomerInput, DeliveryType, DeliveryMode,
+  registerCustomer, fetchDistricts, fetchAgencies, Customer, CustomerInput, DeliveryType, DeliveryMode,
 } from "@/lib/api";
 import { PERU_DEPARTMENTS, PERU_LOCATIONS } from "@/lib/peru-locations";
 import { errorLabelClass, errorInputClass, cn } from "@/lib/utils";
@@ -15,6 +15,8 @@ const DOCUMENT_TYPES = ["DNI", "Carné de Extranjería", "Pasaporte", "RUC"];
 const DELIVERY_TYPES: DeliveryType[] = ["Motorizado Express", "Motorizado Rango Horario", "Shalom", "Olva", "Marvisur"];
 const DELIVERY_MODE_REQUIRED: DeliveryType[] = ["Shalom", "Olva"];
 const DELIVERY_MODES: DeliveryMode[] = ["Terrestre", "Aéreo"];
+// Solo Shalom tiene sedes cargadas por ahora.
+const AGENCY_REQUIRED: DeliveryType[] = ["Shalom"];
 
 const emptyForm: CustomerInput = {
   documentType: "DNI",
@@ -28,6 +30,7 @@ const emptyForm: CustomerInput = {
   district: "",
   deliveryType: "Motorizado Express",
   deliveryMode: null,
+  agency: "",
 };
 
 // Lleva al cliente de vuelta al chat de WhatsApp de la empresa con su
@@ -47,6 +50,7 @@ const REQUIRED_FIELD_LABELS: Record<string, string> = {
   province: "Provincia",
   district: "Distrito",
   deliveryMode: "Vía de envío (terrestre/aéreo)",
+  agency: "Sede",
 };
 
 const CustomerRegister = () => {
@@ -63,6 +67,13 @@ const CustomerRegister = () => {
   });
 
   const needsDeliveryMode = DELIVERY_MODE_REQUIRED.includes(form.deliveryType);
+  const needsAgency = AGENCY_REQUIRED.includes(form.deliveryType);
+
+  const { data: agencies = [] } = useQuery({
+    queryKey: ["agencies", form.deliveryType],
+    queryFn: () => fetchAgencies(form.deliveryType),
+    enabled: needsAgency,
+  });
 
   const getMissingFields = () => {
     const missing: string[] = [];
@@ -74,6 +85,7 @@ const CustomerRegister = () => {
     if (!form.province) missing.push("province");
     if (!form.district.trim()) missing.push("district");
     if (needsDeliveryMode && !form.deliveryMode) missing.push("deliveryMode");
+    if (needsAgency && !form.agency.trim()) missing.push("agency");
     return missing;
   };
 
@@ -88,7 +100,11 @@ const CustomerRegister = () => {
       toast.error(`Faltan campos obligatorios: ${missing.map((f) => REQUIRED_FIELD_LABELS[f]).join(", ")}`);
       return;
     }
-    const payload: CustomerInput = { ...form, deliveryMode: needsDeliveryMode ? form.deliveryMode : null };
+    const payload: CustomerInput = {
+      ...form,
+      deliveryMode: needsDeliveryMode ? form.deliveryMode : null,
+      agency: needsAgency ? form.agency.trim() : "",
+    };
     registerMutation.mutate(payload);
   };
 
@@ -290,6 +306,23 @@ const CustomerRegister = () => {
                     </button>
                   ))}
                 </div>
+              </div>
+            )}
+            {needsAgency && (
+              <div className="md:col-span-2">
+                <label className={errorLabelClass(hasError("agency"))}>Sede de recojo (Shalom) *</label>
+                <Input
+                  value={form.agency}
+                  onChange={(e) => setForm({ ...form, agency: e.target.value })}
+                  placeholder="Escribe para filtrar por nombre de sede..."
+                  list="agency-options"
+                  className={errorInputClass(hasError("agency"))}
+                />
+                <datalist id="agency-options">
+                  {agencies.map((a) => (
+                    <option key={a.id} value={a.name}>{a.district}</option>
+                  ))}
+                </datalist>
               </div>
             )}
           </div>
