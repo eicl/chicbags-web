@@ -9,6 +9,7 @@ import {
   Customer, CustomerInput, DeliveryType, DeliveryMode,
 } from "@/lib/api";
 import { PERU_DEPARTMENTS, PERU_LOCATIONS } from "@/lib/peru-locations";
+import { errorLabelClass, errorInputClass, cn } from "@/lib/utils";
 
 const DOCUMENT_TYPES = ["DNI", "Carné de Extranjería", "Pasaporte", "RUC"];
 const DELIVERY_TYPES: DeliveryType[] = ["Motorizado Express", "Motorizado Rango Horario", "Shalom", "Olva", "Marvisur"];
@@ -37,6 +38,7 @@ const AdminCustomers = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<CustomerInput>(emptyForm);
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["customers"] });
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : "Algo salió mal");
@@ -76,11 +78,13 @@ const AdminCustomers = () => {
     setIsAdding(true);
     setEditingId(null);
     setForm(emptyForm);
+    setAttemptedSubmit(false);
   };
 
   const handleEdit = (customer: Customer) => {
     setEditingId(customer.id);
     setIsAdding(false);
+    setAttemptedSubmit(false);
     setForm({
       email: customer.email,
       documentType: customer.documentType,
@@ -101,20 +105,45 @@ const AdminCustomers = () => {
     setIsAdding(false);
     setEditingId(null);
     setForm(emptyForm);
+    setAttemptedSubmit(false);
   };
 
   const needsDeliveryMode = DELIVERY_MODE_REQUIRED.includes(form.deliveryType);
 
+  const REQUIRED_FIELD_LABELS: Record<string, string> = {
+    email: "Correo",
+    documentNumber: "Número de documento",
+    firstName: "Nombres",
+    paternalSurname: "Apellido paterno",
+    mobile: "Celular",
+    department: "Departamento",
+    province: "Provincia",
+    district: "Distrito",
+    deliveryMode: "Vía de envío (terrestre/aéreo)",
+  };
+
+  const getMissingFields = () => {
+    const missing: string[] = [];
+    if (!form.email.trim()) missing.push("email");
+    if (!form.documentNumber.trim()) missing.push("documentNumber");
+    if (!form.firstName.trim()) missing.push("firstName");
+    if (!form.paternalSurname.trim()) missing.push("paternalSurname");
+    if (!form.mobile.trim()) missing.push("mobile");
+    if (!form.department) missing.push("department");
+    if (!form.province) missing.push("province");
+    if (!form.district.trim()) missing.push("district");
+    if (needsDeliveryMode && !form.deliveryMode) missing.push("deliveryMode");
+    return missing;
+  };
+
+  const missingFields = attemptedSubmit ? getMissingFields() : [];
+  const hasError = (field: string) => missingFields.includes(field);
+
   const handleSave = () => {
-    if (
-      !form.email.trim() || !form.documentNumber.trim() || !form.firstName.trim() ||
-      !form.paternalSurname.trim() || !form.mobile.trim() || !form.department || !form.province || !form.district.trim()
-    ) {
-      toast.error("Completa todos los campos requeridos");
-      return;
-    }
-    if (needsDeliveryMode && !form.deliveryMode) {
-      toast.error("Selecciona si el envío es terrestre o aéreo");
+    const missing = getMissingFields();
+    if (missing.length > 0) {
+      setAttemptedSubmit(true);
+      toast.error(`Faltan campos obligatorios: ${missing.map((f) => REQUIRED_FIELD_LABELS[f]).join(", ")}`);
       return;
     }
     const payload: CustomerInput = { ...form, deliveryMode: needsDeliveryMode ? form.deliveryMode : null };
@@ -177,8 +206,14 @@ const AdminCustomers = () => {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Correo *</label>
-              <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="cliente@correo.com" />
+              <label className={errorLabelClass(hasError("email"))}>Correo *</label>
+              <Input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="cliente@correo.com"
+                className={errorInputClass(hasError("email"))}
+              />
             </div>
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">Tipo de documento *</label>
@@ -193,35 +228,58 @@ const AdminCustomers = () => {
               </select>
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Número de documento *</label>
-              <Input value={form.documentNumber} onChange={(e) => setForm({ ...form, documentNumber: e.target.value })} placeholder="12345678" />
+              <label className={errorLabelClass(hasError("documentNumber"))}>Número de documento *</label>
+              <Input
+                value={form.documentNumber}
+                onChange={(e) => setForm({ ...form, documentNumber: e.target.value })}
+                placeholder="12345678"
+                className={errorInputClass(hasError("documentNumber"))}
+              />
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Nombres *</label>
-              <Input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder="María José" />
+              <label className={errorLabelClass(hasError("firstName"))}>Nombres *</label>
+              <Input
+                value={form.firstName}
+                onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                placeholder="María José"
+                className={errorInputClass(hasError("firstName"))}
+              />
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Apellido paterno *</label>
-              <Input value={form.paternalSurname} onChange={(e) => setForm({ ...form, paternalSurname: e.target.value })} placeholder="García" />
+              <label className={errorLabelClass(hasError("paternalSurname"))}>Apellido paterno *</label>
+              <Input
+                value={form.paternalSurname}
+                onChange={(e) => setForm({ ...form, paternalSurname: e.target.value })}
+                placeholder="García"
+                className={errorInputClass(hasError("paternalSurname"))}
+              />
             </div>
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">Apellido materno</label>
               <Input value={form.maternalSurname} onChange={(e) => setForm({ ...form, maternalSurname: e.target.value })} placeholder="López" />
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Celular *</label>
-              <Input value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} placeholder="987654321" />
+              <label className={errorLabelClass(hasError("mobile"))}>Celular *</label>
+              <Input
+                value={form.mobile}
+                onChange={(e) => setForm({ ...form, mobile: e.target.value })}
+                placeholder="987654321"
+                className={errorInputClass(hasError("mobile"))}
+              />
             </div>
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">País</label>
               <Input value="Perú" disabled />
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Departamento *</label>
+              <label className={errorLabelClass(hasError("department"))}>Departamento *</label>
               <select
                 value={form.department}
                 onChange={(e) => setForm({ ...form, department: e.target.value, province: "" })}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className={cn(
+                  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  errorInputClass(hasError("department"))
+                )}
               >
                 <option value="">Selecciona...</option>
                 {PERU_DEPARTMENTS.map((d) => (
@@ -230,12 +288,15 @@ const AdminCustomers = () => {
               </select>
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Provincia *</label>
+              <label className={errorLabelClass(hasError("province"))}>Provincia *</label>
               <select
                 value={form.province}
                 onChange={(e) => setForm({ ...form, province: e.target.value, district: "" })}
                 disabled={!form.department}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                className={cn(
+                  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+                  errorInputClass(hasError("province"))
+                )}
               >
                 <option value="">Selecciona...</option>
                 {provinces.map((p) => (
@@ -244,13 +305,16 @@ const AdminCustomers = () => {
               </select>
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Distrito *</label>
+              <label className={errorLabelClass(hasError("district"))}>Distrito *</label>
               <div className="flex gap-2">
                 <select
                   value={form.district}
                   onChange={(e) => setForm({ ...form, district: e.target.value })}
                   disabled={!form.province}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className={cn(
+                    "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+                    errorInputClass(hasError("district"))
+                  )}
                 >
                   <option value="">{form.province ? "Selecciona..." : "Elige antes la provincia"}</option>
                   {districts.map((d) => (
@@ -283,18 +347,21 @@ const AdminCustomers = () => {
             </div>
             {needsDeliveryMode && (
               <div>
-                <label className="text-sm text-muted-foreground mb-1 block">Vía de envío *</label>
+                <label className={errorLabelClass(hasError("deliveryMode"))}>Vía de envío *</label>
                 <div className="flex gap-2 h-10 items-center">
                   {DELIVERY_MODES.map((mode) => (
                     <button
                       key={mode}
                       type="button"
                       onClick={() => setForm({ ...form, deliveryMode: mode })}
-                      className={`px-4 py-2 rounded-md border text-sm transition-colors ${
+                      className={cn(
+                        "px-4 py-2 rounded-md border text-sm transition-colors",
                         form.deliveryMode === mode
                           ? "border-primary bg-primary/10 text-foreground"
+                          : hasError("deliveryMode")
+                          ? "border-destructive text-muted-foreground"
                           : "border-input text-muted-foreground hover:border-muted-foreground/50"
-                      }`}
+                      )}
                     >
                       {mode}
                     </button>

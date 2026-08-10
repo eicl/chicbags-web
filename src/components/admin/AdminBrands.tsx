@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { fetchBrands, createBrand, updateBrand, deleteBrand, Brand } from "@/lib/api";
+import { errorLabelClass, errorInputClass } from "@/lib/utils";
 
 const AdminBrands = () => {
   const queryClient = useQueryClient();
@@ -13,6 +14,8 @@ const AdminBrands = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [name, setName] = useState("");
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+  const nameError = attemptedSubmit && !name.trim();
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["brands"] });
@@ -56,23 +59,27 @@ const AdminBrands = () => {
     setIsAdding(true);
     setEditingId(null);
     setName("");
+    setAttemptedSubmit(false);
   };
 
   const handleEdit = (brand: Brand) => {
     setEditingId(brand.id);
     setIsAdding(false);
     setName(brand.name);
+    setAttemptedSubmit(false);
   };
 
   const handleCancel = () => {
     setIsAdding(false);
     setEditingId(null);
     setName("");
+    setAttemptedSubmit(false);
   };
 
   const handleSave = () => {
     if (!name.trim()) {
-      toast.error("El nombre es obligatorio");
+      setAttemptedSubmit(true);
+      toast.error("Falta el campo: Nombre");
       return;
     }
     if (editingId !== null) {
@@ -102,8 +109,14 @@ const AdminBrands = () => {
           </h2>
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[12rem]">
-              <label className="text-sm text-muted-foreground mb-1 block">Nombre *</label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="ChicBags, Michael Kors..." autoFocus />
+              <label className={errorLabelClass(nameError)}>Nombre *</label>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="ChicBags, Michael Kors..."
+                autoFocus
+                className={errorInputClass(nameError)}
+              />
             </div>
             <Button onClick={handleSave} className="gap-2"><Save className="w-4 h-4" /> Guardar</Button>
             <Button variant="outline" onClick={handleCancel} className="gap-2"><X className="w-4 h-4" /> Cancelar</Button>

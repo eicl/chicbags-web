@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { uploadImage, uploadVideo, fetchBrands, fetchCategories } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
+import { errorLabelClass, errorInputClass, cn } from "@/lib/utils";
 
 const emptyForm = { name: "", price: 0, cost: "", category: "", description: "", code: "", brand: "", extraDescription: "", sortOrder: "" };
 const emptyColor: ProductColor = { name: "", hex: "#161616", image: "", stock: 0 };
@@ -30,6 +31,13 @@ const AdminProducts = () => {
   const fileInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+
+  const nameError = attemptedSubmit && !form.name.trim();
+  const categoryError = attemptedSubmit && !form.category.trim();
+  const priceError = attemptedSubmit && !(form.price > 0);
+  const colorsHaveError =
+    attemptedSubmit && colors.some((c) => c.name.trim() && (!c.image || !/^#[0-9a-fA-F]{6}$/.test(c.hex)));
 
   const handleEdit = (product: Product) => {
     setEditing(product);
@@ -48,6 +56,7 @@ const AdminProducts = () => {
     setPhotos(product.photos ?? []);
     setVideos(product.videos ?? []);
     setIsAdding(false);
+    setAttemptedSubmit(false);
   };
 
   const handleAdd = () => {
@@ -57,6 +66,7 @@ const AdminProducts = () => {
     setColors([{ ...emptyColor, order: 0 }]);
     setPhotos([]);
     setVideos([]);
+    setAttemptedSubmit(false);
   };
 
   const handleAddColorRow = () => setColors((prev) => [...prev, { ...emptyColor, order: prev.length }]);
@@ -116,18 +126,25 @@ const AdminProducts = () => {
   const handleRemoveVideo = (index: number) => setVideos((prev) => prev.filter((_, i) => i !== index));
 
   const handleSave = () => {
-    if (!form.name || !form.category || form.price <= 0) {
-      toast.error("Completa todos los campos requeridos");
+    const missing: string[] = [];
+    if (!form.name.trim()) missing.push("Nombre");
+    if (!form.category.trim()) missing.push("Categoría");
+    if (!(form.price > 0)) missing.push("Precio");
+    if (missing.length > 0) {
+      setAttemptedSubmit(true);
+      toast.error(`Faltan campos obligatorios: ${missing.join(", ")}`);
       return;
     }
     const validColors = colors
       .filter((c) => c.name.trim())
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     if (validColors.some((c) => !c.image)) {
+      setAttemptedSubmit(true);
       toast.error("Cada color debe tener una imagen");
       return;
     }
     if (validColors.some((c) => !/^#[0-9a-fA-F]{6}$/.test(c.hex))) {
+      setAttemptedSubmit(true);
       toast.error("Cada color debe tener un código HTML válido (#RRGGBB)");
       return;
     }
@@ -173,6 +190,7 @@ const AdminProducts = () => {
     setColors([]);
     setPhotos([]);
     setVideos([]);
+    setAttemptedSubmit(false);
   };
 
   return (
@@ -190,12 +208,23 @@ const AdminProducts = () => {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Nombre *</label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Cartera Elegance..." />
+              <label className={errorLabelClass(nameError)}>Nombre *</label>
+              <Input
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="Cartera Elegance..."
+                className={errorInputClass(nameError)}
+              />
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Precio *</label>
-              <Input type="number" value={form.price} onChange={(e) => setForm({ ...form, price: Number(e.target.value) })} placeholder="189" />
+              <label className={errorLabelClass(priceError)}>Precio *</label>
+              <Input
+                type="number"
+                value={form.price}
+                onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
+                placeholder="189"
+                className={errorInputClass(priceError)}
+              />
             </div>
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">
@@ -210,12 +239,13 @@ const AdminProducts = () => {
               />
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Categoría *</label>
+              <label className={errorLabelClass(categoryError)}>Categoría *</label>
               <Input
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
                 placeholder="Carteras, Bolsos..."
                 list="category-options"
+                className={errorInputClass(categoryError)}
               />
               <datalist id="category-options">
                 {categories.map((c) => (
@@ -274,7 +304,7 @@ const AdminProducts = () => {
 
           <div className="border-t border-border pt-4">
             <div className="flex items-center justify-between mb-3">
-              <label className="text-sm font-medium">Colores y stock *</label>
+              <label className={cn("text-sm font-medium", colorsHaveError && "text-destructive")}>Colores y stock *</label>
               <Button type="button" variant="outline" size="sm" onClick={handleAddColorRow} className="gap-2">
                 <Plus className="w-3.5 h-3.5" /> Agregar color
               </Button>
@@ -285,7 +315,11 @@ const AdminProducts = () => {
             )}
 
             <div className="space-y-3">
-              {colors.map((color, index) => (
+              {colors.map((color, index) => {
+                const rowActive = attemptedSubmit && !!color.name.trim();
+                const imageError = rowActive && !color.image;
+                const hexError = rowActive && !/^#[0-9a-fA-F]{6}$/.test(color.hex);
+                return (
                 <div key={index} className="flex flex-wrap items-center gap-3 p-3 rounded-md border border-border bg-background/50">
                   <input
                     ref={(el) => { fileInputRefs.current[index] = el; }}
@@ -301,7 +335,10 @@ const AdminProducts = () => {
                   <button
                     type="button"
                     onClick={() => fileInputRefs.current[index]?.click()}
-                    className="relative w-14 h-14 rounded-sm overflow-hidden bg-muted border border-border shrink-0 flex items-center justify-center"
+                    className={cn(
+                      "relative w-14 h-14 rounded-sm overflow-hidden bg-muted border shrink-0 flex items-center justify-center",
+                      imageError ? "border-destructive" : "border-border"
+                    )}
                   >
                     {uploadingIndex === index ? (
                       <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
@@ -332,7 +369,7 @@ const AdminProducts = () => {
                       onChange={(e) => handleColorChange(index, "hex", e.target.value)}
                       placeholder="#RRGGBB"
                       maxLength={7}
-                      className="w-24 font-mono text-sm"
+                      className={cn("w-24 font-mono text-sm", errorInputClass(hexError))}
                       title="Código de color HTML"
                     />
                   </div>
@@ -367,7 +404,8 @@ const AdminProducts = () => {
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 

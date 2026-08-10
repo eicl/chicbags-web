@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { fetchDistricts, createDistrict, updateDistrict, deleteDistrict, District } from "@/lib/api";
 import { PERU_DEPARTMENTS, PERU_LOCATIONS } from "@/lib/peru-locations";
+import { errorLabelClass, errorInputClass } from "@/lib/utils";
 
 const AdminDistricts = () => {
   const queryClient = useQueryClient();
@@ -21,6 +22,8 @@ const AdminDistricts = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [name, setName] = useState("");
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+  const nameError = attemptedSubmit && !name.trim();
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["districts", province] });
@@ -78,23 +81,27 @@ const AdminDistricts = () => {
     setIsAdding(true);
     setEditingId(null);
     setName("");
+    setAttemptedSubmit(false);
   };
 
   const handleEdit = (district: District) => {
     setEditingId(district.id);
     setIsAdding(false);
     setName(district.name);
+    setAttemptedSubmit(false);
   };
 
   const handleCancel = () => {
     setIsAdding(false);
     setEditingId(null);
     setName("");
+    setAttemptedSubmit(false);
   };
 
   const handleSave = () => {
     if (!name.trim()) {
-      toast.error("El nombre es obligatorio");
+      setAttemptedSubmit(true);
+      toast.error("Falta el campo: Nombre");
       return;
     }
     if (editingId !== null) {
@@ -158,8 +165,14 @@ const AdminDistricts = () => {
               </h2>
               <div className="flex flex-wrap items-end gap-3">
                 <div className="flex-1 min-w-[12rem]">
-                  <label className="text-sm text-muted-foreground mb-1 block">Nombre *</label>
-                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Miraflores, San Isidro..." autoFocus />
+                  <label className={errorLabelClass(nameError)}>Nombre *</label>
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Miraflores, San Isidro..."
+                    autoFocus
+                    className={errorInputClass(nameError)}
+                  />
                 </div>
                 <Button onClick={handleSave} className="gap-2"><Save className="w-4 h-4" /> Guardar</Button>
                 <Button variant="outline" onClick={handleCancel} className="gap-2"><X className="w-4 h-4" /> Cancelar</Button>

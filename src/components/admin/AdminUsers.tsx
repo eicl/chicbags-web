@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { fetchUsers, createUser, updateUser, deleteUser, UserAccount } from "@/lib/api";
+import { errorLabelClass, errorInputClass } from "@/lib/utils";
 
 const emptyForm = { username: "", password: "" };
 
@@ -17,6 +18,9 @@ const AdminUsers = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+  const usernameError = attemptedSubmit && !form.username.trim();
+  const passwordError = attemptedSubmit && editingId === null && !form.password;
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["users"] });
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : "Algo salió mal");
@@ -56,32 +60,35 @@ const AdminUsers = () => {
     setIsAdding(true);
     setEditingId(null);
     setForm(emptyForm);
+    setAttemptedSubmit(false);
   };
 
   const handleEdit = (user: UserAccount) => {
     setEditingId(user.id);
     setIsAdding(false);
     setForm({ username: user.username, password: "" });
+    setAttemptedSubmit(false);
   };
 
   const handleCancel = () => {
     setIsAdding(false);
     setEditingId(null);
     setForm(emptyForm);
+    setAttemptedSubmit(false);
   };
 
   const handleSave = () => {
-    if (!form.username.trim()) {
-      toast.error("El usuario es obligatorio");
+    const missing: string[] = [];
+    if (!form.username.trim()) missing.push("Usuario");
+    if (editingId === null && !form.password) missing.push("Contraseña");
+    if (missing.length > 0) {
+      setAttemptedSubmit(true);
+      toast.error(`Faltan campos obligatorios: ${missing.join(", ")}`);
       return;
     }
     if (editingId !== null) {
       updateMutation.mutate({ id: editingId, username: form.username, password: form.password || undefined });
     } else {
-      if (!form.password) {
-        toast.error("La contraseña es obligatoria");
-        return;
-      }
       createMutation.mutate({ username: form.username, password: form.password });
     }
   };
@@ -106,11 +113,17 @@ const AdminUsers = () => {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Usuario *</label>
-              <Input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="admin" autoFocus />
+              <label className={errorLabelClass(usernameError)}>Usuario *</label>
+              <Input
+                value={form.username}
+                onChange={(e) => setForm({ ...form, username: e.target.value })}
+                placeholder="admin"
+                autoFocus
+                className={errorInputClass(usernameError)}
+              />
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">
+              <label className={errorLabelClass(passwordError)}>
                 Contraseña {editingId !== null ? "(dejar vacío para no cambiarla)" : "*"}
               </label>
               <Input
@@ -118,6 +131,7 @@ const AdminUsers = () => {
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
                 placeholder="••••••••"
+                className={errorInputClass(passwordError)}
               />
             </div>
           </div>
