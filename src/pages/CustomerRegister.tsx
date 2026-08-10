@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { CheckCircle2, Save } from "lucide-react";
-import { Link } from "react-router-dom";
+import { CheckCircle2, MessageCircle, Save } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -29,6 +28,14 @@ const emptyForm: CustomerInput = {
   district: "",
   deliveryType: "Motorizado Express",
   deliveryMode: null,
+};
+
+// Lleva al cliente de vuelta al chat de WhatsApp de la empresa con su
+// código ya redactado en el mensaje — solo debe darle Enviar.
+const COMPANY_WHATSAPP_NUMBER = "51914104629";
+const buildRegistrationWhatsAppLink = (customer: Customer) => {
+  const message = `Hola, soy ${customer.firstName} ${customer.paternalSurname}, acabo de registrarme. Mi código de cliente es #${customer.id}.`;
+  return `https://wa.me/${COMPANY_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
 };
 
 const REQUIRED_FIELD_LABELS: Record<string, string> = {
@@ -108,9 +115,16 @@ const CustomerRegister = () => {
           <span className="inline-block px-4 py-2 rounded-md bg-primary/10 text-primary font-semibold text-lg tracking-wide">
             Código de cliente: #{registered.id}
           </span>
-          <Link to="/">
-            <Button variant="outline">Volver a la tienda</Button>
-          </Link>
+          <a
+            href={buildRegistrationWhatsAppLink(registered)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-5 py-3 rounded-md text-white font-medium transition-transform hover:scale-105"
+            style={{ backgroundColor: "#25D366" }}
+          >
+            <MessageCircle className="w-5 h-5" fill="white" />
+            Volver al chat de WhatsApp
+          </a>
         </div>
       </div>
     );

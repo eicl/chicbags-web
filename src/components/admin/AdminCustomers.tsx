@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, X, Save, MessageCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -15,17 +15,6 @@ const DOCUMENT_TYPES = ["DNI", "Carné de Extranjería", "Pasaporte", "RUC"];
 const DELIVERY_TYPES: DeliveryType[] = ["Motorizado Express", "Motorizado Rango Horario", "Shalom", "Olva", "Marvisur"];
 const DELIVERY_MODE_REQUIRED: DeliveryType[] = ["Shalom", "Olva"];
 const DELIVERY_MODES: DeliveryMode[] = ["Terrestre", "Aéreo"];
-
-// Abre WhatsApp (con la cuenta activa en el dispositivo, la de la empresa)
-// con un chat al celular del cliente y el código ya redactado — solo falta
-// darle Enviar. No es automático: WhatsApp no permite enviar mensajes sin
-// esa confirmación manual salvo integrando su API de negocio (de pago).
-const buildCustomerWhatsAppLink = (customer: Customer) => {
-  const digits = customer.mobile.replace(/\D/g, "");
-  const phone = digits.startsWith("51") ? digits : `51${digits}`;
-  const message = `Hola ${customer.firstName}, gracias por registrarte en ChicBags. Tu código de cliente es #${customer.id}.`;
-  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-};
 
 const emptyForm: CustomerInput = {
   documentType: "DNI",
@@ -407,11 +396,6 @@ const AdminCustomers = () => {
                   </td>
                   <td className="py-3 px-4">
                     <div className="flex gap-2 justify-end">
-                      <Button variant="ghost" size="icon" asChild title="Enviar código de cliente por WhatsApp">
-                        <a href={buildCustomerWhatsAppLink(customer)} target="_blank" rel="noopener noreferrer">
-                          <MessageCircle className="w-4 h-4 text-[#25D366]" />
-                        </a>
-                      </Button>
                       <Button variant="ghost" size="icon" onClick={() => handleEdit(customer)}>
                         <Pencil className="w-4 h-4" />
                       </Button>
