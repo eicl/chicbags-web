@@ -373,7 +373,6 @@ const DELIVERY_MODES = ["Terrestre", "Aéreo"];
 
 const mapCustomer = (row) => ({
   id: row.id,
-  email: row.email,
   documentType: row.document_type,
   documentNumber: row.document_number,
   firstName: row.first_name,
@@ -389,8 +388,8 @@ const mapCustomer = (row) => ({
 });
 
 const validateCustomer = (body) => {
-  const { email, documentType, documentNumber, firstName, paternalSurname, mobile, department, province, district, deliveryType, deliveryMode } = body;
-  if (!email?.trim() || !documentType?.trim() || !documentNumber?.trim() || !firstName?.trim() || !paternalSurname?.trim() || !mobile?.trim() || !department?.trim() || !province?.trim() || !district?.trim()) {
+  const { documentType, documentNumber, firstName, paternalSurname, mobile, department, province, district, deliveryType, deliveryMode } = body;
+  if (!documentType?.trim() || !documentNumber?.trim() || !firstName?.trim() || !paternalSurname?.trim() || !mobile?.trim() || !department?.trim() || !province?.trim() || !district?.trim()) {
     return "Completa todos los campos requeridos";
   }
   if (!DELIVERY_TYPES.includes(deliveryType)) {
@@ -407,22 +406,42 @@ app.get("/api/customers", requireAuth, async (req, res) => {
   res.json(rows.map(mapCustomer));
 });
 
+const insertCustomer = async (body) => {
+  const {
+    documentType, documentNumber, firstName, paternalSurname, maternalSurname,
+    mobile, department, province, district, deliveryType, deliveryMode,
+  } = body;
+  const deliveryModeValue = DELIVERY_MODE_REQUIRED.includes(deliveryType) ? deliveryMode : null;
+  await ensureDistrictExists(province, district);
+  const { rows } = await pool.query(
+    `INSERT INTO customers (document_type, document_number, first_name, paternal_surname, maternal_surname, mobile, country, department, province, district, delivery_type, delivery_mode)
+     VALUES ($1, $2, $3, $4, $5, $6, 'Perú', $7, $8, $9, $10, $11) RETURNING *`,
+    [documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue]
+  );
+  return rows[0];
+};
+
 app.post("/api/customers", requireAuth, async (req, res) => {
   const error = validateCustomer(req.body);
   if (error) return res.status(400).json({ error });
-  const {
-    email, documentType, documentNumber, firstName, paternalSurname, maternalSurname,
-    mobile, department, province, district, deliveryType, deliveryMode,
-  } = req.body;
-  const deliveryModeValue = DELIVERY_MODE_REQUIRED.includes(deliveryType) ? deliveryMode : null;
-  await ensureDistrictExists(province, district);
   try {
-    const { rows } = await pool.query(
-      `INSERT INTO customers (email, document_type, document_number, first_name, paternal_surname, maternal_surname, mobile, country, department, province, district, delivery_type, delivery_mode)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'Perú', $8, $9, $10, $11, $12) RETURNING *`,
-      [email.trim(), documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue]
-    );
-    res.status(201).json(mapCustomer(rows[0]));
+    const row = await insertCustomer(req.body);
+    res.status(201).json(mapCustomer(row));
+  } catch (err) {
+    if (err.code === "23505") return res.status(409).json({ error: "Ya existe un cliente con ese tipo y número de documento" });
+    throw err;
+  }
+});
+
+// Registro público de clientes: pensado para un link fuera del panel admin
+// que solo permite CREAR un cliente (sin sesión). No expone listar, editar
+// ni eliminar — eso sigue exclusivamente en /api/customers con requireAuth.
+app.post("/api/customers/register", async (req, res) => {
+  const error = validateCustomer(req.body);
+  if (error) return res.status(400).json({ error });
+  try {
+    const row = await insertCustomer(req.body);
+    res.status(201).json(mapCustomer(row));
   } catch (err) {
     if (err.code === "23505") return res.status(409).json({ error: "Ya existe un cliente con ese tipo y número de documento" });
     throw err;
@@ -434,17 +453,17 @@ app.put("/api/customers/:id", requireAuth, async (req, res) => {
   const error = validateCustomer(req.body);
   if (error) return res.status(400).json({ error });
   const {
-    email, documentType, documentNumber, firstName, paternalSurname, maternalSurname,
+    documentType, documentNumber, firstName, paternalSurname, maternalSurname,
     mobile, department, province, district, deliveryType, deliveryMode,
   } = req.body;
   const deliveryModeValue = DELIVERY_MODE_REQUIRED.includes(deliveryType) ? deliveryMode : null;
   await ensureDistrictExists(province, district);
   try {
     const { rows } = await pool.query(
-      `UPDATE customers SET email = $1, document_type = $2, document_number = $3, first_name = $4, paternal_surname = $5,
-         maternal_surname = $6, mobile = $7, department = $8, province = $9, district = $10, delivery_type = $11, delivery_mode = $12
-       WHERE id = $13 RETURNING *`,
-      [email.trim(), documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue, id]
+      `UPDATE customers SET document_type = $1, document_number = $2, first_name = $3, paternal_surname = $4,
+         maternal_surname = $5, mobile = $6, department = $7, province = $8, district = $9, delivery_type = $10, delivery_mode = $11
+       WHERE id = $12 RETURNING *`,
+      [documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue, id]
     );
     if (rows.length === 0) return res.status(404).json({ error: "Cliente no encontrado" });
     res.json(mapCustomer(rows[0]));

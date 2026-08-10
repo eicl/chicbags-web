@@ -102,7 +102,6 @@ export type DeliveryMode = "Terrestre" | "Aéreo";
 
 export interface Customer {
   id: number;
-  email: string;
   documentType: string;
   documentNumber: string;
   firstName: string;
@@ -153,6 +152,15 @@ export const createCustomer = (data: CustomerInput): Promise<Customer> =>
   fetch(`${API_URL}/customers`, {
     method: "POST",
     credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<Customer>(res));
+
+// A diferencia de createCustomer, este endpoint no requiere sesión de admin:
+// es el que usa el link público de autorregistro de clientes.
+export const registerCustomer = (data: CustomerInput): Promise<Customer> =>
+  fetch(`${API_URL}/customers/register`, {
+    method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   }).then((res) => handle<Customer>(res));

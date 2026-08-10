@@ -17,7 +17,6 @@ const DELIVERY_MODE_REQUIRED: DeliveryType[] = ["Shalom", "Olva"];
 const DELIVERY_MODES: DeliveryMode[] = ["Terrestre", "Aéreo"];
 
 const emptyForm: CustomerInput = {
-  email: "",
   documentType: "DNI",
   documentNumber: "",
   firstName: "",
@@ -86,7 +85,6 @@ const AdminCustomers = () => {
     setIsAdding(false);
     setAttemptedSubmit(false);
     setForm({
-      email: customer.email,
       documentType: customer.documentType,
       documentNumber: customer.documentNumber,
       firstName: customer.firstName,
@@ -111,7 +109,6 @@ const AdminCustomers = () => {
   const needsDeliveryMode = DELIVERY_MODE_REQUIRED.includes(form.deliveryType);
 
   const REQUIRED_FIELD_LABELS: Record<string, string> = {
-    email: "Correo",
     documentNumber: "Número de documento",
     firstName: "Nombres",
     paternalSurname: "Apellido paterno",
@@ -124,7 +121,6 @@ const AdminCustomers = () => {
 
   const getMissingFields = () => {
     const missing: string[] = [];
-    if (!form.email.trim()) missing.push("email");
     if (!form.documentNumber.trim()) missing.push("documentNumber");
     if (!form.firstName.trim()) missing.push("firstName");
     if (!form.paternalSurname.trim()) missing.push("paternalSurname");
@@ -205,16 +201,6 @@ const AdminCustomers = () => {
             {editingId !== null ? "Editar cliente" : "Nuevo cliente"}
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div>
-              <label className={errorLabelClass(hasError("email"))}>Correo *</label>
-              <Input
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                placeholder="cliente@correo.com"
-                className={errorInputClass(hasError("email"))}
-              />
-            </div>
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">Tipo de documento *</label>
               <select
@@ -386,7 +372,6 @@ const AdminCustomers = () => {
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Documento</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Nombre</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Celular</th>
-                <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Correo</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Ubicación</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Delivery</th>
                 <th className="text-right text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Acciones</th>
@@ -404,7 +389,6 @@ const AdminCustomers = () => {
                     {customer.firstName} {customer.paternalSurname} {customer.maternalSurname}
                   </td>
                   <td className="py-3 px-4 text-muted-foreground text-sm">{customer.mobile}</td>
-                  <td className="py-3 px-4 text-muted-foreground text-sm">{customer.email}</td>
                   <td className="py-3 px-4 text-muted-foreground text-sm">{customer.district}, {customer.province}, {customer.department}</td>
                   <td className="py-3 px-4 text-muted-foreground text-sm">
                     {customer.deliveryType}
@@ -424,17 +408,17 @@ const AdminCustomers = () => {
               ))}
               {isLoading && (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-muted-foreground">Cargando clientes...</td>
+                  <td colSpan={7} className="py-12 text-center text-muted-foreground">Cargando clientes...</td>
                 </tr>
               )}
               {isError && (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
+                  <td colSpan={7} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
                 </tr>
               )}
               {!isLoading && !isError && customers.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-muted-foreground">No hay clientes registrados.</td>
+                  <td colSpan={7} className="py-12 text-center text-muted-foreground">No hay clientes registrados.</td>
                 </tr>
               )}
             </tbody>

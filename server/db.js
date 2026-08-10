@@ -72,7 +72,6 @@ export const initSchema = async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS customers (
       id SERIAL PRIMARY KEY,
-      email TEXT NOT NULL,
       document_type TEXT NOT NULL,
       document_number TEXT NOT NULL,
       first_name TEXT NOT NULL,
@@ -89,6 +88,9 @@ export const initSchema = async () => {
       UNIQUE (document_type, document_number)
     );
   `);
+  // El correo se quitó del mantenimiento de clientes; se elimina también la
+  // columna (y cualquier dato ya guardado) para bases de datos existentes.
+  await pool.query(`ALTER TABLE customers DROP COLUMN IF EXISTS email;`);
   await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS district TEXT NOT NULL DEFAULT '';`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS districts (
