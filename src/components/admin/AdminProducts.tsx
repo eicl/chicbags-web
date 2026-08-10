@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { uploadImage, uploadVideo, fetchBrands, fetchCategories } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
 
-const emptyForm = { name: "", price: 0, category: "", description: "", code: "", brand: "", extraDescription: "", sortOrder: "" };
+const emptyForm = { name: "", price: 0, cost: "", category: "", description: "", code: "", brand: "", extraDescription: "", sortOrder: "" };
 const emptyColor: ProductColor = { name: "", hex: "#161616", image: "", stock: 0 };
 const MAX_PHOTOS = 5;
 const MAX_VIDEOS = 2;
@@ -36,6 +36,7 @@ const AdminProducts = () => {
     setForm({
       name: product.name,
       price: product.price,
+      cost: product.cost == null ? "" : String(product.cost),
       category: product.category,
       description: product.description,
       code: product.code ?? "",
@@ -138,6 +139,7 @@ const AdminProducts = () => {
       colors: validColors,
       photos,
       videos,
+      cost: form.cost === "" ? null : Number(form.cost),
       sortOrder: form.sortOrder === "" ? undefined : Number(form.sortOrder),
     };
 
@@ -194,6 +196,18 @@ const AdminProducts = () => {
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">Precio *</label>
               <Input type="number" value={form.price} onChange={(e) => setForm({ ...form, price: Number(e.target.value) })} placeholder="189" />
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">
+                Costo
+                <span className="text-xs font-normal"> — solo visible en el panel admin</span>
+              </label>
+              <Input
+                type="number"
+                value={form.cost}
+                onChange={(e) => setForm({ ...form, cost: e.target.value })}
+                placeholder="120"
+              />
             </div>
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">Categoría *</label>
@@ -461,6 +475,7 @@ const AdminProducts = () => {
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Nombre</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Categoría</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Precio</th>
+                <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Costo</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Stock total</th>
                 <th className="text-right text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Acciones</th>
               </tr>
@@ -481,6 +496,9 @@ const AdminProducts = () => {
                     <td className="py-3 px-4 font-medium">{product.name}</td>
                     <td className="py-3 px-4 text-muted-foreground text-sm">{product.category}</td>
                     <td className="py-3 px-4">S/.{product.price.toFixed(2)}</td>
+                    <td className="py-3 px-4 text-muted-foreground text-sm">
+                      {product.cost == null ? "—" : `S/.${product.cost.toFixed(2)}`}
+                    </td>
                     <td className="py-3 px-4">
                       <span className={totalStock === 0 ? "text-destructive" : "text-muted-foreground"}>
                         {totalStock === 0 ? "Agotado" : totalStock}
@@ -501,21 +519,21 @@ const AdminProducts = () => {
               })}
               {isLoading && (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-muted-foreground">
+                  <td colSpan={10} className="py-12 text-center text-muted-foreground">
                     Cargando productos...
                   </td>
                 </tr>
               )}
               {isError && (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-destructive">
+                  <td colSpan={10} className="py-12 text-center text-destructive">
                     No se pudo conectar con la API.
                   </td>
                 </tr>
               )}
               {!isLoading && !isError && products.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-muted-foreground">
+                  <td colSpan={10} className="py-12 text-center text-muted-foreground">
                     No hay productos. Agrega uno nuevo.
                   </td>
                 </tr>

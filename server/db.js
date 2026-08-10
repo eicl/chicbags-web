@@ -35,10 +35,12 @@ export const initSchema = async () => {
       photos JSONB NOT NULL DEFAULT '[]',
       videos JSONB NOT NULL DEFAULT '[]',
       extra_description TEXT NOT NULL DEFAULT '',
-      sort_order INTEGER
+      sort_order INTEGER,
+      cost NUMERIC
     );
   `);
   await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS code TEXT;`);
+  await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS cost NUMERIC;`);
   await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS brand_id INTEGER REFERENCES brands(id);`);
   await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS photos JSONB NOT NULL DEFAULT '[]';`);
   await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS videos JSONB NOT NULL DEFAULT '[]';`);

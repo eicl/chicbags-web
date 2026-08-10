@@ -22,6 +22,7 @@ export interface Product {
   videos?: string[];
   extraDescription?: string;
   sortOrder?: number;
+  cost?: number | null;
 }
 
 interface CartItem extends Product {

@@ -67,6 +67,20 @@ const requireAuth = (req, res, next) => {
   }
 };
 
+// A diferencia del stock, el costo es información comercial sensible
+// (revela el margen exacto), así que nunca debe llegar a un visitante no
+// autenticado aunque use el mismo endpoint público de productos.
+const isAuthenticated = (req) => {
+  const token = req.cookies[COOKIE_NAME];
+  if (!token) return false;
+  try {
+    jwt.verify(token, JWT_SECRET);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const setAuthCookie = (res, token) => {
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
@@ -136,7 +150,7 @@ const PRODUCTS_SELECT = `
   LEFT JOIN brands b ON b.id = p.brand_id
 `;
 
-const mapProduct = (row) => ({
+const mapProduct = (row, includeCost) => ({
   id: row.id,
   name: row.name,
   price: Number(row.price),
@@ -150,6 +164,7 @@ const mapProduct = (row) => ({
   videos: row.videos,
   extraDescription: row.extra_description,
   sortOrder: row.sort_order,
+  ...(includeCost ? { cost: row.cost === null ? null : Number(row.cost) } : {}),
 });
 
 const MAX_PHOTOS = 5;
@@ -166,8 +181,9 @@ const validateMedia = (photos, videos) => {
 };
 
 app.get("/api/products", async (req, res) => {
+  const includeCost = isAuthenticated(req);
   const { rows } = await pool.query(`${PRODUCTS_SELECT} ORDER BY p.sort_order, p.id`);
-  res.json(rows.map(mapProduct));
+  res.json(rows.map((row) => mapProduct(row, includeCost)));
 });
 
 app.get("/api/categories", async (req, res) => {
@@ -445,13 +461,14 @@ app.delete("/api/customers/:id", requireAuth, async (req, res) => {
 });
 
 app.get("/api/products/:id", async (req, res) => {
+  const includeCost = isAuthenticated(req);
   const { rows } = await pool.query(`${PRODUCTS_SELECT} WHERE p.id = $1`, [Number(req.params.id)]);
   if (rows.length === 0) return res.status(404).json({ error: "Producto no encontrado" });
-  res.json(mapProduct(rows[0]));
+  res.json(mapProduct(rows[0], includeCost));
 });
 
 app.post("/api/products", requireAuth, async (req, res) => {
-  const { name, price, category, description, image, colors, code, brand, photos, videos, extraDescription, sortOrder } = req.body;
+  const { name, price, category, description, image, colors, code, brand, photos, videos, extraDescription, sortOrder, cost } = req.body;
   const mediaError = validateMedia(photos, videos);
   if (mediaError) return res.status(400).json({ error: mediaError });
   const { rows } = await pool.query("SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM products");
@@ -459,37 +476,37 @@ app.post("/api/products", requireAuth, async (req, res) => {
   const brandId = await getOrCreateBrandId(brand);
   await ensureCategoryExists(category);
   const { rows: inserted } = await pool.query(
-    `INSERT INTO products (id, name, price, category, description, image, colors, code, brand_id, photos, videos, extra_description, sort_order)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+    `INSERT INTO products (id, name, price, category, description, image, colors, code, brand_id, photos, videos, extra_description, sort_order, cost)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
     [
       id, name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null,
       brandId, JSON.stringify(photos ?? []), JSON.stringify(videos ?? []), extraDescription ?? "",
-      Number.isFinite(sortOrder) ? sortOrder : id,
+      Number.isFinite(sortOrder) ? sortOrder : id, Number.isFinite(cost) ? cost : null,
     ]
   );
   const { rows: fetched } = await pool.query(`${PRODUCTS_SELECT} WHERE p.id = $1`, [inserted[0].id]);
-  res.status(201).json(mapProduct(fetched[0]));
+  res.status(201).json(mapProduct(fetched[0], true));
 });
 
 app.put("/api/products/:id", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
-  const { name, price, category, description, image, colors, code, brand, photos, videos, extraDescription, sortOrder } = req.body;
+  const { name, price, category, description, image, colors, code, brand, photos, videos, extraDescription, sortOrder, cost } = req.body;
   const mediaError = validateMedia(photos, videos);
   if (mediaError) return res.status(400).json({ error: mediaError });
   const brandId = await getOrCreateBrandId(brand);
   await ensureCategoryExists(category);
   const { rows } = await pool.query(
-    `UPDATE products SET name = $1, price = $2, category = $3, description = $4, image = $5, colors = $6, code = $7, brand_id = $8, photos = $9, videos = $10, extra_description = $11, sort_order = $12
-     WHERE id = $13 RETURNING id`,
+    `UPDATE products SET name = $1, price = $2, category = $3, description = $4, image = $5, colors = $6, code = $7, brand_id = $8, photos = $9, videos = $10, extra_description = $11, sort_order = $12, cost = $13
+     WHERE id = $14 RETURNING id`,
     [
       name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null,
       brandId, JSON.stringify(photos ?? []), JSON.stringify(videos ?? []), extraDescription ?? "",
-      Number.isFinite(sortOrder) ? sortOrder : id, id,
+      Number.isFinite(sortOrder) ? sortOrder : id, Number.isFinite(cost) ? cost : null, id,
     ]
   );
   if (rows.length === 0) return res.status(404).json({ error: "Producto no encontrado" });
   const { rows: fetched } = await pool.query(`${PRODUCTS_SELECT} WHERE p.id = $1`, [id]);
-  res.json(mapProduct(fetched[0]));
+  res.json(mapProduct(fetched[0], true));
 });
 
 app.delete("/api/products/:id", requireAuth, async (req, res) => {
