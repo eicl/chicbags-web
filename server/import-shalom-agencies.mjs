@@ -20,7 +20,8 @@ const PROVIDER = "Shalom";
 
 const SOURCE_FILES = [
   "shalom-lima.txt", "shalom-arequipa.txt", "shalom-la-libertad.txt", "shalom-piura.txt",
-  "shalom-cusco.txt", "shalom-san-martin.txt", "shalom-junin.txt",
+  "shalom-cusco.txt", "shalom-san-martin.txt", "shalom-junin.txt", "shalom-cajamarca.txt",
+  "shalom-ica.txt", "shalom-lambayeque.txt", "shalom-puno.txt",
 ];
 
 // Copia de src/lib/peru-locations.ts (departamento -> provincias). Se usa
