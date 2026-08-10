@@ -112,6 +112,12 @@ const AdminCustomers = () => {
 
   const needsDeliveryMode = DELIVERY_MODE_REQUIRED.includes(form.deliveryType);
   const needsAgency = AGENCY_REQUIRED.includes(form.deliveryType);
+  // El tipo de delivery se elige al final: no se puede tocar hasta llenar
+  // todos los campos anteriores.
+  const canPickDeliveryType = Boolean(
+    form.documentNumber.trim() && form.firstName.trim() && form.paternalSurname.trim() &&
+    form.mobile.trim() && form.department && form.province && form.district.trim()
+  );
 
   const { data: agencies = [] } = useQuery({
     queryKey: ["agencies", form.deliveryType],
@@ -330,9 +336,15 @@ const AdminCustomers = () => {
               </div>
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">Tipo de delivery *</label>
+              <label className="text-sm text-muted-foreground mb-1 block">
+                Tipo de delivery *
+                {!canPickDeliveryType && (
+                  <span className="text-xs font-normal text-destructive"> — completa los datos anteriores primero</span>
+                )}
+              </label>
               <select
                 value={form.deliveryType}
+                disabled={!canPickDeliveryType}
                 onChange={(e) => {
                   const deliveryType = e.target.value as DeliveryType;
                   setForm({
@@ -341,7 +353,7 @@ const AdminCustomers = () => {
                     deliveryMode: DELIVERY_MODE_REQUIRED.includes(deliveryType) ? form.deliveryMode ?? "Terrestre" : null,
                   });
                 }}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {DELIVERY_TYPES.map((t) => (
                   <option key={t} value={t}>{t}</option>
