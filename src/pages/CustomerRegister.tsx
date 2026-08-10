@@ -38,10 +38,13 @@ const emptyForm: CustomerInput = {
 };
 
 // Lleva al cliente de vuelta al chat de WhatsApp de la empresa con su
-// código ya redactado en el mensaje — solo debe darle Enviar.
+// código y el link de registro de pedido ya redactados — solo debe darle
+// Enviar. Ese link trae el código de cliente, así que quien lo abra no
+// tiene que volver a buscarlo (aunque la búsqueda sigue disponible ahí).
 const COMPANY_WHATSAPP_NUMBER = "51914104629";
 const buildRegistrationWhatsAppLink = (customer: Customer) => {
-  const message = `Hola, soy ${customer.firstName} ${customer.paternalSurname}, acabo de registrarme. Mi código de cliente es #${customer.id}.`;
+  const orderLink = `${window.location.origin}/registro-pedido/${customer.id}`;
+  const message = `Hola, soy ${customer.firstName} ${customer.paternalSurname}, acabo de registrarme. Mi código de cliente es #${customer.id}. Aquí está el link para registrar mi pedido: ${orderLink}`;
   return `https://wa.me/${COMPANY_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
 };
 

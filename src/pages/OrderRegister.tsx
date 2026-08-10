@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { CheckCircle2, Minus, Plus, Search, Trash2, X } from "lucide-react";
+import { Link, useParams } from "react-router-dom";
+import { CheckCircle2, Minus, MessageCircle, Plus, Search, Trash2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -20,7 +20,20 @@ interface OrderLine {
 
 const lineKey = (productId: number, colorName: string) => `${productId}::${colorName}`;
 
+// Lleva la conversación de WhatsApp al celular del cliente con el número
+// de pedido y el resumen ya redactados — solo falta darle Enviar.
+const buildOrderWhatsAppLink = (order: Order, customer: Customer) => {
+  const digits = customer.mobile.replace(/\D/g, "");
+  const phone = digits.startsWith("51") ? digits : `51${digits}`;
+  const itemsText = order.items
+    .map((item) => `- ${item.productName} (${item.colorName}) x${item.quantity}: S/.${item.subtotal.toFixed(2)}`)
+    .join("\n");
+  const message = `Hola ${customer.firstName}, tu pedido #${order.id} fue registrado:\n\n${itemsText}\n\nTotal: S/.${order.total.toFixed(2)}`;
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+};
+
 const OrderRegister = () => {
+  const { customerId: customerIdParam } = useParams();
   const queryClient = useQueryClient();
   const { products } = useProducts();
 
@@ -38,6 +51,16 @@ const OrderRegister = () => {
     },
     onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo buscar el cliente"),
   });
+
+  // Si el link trae el código de cliente (ej. /registro-pedido/6, el que
+  // se manda por WhatsApp al registrarse), lo busca solo — igual se puede
+  // buscar a mano con el formulario de siempre.
+  useEffect(() => {
+    if (customerIdParam) {
+      lookupMutation.mutate({ code: customerIdParam });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerIdParam]);
 
   const orderMutation = useMutation({
     mutationFn: registerOrder,
@@ -144,6 +167,18 @@ const OrderRegister = () => {
               <span>S/.{order.total.toFixed(2)}</span>
             </div>
           </div>
+          {customer && (
+            <a
+              href={buildOrderWhatsAppLink(order, customer)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-md text-white font-medium transition-transform hover:scale-105"
+              style={{ backgroundColor: "#25D366" }}
+            >
+              <MessageCircle className="w-5 h-5" fill="white" />
+              Volver al chat de WhatsApp
+            </a>
+          )}
           <div className="flex gap-3">
             <Button onClick={handleNewOrder}>Registrar otro pedido</Button>
             <Link to="/"><Button variant="outline">Volver a la tienda</Button></Link>
