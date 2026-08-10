@@ -380,7 +380,7 @@ app.delete("/api/users/:id", requireAuth, async (req, res) => {
   res.status(204).end();
 });
 
-const DELIVERY_TYPES = ["Motorizado Express", "Motorizado Rango Horario", "Shalom", "Olva", "Marvisur"];
+const DELIVERY_TYPES = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Olva", "Marvisur"];
 const DELIVERY_MODE_REQUIRED = ["Shalom", "Olva"];
 const DELIVERY_MODES = ["Terrestre", "Aéreo"];
 // Solo Shalom tiene sedes cargadas por ahora; cuando se cargue Olva se

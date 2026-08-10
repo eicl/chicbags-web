@@ -13,7 +13,7 @@ import { errorLabelClass, errorInputClass, cn } from "@/lib/utils";
 import AgencyPicker from "@/components/AgencyPicker";
 
 const DOCUMENT_TYPES = ["DNI", "Carné de Extranjería", "Pasaporte", "RUC"];
-const DELIVERY_TYPES: DeliveryType[] = ["Motorizado Express", "Motorizado Rango Horario", "Shalom", "Olva", "Marvisur"];
+const DELIVERY_TYPES: DeliveryType[] = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Olva", "Marvisur"];
 const DELIVERY_MODE_REQUIRED: DeliveryType[] = ["Shalom", "Olva"];
 const DELIVERY_MODES: DeliveryMode[] = ["Terrestre", "Aéreo"];
 // Solo Shalom tiene sedes cargadas por ahora.

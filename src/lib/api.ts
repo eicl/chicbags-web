@@ -97,7 +97,7 @@ export const updateCategory = (category: Category): Promise<Category> =>
 export const deleteCategory = (id: number): Promise<void> =>
   fetch(`${API_URL}/categories/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
 
-export type DeliveryType = "Motorizado Express" | "Motorizado Rango Horario" | "Shalom" | "Olva" | "Marvisur";
+export type DeliveryType = "Shalom" | "Motorizado Express" | "Motorizado Delivery" | "Olva" | "Marvisur";
 export type DeliveryMode = "Terrestre" | "Aéreo";
 
 export interface Customer {
