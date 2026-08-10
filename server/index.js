@@ -292,7 +292,7 @@ app.get("/api/agencies", async (req, res) => {
   const provider = (req.query.provider ?? "").toString();
   if (!provider) return res.json([]);
   const { rows } = await pool.query(
-    "SELECT id, name, department, province, district FROM agencies WHERE provider = $1 ORDER BY district, name",
+    "SELECT id, name, department, province, district, address, reference, phone, schedule FROM agencies WHERE provider = $1 ORDER BY district, name",
     [provider]
   );
   res.json(rows);

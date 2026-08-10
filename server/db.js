@@ -104,10 +104,18 @@ export const initSchema = async () => {
       province TEXT NOT NULL DEFAULT '',
       district TEXT NOT NULL DEFAULT '',
       address TEXT NOT NULL DEFAULT '',
-      details TEXT NOT NULL DEFAULT '',
+      reference TEXT NOT NULL DEFAULT '',
+      phone TEXT NOT NULL DEFAULT '',
+      schedule TEXT NOT NULL DEFAULT '',
       UNIQUE (provider, name, district)
     );
   `);
+  // Se reemplazó el campo "details" (todo junto) por columnas separadas
+  // para poder mostrar la ficha de la sede igual que en la app de Shalom.
+  await pool.query(`ALTER TABLE agencies DROP COLUMN IF EXISTS details;`);
+  await pool.query(`ALTER TABLE agencies ADD COLUMN IF NOT EXISTS reference TEXT NOT NULL DEFAULT '';`);
+  await pool.query(`ALTER TABLE agencies ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT '';`);
+  await pool.query(`ALTER TABLE agencies ADD COLUMN IF NOT EXISTS schedule TEXT NOT NULL DEFAULT '';`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS districts (
       id SERIAL PRIMARY KEY,

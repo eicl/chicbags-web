@@ -10,6 +10,7 @@ import {
 } from "@/lib/api";
 import { PERU_DEPARTMENTS, PERU_LOCATIONS } from "@/lib/peru-locations";
 import { errorLabelClass, errorInputClass, cn } from "@/lib/utils";
+import AgencyPicker from "@/components/AgencyPicker";
 
 const DOCUMENT_TYPES = ["DNI", "Carné de Extranjería", "Pasaporte", "RUC"];
 const DELIVERY_TYPES: DeliveryType[] = ["Motorizado Express", "Motorizado Rango Horario", "Shalom", "Olva", "Marvisur"];
@@ -322,19 +323,12 @@ const CustomerRegister = () => {
             )}
             {needsAgency && (
               <div className="md:col-span-2">
-                <label className={errorLabelClass(hasError("agency"))}>Sede de recojo (Shalom) *</label>
-                <Input
+                <AgencyPicker
+                  agencies={agencies}
                   value={form.agency}
-                  onChange={(e) => setForm({ ...form, agency: e.target.value })}
-                  placeholder="Escribe para filtrar por nombre de sede..."
-                  list="agency-options"
-                  className={errorInputClass(hasError("agency"))}
+                  onChange={(agency) => setForm({ ...form, agency })}
+                  hasError={hasError("agency")}
                 />
-                <datalist id="agency-options">
-                  {agencies.map((a) => (
-                    <option key={a.id} value={a.name}>{a.district}</option>
-                  ))}
-                </datalist>
               </div>
             )}
           </div>

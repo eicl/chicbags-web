@@ -138,6 +138,10 @@ export interface Agency {
   department: string;
   province: string;
   district: string;
+  address: string;
+  reference: string;
+  phone: string;
+  schedule: string;
 }
 
 export const fetchAgencies = (provider: string): Promise<Agency[]> =>
