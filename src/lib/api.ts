@@ -117,6 +117,9 @@ export interface Customer {
   // Sede de recojo, solo aplica (y es obligatorio) cuando deliveryType es
   // un courrier con sedes cargadas (por ahora, Shalom).
   agency: string;
+  // Dirección exacta de entrega, solo aplica (y es obligatorio) para los
+  // tipos de delivery "motorizado" (Express y Delivery).
+  address: string;
 }
 
 export type CustomerInput = Omit<Customer, "id" | "country">;

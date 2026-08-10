@@ -386,6 +386,9 @@ const DELIVERY_MODES = ["Terrestre", "Aéreo"];
 // Solo Shalom tiene sedes cargadas por ahora; cuando se cargue Olva se
 // agrega aquí también.
 const AGENCY_REQUIRED = ["Shalom"];
+// Los tipos "motorizado" reparten a domicilio, así que piden la dirección
+// exacta del cliente.
+const ADDRESS_REQUIRED = ["Motorizado Express", "Motorizado Delivery"];
 
 const mapCustomer = (row) => ({
   id: row.id,
@@ -402,10 +405,11 @@ const mapCustomer = (row) => ({
   deliveryType: row.delivery_type,
   deliveryMode: row.delivery_mode,
   agency: row.agency,
+  address: row.address,
 });
 
 const validateCustomer = (body) => {
-  const { documentType, documentNumber, firstName, paternalSurname, mobile, department, province, district, deliveryType, deliveryMode, agency } = body;
+  const { documentType, documentNumber, firstName, paternalSurname, mobile, department, province, district, deliveryType, deliveryMode, agency, address } = body;
   if (!documentType?.trim() || !documentNumber?.trim() || !firstName?.trim() || !paternalSurname?.trim() || !mobile?.trim() || !department?.trim() || !province?.trim() || !district?.trim()) {
     return "Completa todos los campos requeridos";
   }
@@ -418,6 +422,9 @@ const validateCustomer = (body) => {
   if (AGENCY_REQUIRED.includes(deliveryType) && !agency?.trim()) {
     return "Selecciona la sede de recojo";
   }
+  if (ADDRESS_REQUIRED.includes(deliveryType) && !address?.trim()) {
+    return "Ingresa la dirección de entrega";
+  }
   return null;
 };
 
@@ -429,15 +436,16 @@ app.get("/api/customers", requireAuth, async (req, res) => {
 const insertCustomer = async (body) => {
   const {
     documentType, documentNumber, firstName, paternalSurname, maternalSurname,
-    mobile, department, province, district, deliveryType, deliveryMode, agency,
+    mobile, department, province, district, deliveryType, deliveryMode, agency, address,
   } = body;
   const deliveryModeValue = DELIVERY_MODE_REQUIRED.includes(deliveryType) ? deliveryMode : null;
   const agencyValue = AGENCY_REQUIRED.includes(deliveryType) ? (agency ?? "").trim() : "";
+  const addressValue = ADDRESS_REQUIRED.includes(deliveryType) ? (address ?? "").trim() : "";
   await ensureDistrictExists(province, district);
   const { rows } = await pool.query(
-    `INSERT INTO customers (document_type, document_number, first_name, paternal_surname, maternal_surname, mobile, country, department, province, district, delivery_type, delivery_mode, agency)
-     VALUES ($1, $2, $3, $4, $5, $6, 'Perú', $7, $8, $9, $10, $11, $12) RETURNING *`,
-    [documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue, agencyValue]
+    `INSERT INTO customers (document_type, document_number, first_name, paternal_surname, maternal_surname, mobile, country, department, province, district, delivery_type, delivery_mode, agency, address)
+     VALUES ($1, $2, $3, $4, $5, $6, 'Perú', $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+    [documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue, agencyValue, addressValue]
   );
   return rows[0];
 };
@@ -475,17 +483,18 @@ app.put("/api/customers/:id", requireAuth, async (req, res) => {
   if (error) return res.status(400).json({ error });
   const {
     documentType, documentNumber, firstName, paternalSurname, maternalSurname,
-    mobile, department, province, district, deliveryType, deliveryMode, agency,
+    mobile, department, province, district, deliveryType, deliveryMode, agency, address,
   } = req.body;
   const deliveryModeValue = DELIVERY_MODE_REQUIRED.includes(deliveryType) ? deliveryMode : null;
   const agencyValue = AGENCY_REQUIRED.includes(deliveryType) ? (agency ?? "").trim() : "";
+  const addressValue = ADDRESS_REQUIRED.includes(deliveryType) ? (address ?? "").trim() : "";
   await ensureDistrictExists(province, district);
   try {
     const { rows } = await pool.query(
       `UPDATE customers SET document_type = $1, document_number = $2, first_name = $3, paternal_surname = $4,
-         maternal_surname = $5, mobile = $6, department = $7, province = $8, district = $9, delivery_type = $10, delivery_mode = $11, agency = $12
-       WHERE id = $13 RETURNING *`,
-      [documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue, agencyValue, id]
+         maternal_surname = $5, mobile = $6, department = $7, province = $8, district = $9, delivery_type = $10, delivery_mode = $11, agency = $12, address = $13
+       WHERE id = $14 RETURNING *`,
+      [documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue, agencyValue, addressValue, id]
     );
     if (rows.length === 0) return res.status(404).json({ error: "Cliente no encontrado" });
     res.json(mapCustomer(rows[0]));

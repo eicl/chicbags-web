@@ -95,6 +95,9 @@ export const initSchema = async () => {
   // Sede de recojo (por ahora solo tiene sentido con Shalom). Queda vacía
   // para otros tipos de delivery.
   await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS agency TEXT NOT NULL DEFAULT '';`);
+  // Dirección exacta, solo tiene sentido para los tipos de delivery
+  // "motorizado" (Express y Delivery). Queda vacía para Shalom/Olva/Marvisur.
+  await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS address TEXT NOT NULL DEFAULT '';`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS agencies (
       id SERIAL PRIMARY KEY,

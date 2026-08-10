@@ -18,6 +18,8 @@ const DELIVERY_MODE_REQUIRED: DeliveryType[] = ["Shalom", "Olva"];
 const DELIVERY_MODES: DeliveryMode[] = ["Terrestre", "Aéreo"];
 // Solo Shalom tiene sedes cargadas por ahora.
 const AGENCY_REQUIRED: DeliveryType[] = ["Shalom"];
+// Los tipos "motorizado" reparten a domicilio, así que piden dirección.
+const ADDRESS_REQUIRED: DeliveryType[] = ["Motorizado Express", "Motorizado Delivery"];
 
 const emptyForm: CustomerInput = {
   documentType: "DNI",
@@ -32,6 +34,7 @@ const emptyForm: CustomerInput = {
   deliveryType: "Motorizado Express",
   deliveryMode: null,
   agency: "",
+  address: "",
 };
 
 const AdminCustomers = () => {
@@ -101,6 +104,7 @@ const AdminCustomers = () => {
       deliveryType: customer.deliveryType,
       deliveryMode: customer.deliveryMode,
       agency: customer.agency,
+      address: customer.address,
     });
   };
 
@@ -113,6 +117,7 @@ const AdminCustomers = () => {
 
   const needsDeliveryMode = DELIVERY_MODE_REQUIRED.includes(form.deliveryType);
   const needsAgency = AGENCY_REQUIRED.includes(form.deliveryType);
+  const needsAddress = ADDRESS_REQUIRED.includes(form.deliveryType);
   // El tipo de delivery se elige al final: no se puede tocar hasta llenar
   // todos los campos anteriores.
   const canPickDeliveryType = Boolean(
@@ -136,6 +141,7 @@ const AdminCustomers = () => {
     district: "Distrito",
     deliveryMode: "Vía de envío (terrestre/aéreo)",
     agency: "Sede",
+    address: "Dirección",
   };
 
   const getMissingFields = () => {
@@ -149,6 +155,7 @@ const AdminCustomers = () => {
     if (!form.district.trim()) missing.push("district");
     if (needsDeliveryMode && !form.deliveryMode) missing.push("deliveryMode");
     if (needsAgency && !form.agency.trim()) missing.push("agency");
+    if (needsAddress && !form.address.trim()) missing.push("address");
     return missing;
   };
 
@@ -166,6 +173,7 @@ const AdminCustomers = () => {
       ...form,
       deliveryMode: needsDeliveryMode ? form.deliveryMode : null,
       agency: needsAgency ? form.agency.trim() : "",
+      address: needsAddress ? form.address.trim() : "",
     };
 
     if (editingId !== null) {
@@ -373,6 +381,17 @@ const AdminCustomers = () => {
                 </p>
               )}
             </div>
+            {needsAddress && (
+              <div className="md:col-span-3">
+                <label className={errorLabelClass(hasError("address"))}>Dirección de entrega *</label>
+                <Input
+                  value={form.address}
+                  onChange={(e) => setForm({ ...form, address: e.target.value })}
+                  placeholder="Av. / Jr. / Calle, número, referencia..."
+                  className={errorInputClass(hasError("address"))}
+                />
+              </div>
+            )}
             {needsDeliveryMode && (
               <div>
                 <label className={errorLabelClass(hasError("deliveryMode"))}>Vía de envío *</label>
@@ -448,6 +467,7 @@ const AdminCustomers = () => {
                     {customer.deliveryType}
                     {customer.deliveryMode && <span> ({customer.deliveryMode})</span>}
                     {customer.agency && <div className="text-xs">Sede: {customer.agency}</div>}
+                    {customer.address && <div className="text-xs">Dirección: {customer.address}</div>}
                   </td>
                   <td className="py-3 px-4">
                     <div className="flex gap-2 justify-end">
