@@ -1,8 +1,12 @@
-// Script de una sola vez: carga las sedes de Shalom (por ahora solo Lima,
-// copiadas a mano desde el buscador de agencias de Shalom) en la tabla
-// `agencies`. El archivo fuente (server/shalom-lima.txt) llegó con mojibake
-// clásico (UTF-8 reinterpretado como Latin-1: "Cañete" -> "CaÃ±ete"), que se
-// revierte reinterpretando el texto como Latin-1 y reconvirtiéndolo a UTF-8.
+// Script de una sola vez (re-ejecutable): carga las sedes de Shalom en la
+// tabla `agencies`, a partir de archivos server/shalom-<ciudad>.txt copiados
+// a mano desde el buscador de agencias de Shalom. Cada vez que se agregue
+// una ciudad nueva, se guarda el archivo con ese mismo patrón de nombre y
+// se agrega a SOURCE_FILES.
+//
+// Los archivos llegan con mojibake clásico (UTF-8 reinterpretado como
+// Latin-1: "Cañete" -> "CaÃ±ete"), que se revierte reinterpretando el texto
+// como Latin-1 y reconvirtiéndolo a UTF-8.
 //
 // Uso: node server/import-shalom-agencies.mjs
 import fs from "fs";
@@ -13,6 +17,69 @@ import { pool, initSchema } from "./db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROVIDER = "Shalom";
+
+const SOURCE_FILES = ["shalom-lima.txt", "shalom-arequipa.txt"];
+
+// Copia de src/lib/peru-locations.ts (departamento -> provincias). Se usa
+// solo para decidir, en una línea de ubicación de 2 partes ("Depto · X"),
+// si X es en realidad una provincia (con distrito capital del mismo
+// nombre, como "Huaral" o "Islay") o un distrito dentro de la provincia
+// metropolitana que comparte nombre con el departamento (como "Lima").
+const PERU_LOCATIONS = {
+  Amazonas: ["Chachapoyas", "Bagua", "Bongará", "Condorcanqui", "Luya", "Rodríguez de Mendoza", "Utcubamba"],
+  Áncash: [
+    "Huaraz", "Aija", "Antonio Raymondi", "Asunción", "Bolognesi", "Carhuaz", "Carlos Fermín Fitzcarrald",
+    "Casma", "Corongo", "Huari", "Huarmey", "Huaylas", "Mariscal Luzuriaga", "Ocros", "Pallasca", "Pomabamba",
+    "Recuay", "Santa", "Sihuas", "Yungay",
+  ],
+  Apurímac: ["Abancay", "Andahuaylas", "Antabamba", "Aymaraes", "Cotabambas", "Chincheros", "Grau"],
+  Arequipa: ["Arequipa", "Camaná", "Caravelí", "Castilla", "Caylloma", "Condesuyos", "Islay", "La Unión"],
+  Ayacucho: [
+    "Huamanga", "Cangallo", "Huanca Sancos", "Huanta", "La Mar", "Lucanas", "Parinacochas",
+    "Páucar del Sara Sara", "Sucre", "Víctor Fajardo", "Vilcas Huamán",
+  ],
+  Cajamarca: [
+    "Cajamarca", "Cajabamba", "Celendín", "Chota", "Contumazá", "Cutervo", "Hualgayoc", "Jaén",
+    "San Ignacio", "San Marcos", "San Miguel", "San Pablo", "Santa Cruz",
+  ],
+  Callao: ["Callao"],
+  Cusco: [
+    "Cusco", "Acomayo", "Anta", "Calca", "Canas", "Canchis", "Chumbivilcas", "Espinar",
+    "La Convención", "Paruro", "Paucartambo", "Quispicanchi", "Urubamba",
+  ],
+  Huancavelica: ["Huancavelica", "Acobamba", "Angaraes", "Castrovirreyna", "Churcampa", "Huaytará", "Tayacaja"],
+  Huánuco: [
+    "Huánuco", "Ambo", "Dos de Mayo", "Huacaybamba", "Huamalíes", "Leoncio Prado", "Marañón",
+    "Pachitea", "Puerto Inca", "Lauricocha", "Yarowilca",
+  ],
+  Ica: ["Ica", "Chincha", "Nazca", "Palpa", "Pisco"],
+  Junín: ["Huancayo", "Concepción", "Chanchamayo", "Jauja", "Junín", "Satipo", "Tarma", "Yauli", "Chupaca"],
+  "La Libertad": [
+    "Trujillo", "Ascope", "Bolívar", "Chepén", "Julcán", "Otuzco", "Pacasmayo", "Pataz",
+    "Sánchez Carrión", "Santiago de Chuco", "Gran Chimú", "Virú",
+  ],
+  Lambayeque: ["Chiclayo", "Ferreñafe", "Lambayeque"],
+  Lima: ["Lima", "Barranca", "Cajatambo", "Canta", "Cañete", "Huaral", "Huarochirí", "Huaura", "Oyón", "Yauyos"],
+  Loreto: [
+    "Maynas", "Alto Amazonas", "Loreto", "Mariscal Ramón Castilla", "Requena", "Ucayali",
+    "Datem del Marañón", "Putumayo",
+  ],
+  "Madre de Dios": ["Tambopata", "Manu", "Tahuamanu"],
+  Moquegua: ["Mariscal Nieto", "General Sánchez Cerro", "Ilo"],
+  Pasco: ["Pasco", "Daniel Alcides Carrión", "Oxapampa"],
+  Piura: ["Piura", "Ayabaca", "Huancabamba", "Morropón", "Paita", "Sullana", "Talara", "Sechura"],
+  Puno: [
+    "Puno", "Azángaro", "Carabaya", "Chucuito", "El Collao", "Huancané", "Lampa", "Melgar",
+    "Moho", "San Antonio de Putina", "San Román", "Sandia", "Yunguyo",
+  ],
+  "San Martín": [
+    "Moyobamba", "Bellavista", "El Dorado", "Huallaga", "Lamas", "Mariscal Cáceres",
+    "Picota", "Rioja", "San Martín", "Tocache",
+  ],
+  Tacna: ["Tacna", "Candarave", "Jorge Basadre", "Tarata"],
+  Tumbes: ["Tumbes", "Contralmirante Villar", "Zarumilla"],
+  Ucayali: ["Coronel Portillo", "Atalaya", "Padre Abad", "Purús"],
+};
 
 // Un puñado de nombres perdieron una vocal con tilde por completo (no solo
 // el acento, la letra entera) porque el byte que la identificaba nunca
@@ -37,11 +104,42 @@ const stripVowelAccents = (s) => s.normalize("NFD").replace(/́/g, "").normalize
 // medio de una frase se reemplaza por un guion legible.
 const cleanText = (s) => s.replace(/�+$/g, "…").replace(/�/g, "-");
 
+// Para comparar nombres de provincia sin importar tildes/ñ/mayúsculas
+// (Shalom no siempre coincide letra por letra con el nombre oficial).
+const foldAscii = (s) =>
+  s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().trim();
+
+// Resuelve departamento/provincia/distrito de una línea de ubicación como
+// "Arequipa", "Lima · Cercado Lima" o "Arequipa · Caraveli · Chala".
+// Con 2 partes, la segunda puede ser un distrito de la provincia
+// metropolitana (que comparte nombre con el departamento, como en "Lima ·
+// Cercado Lima") o directamente el nombre de OTRA provincia mostrada sin
+// su distrito capital (como "Lima · Huaral" o "Arequipa · Islay") — en ese
+// caso se asume que el distrito capital comparte el nombre de la provincia.
+const resolveLocation = (locationLine) => {
+  const parts = locationLine.split("·").map((p) => p.trim()).filter(Boolean);
+  if (parts.length >= 3) {
+    const [department, province, district] = parts;
+    return { department, province, district };
+  }
+  if (parts.length === 2) {
+    const [department, second] = parts;
+    const provinces = PERU_LOCATIONS[department] ?? [];
+    const isOtherProvince = provinces.some((p) => foldAscii(p) === foldAscii(second));
+    if (isOtherProvince) return { department, province: second, district: second };
+    return { department, province: department, district: second };
+  }
+  if (parts.length === 1) {
+    const [department] = parts;
+    return { department, province: department, district: department };
+  }
+  return { department: "", province: "", district: "" };
+};
+
 // Cada registro tiene el nombre en la línea anterior a "Disponible", seguido
-// de una línea de ubicación ("Depto · Distrito" o "Depto · Provincia ·
-// Distrito") y 0+ líneas más, identificables por su prefijo: "Ref:",
-// "Tel:" y "L-S:" (horario). La única línea sin prefijo (si existe) es la
-// dirección.
+// de una línea de ubicación y 0+ líneas más, identificables por su prefijo:
+// "Ref:", "Tel:" y "L-S:" (horario). La única línea sin prefijo (si existe)
+// es la dirección.
 const parseAgencies = (raw) => {
   const lines = fixMojibake(raw)
     .split(/\r?\n/)
@@ -58,22 +156,7 @@ const parseAgencies = (raw) => {
       rest.push(lines[j]);
       j++;
     }
-    const locationLine = rest[0] ?? "";
-    const parts = locationLine.split("·").map((p) => p.trim()).filter(Boolean);
-
-    let department = "";
-    let province = "";
-    let district = "";
-    if (parts.length === 2) {
-      // "Lima · Cercado Lima" -> la provincia metropolitana es la misma
-      // que el departamento (así se organiza también el ubigeo oficial).
-      [department, district] = parts;
-      province = department;
-    } else if (parts.length >= 3) {
-      [department, province, district] = parts;
-    } else if (parts.length === 1) {
-      department = parts[0];
-    }
+    const { department, province, district } = resolveLocation(rest[0] ?? "");
 
     let address = "";
     let reference = "";
@@ -101,16 +184,25 @@ const parseAgencies = (raw) => {
 };
 
 const main = async () => {
-  const filePath = path.join(__dirname, "shalom-lima.txt");
-  const raw = fs.readFileSync(filePath, "utf8");
-  const records = parseAgencies(raw);
-  console.log(`Sedes parseadas: ${records.length}`);
+  const records = [];
+  for (const fileName of SOURCE_FILES) {
+    const filePath = path.join(__dirname, fileName);
+    if (!fs.existsSync(filePath)) {
+      console.log(`(omitido, no existe) ${fileName}`);
+      continue;
+    }
+    const raw = fs.readFileSync(filePath, "utf8");
+    const parsed = parseAgencies(raw);
+    console.log(`${fileName}: ${parsed.length} sedes`);
+    records.push(...parsed);
+  }
+  console.log(`Total de sedes parseadas: ${records.length}`);
 
   await initSchema();
 
   // Recarga completa: se borra lo anterior de este provider y se inserta
   // todo de nuevo, así el script sigue siendo seguro de re-ejecutar aunque
-  // cambie el formato de las columnas.
+  // cambie el formato de las columnas o se agreguen más ciudades.
   const { rowCount: deleted } = await pool.query("DELETE FROM agencies WHERE provider = $1", [PROVIDER]);
   console.log(`Sedes de ${PROVIDER} anteriores borradas: ${deleted}`);
 
@@ -140,16 +232,20 @@ const main = async () => {
      ON CONFLICT (provider, name, district) DO NOTHING`,
     [PROVIDER, names, departments, provinces, districts, addresses, references, phones, schedules]
   );
-  const { rows: after } = await pool.query("SELECT 1 FROM agencies WHERE provider = $1", [PROVIDER]);
-
-  console.log(`Sedes de ${PROVIDER} insertadas: ${after.length}`);
-
-  const { rows: sample } = await pool.query(
-    "SELECT name, department, province, district, address, reference, phone, schedule FROM agencies WHERE provider = $1 AND name ILIKE '%ñ%' LIMIT 3",
+  const { rows: after } = await pool.query(
+    "SELECT department, count(*)::int AS c FROM agencies WHERE provider = $1 GROUP BY department ORDER BY department",
     [PROVIDER]
   );
-  console.log("\nEjemplos con Ñ (verifica el fix de encoding y los campos separados):");
-  for (const r of sample) console.log(r);
+
+  console.log(`\nSedes de ${PROVIDER} insertadas por departamento:`);
+  for (const r of after) console.log(`  ${r.department}: ${r.c}`);
+
+  const { rows: sample } = await pool.query(
+    "SELECT name, department, province, district FROM agencies WHERE provider = $1 AND (name ILIKE '%ñ%' OR district IN ('Huaral', 'Islay', 'Camaná', 'Camana')) LIMIT 8",
+    [PROVIDER]
+  );
+  console.log("\nEjemplos a revisar (Ñ y provincias-capital como distrito):");
+  for (const r of sample) console.log(`  - ${r.name} (${r.department} · ${r.province} · ${r.district})`);
 
   await pool.end();
 };
