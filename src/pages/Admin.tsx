@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, LogOut, Package, Tag, Layers, Users, IdCard, MapPin } from "lucide-react";
+import { ArrowLeft, LogOut, Package, Tag, Layers, Users, IdCard, MapPin, ShoppingBag } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import AdminProducts from "@/components/admin/AdminProducts";
@@ -9,8 +9,9 @@ import AdminCategories from "@/components/admin/AdminCategories";
 import AdminCustomers from "@/components/admin/AdminCustomers";
 import AdminDistricts from "@/components/admin/AdminDistricts";
 import AdminUsers from "@/components/admin/AdminUsers";
+import AdminOrders from "@/components/admin/AdminOrders";
 
-type Tab = "products" | "brands" | "categories" | "customers" | "districts" | "users";
+type Tab = "products" | "brands" | "categories" | "customers" | "districts" | "orders" | "users";
 
 const TABS: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "products", label: "Productos", icon: Package },
@@ -18,6 +19,7 @@ const TABS: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "categories", label: "Categorías", icon: Layers },
   { id: "customers", label: "Clientes", icon: IdCard },
   { id: "districts", label: "Distritos", icon: MapPin },
+  { id: "orders", label: "Pedidos", icon: ShoppingBag },
   { id: "users", label: "Usuarios", icon: Users },
 ];
 
@@ -71,6 +73,7 @@ const Admin = () => {
         {tab === "categories" && <AdminCategories />}
         {tab === "customers" && <AdminCustomers />}
         {tab === "districts" && <AdminDistricts />}
+        {tab === "orders" && <AdminOrders />}
         {tab === "users" && <AdminUsers />}
       </div>
     </div>

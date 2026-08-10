@@ -600,6 +600,40 @@ const mapOrder = (order, items) => ({
   })),
 });
 
+app.get("/api/orders", requireAuth, async (req, res) => {
+  const { rows } = await pool.query(`
+    SELECT
+      o.id, o.customer_id, o.total, o.created_at,
+      c.first_name, c.paternal_surname, c.maternal_surname, c.document_type, c.document_number, c.mobile,
+      COALESCE(
+        json_agg(
+          json_build_object(
+            'id', oi.id, 'productId', oi.product_id, 'productName', oi.product_name,
+            'colorName', oi.color_name, 'unitPrice', oi.unit_price, 'quantity', oi.quantity, 'subtotal', oi.subtotal
+          ) ORDER BY oi.id
+        ) FILTER (WHERE oi.id IS NOT NULL),
+        '[]'
+      ) AS items
+    FROM orders o
+    JOIN customers c ON c.id = o.customer_id
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    GROUP BY o.id, c.first_name, c.paternal_surname, c.maternal_surname, c.document_type, c.document_number, c.mobile
+    ORDER BY o.id DESC
+  `);
+  res.json(
+    rows.map((row) => ({
+      id: row.id,
+      customerId: row.customer_id,
+      customerName: [row.first_name, row.paternal_surname, row.maternal_surname].filter(Boolean).join(" "),
+      customerDocument: `${row.document_type} ${row.document_number}`,
+      customerMobile: row.mobile,
+      total: Number(row.total),
+      createdAt: row.created_at,
+      items: row.items.map((i) => ({ ...i, unitPrice: Number(i.unitPrice), subtotal: Number(i.subtotal) })),
+    }))
+  );
+});
+
 // Registro público de pedidos: fuera del panel admin. Valida el stock de
 // cada producto/color dentro de una transacción (con FOR UPDATE para
 // evitar que dos pedidos a la vez vendan el mismo stock), lo descuenta y

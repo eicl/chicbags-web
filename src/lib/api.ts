@@ -239,6 +239,15 @@ export const registerOrder = (data: { customerId: number; items: OrderItemInput[
     body: JSON.stringify(data),
   }).then((res) => handle<Order>(res));
 
+export interface AdminOrder extends Order {
+  customerName: string;
+  customerDocument: string;
+  customerMobile: string;
+}
+
+export const fetchOrders = (): Promise<AdminOrder[]> =>
+  fetch(`${API_URL}/orders`, { credentials: "include" }).then((res) => handle<AdminOrder[]>(res));
+
 export const createProduct = (product: Omit<Product, "id">): Promise<Product> =>
   fetch(`${API_URL}/products`, {
     method: "POST",
