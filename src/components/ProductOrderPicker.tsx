@@ -7,6 +7,9 @@ import { cn } from "@/lib/utils";
 interface ProductOrderPickerProps {
   products: Product[];
   onAdd: (product: Product, color: ProductColor) => void;
+  // Para Regularización de Separaciones: no se descuenta stock, así que no
+  // tiene sentido bloquear colores agotados ni mostrar "Agotado".
+  ignoreStock?: boolean;
 }
 
 const matches = (product: Product, query: string) => {
@@ -16,7 +19,7 @@ const matches = (product: Product, query: string) => {
     .some((field) => (field ?? "").toLowerCase().includes(q));
 };
 
-const ProductOrderPicker = ({ products, onAdd }: ProductOrderPickerProps) => {
+const ProductOrderPicker = ({ products, onAdd, ignoreStock = false }: ProductOrderPickerProps) => {
   const [query, setQuery] = useState("");
   const filtered = products.filter((p) => matches(p, query)).slice(0, 20);
 
@@ -46,27 +49,30 @@ const ProductOrderPicker = ({ products, onAdd }: ProductOrderPickerProps) => {
                 </div>
                 {product.code && <p className="text-xs text-muted-foreground">{product.code}</p>}
                 <div className="flex flex-wrap gap-1.5 mt-2">
-                  {(product.colors ?? []).map((color) => (
-                    <button
-                      key={color.name}
-                      type="button"
-                      disabled={color.stock <= 0}
-                      onClick={() => onAdd(product, color)}
-                      className={cn(
-                        "flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-colors",
-                        color.stock <= 0
-                          ? "border-border text-muted-foreground opacity-50 cursor-not-allowed"
-                          : "border-input hover:border-primary hover:bg-primary/5"
-                      )}
-                      title={color.stock <= 0 ? "Agotado" : `Agregar ${color.name}`}
-                    >
-                      <span className="w-3 h-3 rounded-full border border-border shrink-0" style={{ backgroundColor: color.hex }} />
-                      {color.name}
-                      <span className="text-muted-foreground">
-                        {color.stock <= 0 ? "· Agotado" : `· ${color.stock}`}
-                      </span>
-                    </button>
-                  ))}
+                  {(product.colors ?? []).map((color) => {
+                    const blocked = !ignoreStock && color.stock <= 0;
+                    return (
+                      <button
+                        key={color.name}
+                        type="button"
+                        disabled={blocked}
+                        onClick={() => onAdd(product, color)}
+                        className={cn(
+                          "flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-colors",
+                          blocked
+                            ? "border-border text-muted-foreground opacity-50 cursor-not-allowed"
+                            : "border-input hover:border-primary hover:bg-primary/5"
+                        )}
+                        title={blocked ? "Agotado" : `Agregar ${color.name}`}
+                      >
+                        <span className="w-3 h-3 rounded-full border border-border shrink-0" style={{ backgroundColor: color.hex }} />
+                        {color.name}
+                        <span className="text-muted-foreground">
+                          {color.stock <= 0 ? "· Agotado" : `· ${color.stock}`}
+                        </span>
+                      </button>
+                    );
+                  })}
                   {(product.colors ?? []).length === 0 && (
                     <span className="text-xs text-muted-foreground">Sin colores/stock disponible</span>
                   )}

@@ -149,6 +149,11 @@ export const initSchema = async () => {
   `);
   // Vendedor (usuario con perfil "Vendedor") que registró el pedido.
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS seller_id INTEGER REFERENCES users(id);`);
+  // Un pedido de Regularización de Separaciones se guarda en la misma tabla
+  // que uno normal (mismo ciclo de vida, mismos pagos), solo que su tipo
+  // queda marcado así para distinguirlo — es el único que puede tener ítems
+  // sin product_id y no descuenta stock al registrarse.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'Pedido';`);
   // Ciclo de vida del pedido: arranca en "Registrado"; al registrar un pago
   // pasa a "Pendiente de envío" (si lo pagado cubre el total) o a
   // "Separación" (si es un pago parcial). separation_deadline se fija una
@@ -189,6 +194,10 @@ export const initSchema = async () => {
   // Descuento manual aplicado al ítem (en soles, tope de S/.4 validado en
   // el servidor); ya viene restado en subtotal.
   await pool.query(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS discount NUMERIC NOT NULL DEFAULT 0;`);
+  // La regularización de Separaciones (pedidos históricos que no pasan por
+  // el flujo normal) permite ítems que no corresponden a ningún producto
+  // del catálogo, así que product_id queda opcional para esos casos.
+  await pool.query(`ALTER TABLE order_items ALTER COLUMN product_id DROP NOT NULL;`);
 };
 
 // Busca una marca por nombre (sin distinguir mayúsculas/minúsculas) o la crea

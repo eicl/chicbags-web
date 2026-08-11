@@ -179,7 +179,12 @@ const AdminOrders = () => {
                       onClick={() => setExpandedId(isExpanded ? null : order.id)}
                       className="border-b border-border last:border-0 hover:bg-muted/10 transition-colors cursor-pointer"
                     >
-                      <td className="py-3 px-4 text-sm font-medium text-primary">#{order.id}</td>
+                      <td className="py-3 px-4 text-sm font-medium text-primary">
+                        #{order.id}
+                        {order.type === "Regularización" && (
+                          <div className="text-[10px] uppercase tracking-wide text-amber-600 font-semibold">Regularización</div>
+                        )}
+                      </td>
                       <td className="py-3 px-4 font-medium">
                         {order.customerName}
                         <div className="text-xs text-muted-foreground font-normal">Código: #{order.customerId}</div>

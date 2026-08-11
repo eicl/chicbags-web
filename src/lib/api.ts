@@ -211,7 +211,9 @@ export const deleteCustomer = (id: number): Promise<void> =>
 
 export interface OrderItem {
   id: number;
-  productId: number;
+  // null en ítems de un pedido de Regularización que no corresponden a
+  // ningún producto del catálogo.
+  productId: number | null;
   productName: string;
   productCode: string;
   colorName: string;
@@ -222,6 +224,7 @@ export interface OrderItem {
 }
 
 export type OrderStatus = "Registrado" | "Separación" | "Pendiente de envío";
+export type OrderType = "Pedido" | "Regularización";
 
 export interface Payment {
   id: number;
@@ -237,6 +240,7 @@ export interface Order {
   id: number;
   customerId: number;
   sellerId: number;
+  type: OrderType;
   status: OrderStatus;
   // Fecha límite para cancelar (15 días calendario), fijada solo mientras el
   // pedido está en "Separación"; null en cualquier otro estado.
@@ -275,6 +279,32 @@ export const registerOrder = (data: {
   payment?: PaymentInput;
 }): Promise<Order> =>
   fetch(`${API_URL}/orders/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<Order>(res));
+
+export interface RegularizationItemInput {
+  // null cuando el producto no existe en el catálogo (se ingresa a mano).
+  productId: number | null;
+  productName: string;
+  productCode?: string;
+  colorName: string;
+  unitPrice: number;
+  quantity: number;
+}
+
+// Regularización de Separaciones: registra pedidos históricos sin tocar el
+// stock (el precio de cada ítem se ingresa a mano y el producto no tiene
+// que existir en el catálogo). Queda guardado como un pedido más, con
+// type: "Regularización".
+export const registerRegularizedOrder = (data: {
+  customerId: number;
+  sellerId: number;
+  items: RegularizationItemInput[];
+  payment?: PaymentInput;
+}): Promise<Order> =>
+  fetch(`${API_URL}/orders/regularize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),

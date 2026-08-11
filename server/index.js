@@ -622,6 +622,7 @@ const mapOrder = (order, items, payments = []) => ({
   id: order.id,
   customerId: order.customer_id,
   sellerId: order.seller_id,
+  type: order.type,
   status: order.status,
   separationDeadline: order.separation_deadline,
   total: Number(order.total),
@@ -721,7 +722,7 @@ app.get("/api/orders", requireAuth, async (req, res) => {
   // unieran directamente, duplicando cada item y cada pago.
   const { rows } = await pool.query(`
     SELECT
-      o.id, o.customer_id, o.seller_id, o.status, o.separation_deadline, o.total, o.created_at,
+      o.id, o.customer_id, o.seller_id, o.type, o.status, o.separation_deadline, o.total, o.created_at,
       c.first_name, c.paternal_surname, c.maternal_surname, c.document_type, c.document_number, c.mobile,
       u.username AS seller_username,
       COALESCE(items.items, '[]') AS items,
@@ -760,6 +761,7 @@ app.get("/api/orders", requireAuth, async (req, res) => {
       customerMobile: row.mobile,
       sellerId: row.seller_id,
       sellerName: row.seller_username ?? "",
+      type: row.type,
       status: row.status,
       separationDeadline: row.separation_deadline,
       total: Number(row.total),
@@ -858,7 +860,7 @@ app.post("/api/orders/register", async (req, res) => {
     }
 
     const { rows: orderRows } = await client.query(
-      "INSERT INTO orders (customer_id, seller_id, total) VALUES ($1, $2, $3) RETURNING *",
+      "INSERT INTO orders (customer_id, seller_id, total, type) VALUES ($1, $2, $3, 'Pedido') RETURNING *",
       [customerId, sellerId, total]
     );
     const order = orderRows[0];
@@ -869,6 +871,89 @@ app.post("/api/orders/register", async (req, res) => {
         `INSERT INTO order_items (order_id, product_id, product_name, product_code, color_name, unit_price, quantity, discount, subtotal)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
         [order.id, li.productId, li.productName, li.productCode, li.colorName, li.unitPrice, li.quantity, li.discount, li.subtotal]
+      );
+      insertedItems.push(rows[0]);
+    }
+
+    if (payment !== undefined) {
+      validatePaymentInput(payment);
+      await applyPayment(client, order.id, total, null, { ...payment, registeredBy: seller.username });
+    }
+    const { rows: finalOrderRows } = await client.query("SELECT * FROM orders WHERE id = $1", [order.id]);
+    const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [order.id]);
+
+    await client.query("COMMIT");
+    res.status(201).json(mapOrder(finalOrderRows[0], insertedItems, paymentRows));
+  } catch (err) {
+    await client.query("ROLLBACK");
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// Regularización de Separaciones: registra pedidos históricos (fuera del
+// flujo normal), sin tocar el stock de los productos — el movimiento físico
+// ya ocurrió antes, esto solo lo deja asentado en el sistema. A diferencia
+// de /orders/register, el precio de cada ítem se ingresa a mano y el
+// producto no tiene que existir en el catálogo (product_id queda null en
+// ese caso, con nombre/código/color escritos directamente).
+app.post("/api/orders/regularize", async (req, res) => {
+  const { customerId, sellerId, items, payment } = req.body;
+  if (!Number.isInteger(customerId)) {
+    return res.status(400).json({ error: "Cliente inválido" });
+  }
+  if (!Number.isInteger(sellerId)) {
+    return res.status(400).json({ error: "Selecciona el vendedor" });
+  }
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: "El pedido no tiene productos" });
+  }
+  for (const item of items) {
+    if (item?.productId !== null && !Number.isInteger(item?.productId)) {
+      return res.status(400).json({ error: "Hay un producto inválido en el pedido" });
+    }
+    if (!item?.productName?.trim() || !item?.colorName?.trim()) {
+      return res.status(400).json({ error: "Falta el nombre o el color de un producto" });
+    }
+    if (typeof item?.unitPrice !== "number" || !Number.isFinite(item.unitPrice) || item.unitPrice < 0) {
+      return res.status(400).json({ error: `El precio de "${item.productName}" es inválido` });
+    }
+    if (!Number.isInteger(item?.quantity) || item.quantity <= 0) {
+      return res.status(400).json({ error: `La cantidad de "${item.productName}" es inválida` });
+    }
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const { rows: customerRows } = await client.query("SELECT id FROM customers WHERE id = $1", [customerId]);
+    if (customerRows.length === 0) {
+      throw new Error("El cliente no existe");
+    }
+
+    const { rows: sellerRows } = await client.query("SELECT id, username FROM users WHERE id = $1 AND role = 'Vendedor'", [sellerId]);
+    if (sellerRows.length === 0) {
+      throw new Error("El vendedor no existe o ya no tiene ese perfil");
+    }
+    const seller = sellerRows[0];
+
+    const total = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+
+    const { rows: orderRows } = await client.query(
+      "INSERT INTO orders (customer_id, seller_id, total, type) VALUES ($1, $2, $3, 'Regularización') RETURNING *",
+      [customerId, sellerId, total]
+    );
+    const order = orderRows[0];
+
+    const insertedItems = [];
+    for (const item of items) {
+      const subtotal = item.unitPrice * item.quantity;
+      const { rows } = await client.query(
+        `INSERT INTO order_items (order_id, product_id, product_name, product_code, color_name, unit_price, quantity, subtotal)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        [order.id, item.productId ?? null, item.productName.trim(), (item.productCode ?? "").trim(), item.colorName.trim(), item.unitPrice, item.quantity, subtotal]
       );
       insertedItems.push(rows[0]);
     }
