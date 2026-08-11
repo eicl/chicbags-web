@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import Header from "@/components/Header";
 import { useProducts } from "@/context/ProductContext";
 import { Product, ProductColor } from "@/context/CartContext";
-import { lookupCustomer, registerOrder, registerPublicPayment, uploadPaymentProof, fetchSellers, Customer, Order } from "@/lib/api";
+import { lookupCustomer, registerOrder, uploadPaymentProof, fetchSellers, Customer, Order } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import ProductOrderPicker from "@/components/ProductOrderPicker";
@@ -92,24 +92,14 @@ const OrderRegister = () => {
     onSuccess: (created) => {
       setOrder(created);
       setLines([]);
-      queryClient.invalidateQueries({ queryKey: ["products"] });
-    },
-    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo registrar el pedido"),
-  });
-
-  const paymentMutation = useMutation({
-    mutationFn: (data: { amount: number; source: string; operationNumber: string; proofImage: string }) =>
-      registerPublicPayment(order!.id, { ...data, sellerId: Number(sellerId) }),
-    onSuccess: (updated) => {
-      setOrder(updated);
-      toast.success("Pago registrado");
       setPaymentAmount("");
       setPaymentSource(PAYMENT_SOURCES[0]);
       setPaymentSourceOther("");
       setPaymentOperationNumber("");
       setPaymentProofImage("");
+      queryClient.invalidateQueries({ queryKey: ["products"] });
     },
-    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo registrar el pago"),
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo registrar el pedido"),
   });
 
   const handleUploadProof = async (file: File) => {
@@ -122,33 +112,6 @@ const OrderRegister = () => {
     } finally {
       setPaymentUploading(false);
     }
-  };
-
-  const handleRegisterPayment = () => {
-    const amountNumber = Number(paymentAmount);
-    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
-      toast.error("Ingresa un monto válido");
-      return;
-    }
-    const finalSource = paymentSource === "Otro" ? paymentSourceOther.trim() : paymentSource;
-    if (!finalSource) {
-      toast.error("Ingresa el medio de pago");
-      return;
-    }
-    if (!paymentOperationNumber.trim()) {
-      toast.error("Ingresa el número de operación");
-      return;
-    }
-    if (!paymentProofImage) {
-      toast.error("Sube la captura del pago");
-      return;
-    }
-    paymentMutation.mutate({
-      amount: amountNumber,
-      source: finalSource,
-      operationNumber: paymentOperationNumber.trim(),
-      proofImage: paymentProofImage,
-    });
   };
 
   const handleLookup = () => {
@@ -209,6 +172,15 @@ const OrderRegister = () => {
 
   const total = lines.reduce((sum, l) => sum + l.product.price * l.quantity - l.discount, 0);
 
+  // El pago es opcional: si no se llenó ningún campo, el pedido se registra
+  // sin pago (queda en "Registrado"). Si se llenó alguno, todos los demás
+  // pasan a ser obligatorios — no tendría sentido un pago a medio llenar.
+  const hasPaymentInput =
+    paymentAmount.trim() !== "" ||
+    paymentOperationNumber.trim() !== "" ||
+    paymentProofImage !== "" ||
+    (paymentSource === "Otro" && paymentSourceOther.trim() !== "");
+
   const handleSubmit = () => {
     if (!customer) {
       toast.error("Busca un cliente primero");
@@ -222,10 +194,35 @@ const OrderRegister = () => {
       toast.error("Agrega al menos un producto al pedido");
       return;
     }
+
+    let payment: { amount: number; source: string; operationNumber: string; proofImage: string } | undefined;
+    if (hasPaymentInput) {
+      const amountNumber = Number(paymentAmount);
+      if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+        toast.error("Ingresa un monto de pago válido");
+        return;
+      }
+      const finalSource = paymentSource === "Otro" ? paymentSourceOther.trim() : paymentSource;
+      if (!finalSource) {
+        toast.error("Ingresa el medio de pago");
+        return;
+      }
+      if (!paymentOperationNumber.trim()) {
+        toast.error("Ingresa el número de operación del pago");
+        return;
+      }
+      if (!paymentProofImage) {
+        toast.error("Sube la captura del pago");
+        return;
+      }
+      payment = { amount: amountNumber, source: finalSource, operationNumber: paymentOperationNumber.trim(), proofImage: paymentProofImage };
+    }
+
     orderMutation.mutate({
       customerId: customer.id,
       sellerId: Number(sellerId),
       items: lines.map((l) => ({ productId: l.product.id, colorName: l.color.name, quantity: l.quantity, discount: l.discount })),
+      payment,
     });
   };
 
@@ -287,74 +284,6 @@ const OrderRegister = () => {
               ))}
             </div>
           )}
-
-          <div className="w-full border border-border rounded-lg p-4 text-left space-y-3">
-            <h2 className="text-sm font-medium">Registrar pago</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Monto</label>
-                <Input
-                  type="number"
-                  min={0}
-                  step={0.1}
-                  value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(e.target.value)}
-                  placeholder="0.00"
-                  className="h-9"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Medio de pago</label>
-                <select
-                  value={paymentSource}
-                  onChange={(e) => setPaymentSource(e.target.value)}
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                >
-                  {PAYMENT_SOURCES.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              </div>
-              {paymentSource === "Otro" && (
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">¿Cuál?</label>
-                  <Input value={paymentSourceOther} onChange={(e) => setPaymentSourceOther(e.target.value)} placeholder="Medio de pago" className="h-9" />
-                </div>
-              )}
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">N° de operación</label>
-                <Input value={paymentOperationNumber} onChange={(e) => setPaymentOperationNumber(e.target.value)} placeholder="Ej. 123456" className="h-9" />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Captura del pago</label>
-                <label className="flex items-center justify-center gap-2 h-9 px-3 rounded-md border border-input text-sm cursor-pointer hover:bg-muted/50">
-                  {paymentUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                  {paymentProofImage ? "Cambiar" : "Subir"}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleUploadProof(file);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-              </div>
-            </div>
-            {paymentProofImage && (
-              <img src={productImageUrl(paymentProofImage)} alt="Captura del pago" className="w-16 h-16 rounded object-cover border border-border" />
-            )}
-            <Button
-              size="sm"
-              onClick={handleRegisterPayment}
-              disabled={paymentMutation.isPending || paymentUploading}
-              className="w-full sm:w-auto"
-            >
-              {paymentMutation.isPending ? "Registrando..." : "Registrar pago"}
-            </Button>
-          </div>
 
           {customer && (
             <a
@@ -529,9 +458,73 @@ const OrderRegister = () => {
               )}
             </div>
 
+            <div className="border border-border rounded-lg p-6 mb-6">
+              <h2 className="text-lg font-medium mb-1" style={{ fontFamily: "var(--font-display)" }}>Pago (opcional)</h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                Si el cliente ya pagó, regístralo aquí — queda enlazado al pedido al registrarlo. Si no, deja esto vacío y
+                registra el pago después desde el panel admin.
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Monto</label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={0.1}
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="h-9"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Medio de pago</label>
+                  <select
+                    value={paymentSource}
+                    onChange={(e) => setPaymentSource(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    {PAYMENT_SOURCES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                {paymentSource === "Otro" && (
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">¿Cuál?</label>
+                    <Input value={paymentSourceOther} onChange={(e) => setPaymentSourceOther(e.target.value)} placeholder="Medio de pago" className="h-9" />
+                  </div>
+                )}
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">N° de operación</label>
+                  <Input value={paymentOperationNumber} onChange={(e) => setPaymentOperationNumber(e.target.value)} placeholder="Ej. 123456" className="h-9" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Captura del pago</label>
+                  <label className="flex items-center justify-center gap-2 h-9 px-3 rounded-md border border-input text-sm cursor-pointer hover:bg-muted/50">
+                    {paymentUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                    {paymentProofImage ? "Cambiar" : "Subir"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleUploadProof(file);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+              {paymentProofImage && (
+                <img src={productImageUrl(paymentProofImage)} alt="Captura del pago" className="w-16 h-16 mt-3 rounded object-cover border border-border" />
+              )}
+            </div>
+
             <Button
               onClick={handleSubmit}
-              disabled={orderMutation.isPending || lines.length === 0 || !sellerId}
+              disabled={orderMutation.isPending || lines.length === 0 || !sellerId || paymentUploading}
               className="w-full py-6 text-sm tracking-widest uppercase gap-2"
             >
               {orderMutation.isPending ? "Registrando..." : "Registrar pedido"}

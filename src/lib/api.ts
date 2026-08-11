@@ -256,9 +256,23 @@ export interface OrderItemInput {
   discount?: number;
 }
 
+export interface PaymentInput {
+  amount: number;
+  source: string;
+  operationNumber: string;
+  proofImage: string;
+}
+
 // Registro público de pedidos (fuera del panel admin): valida stock,
-// lo descuenta por color y crea el pedido, todo en el servidor.
-export const registerOrder = (data: { customerId: number; sellerId: number; items: OrderItemInput[] }): Promise<Order> =>
+// lo descuenta por color y crea el pedido, todo en el servidor. El pago
+// es opcional y, si viene, se registra en la misma transacción que el
+// pedido, ya enlazado a él (no hace falta un paso ni un ID aparte).
+export const registerOrder = (data: {
+  customerId: number;
+  sellerId: number;
+  items: OrderItemInput[];
+  payment?: PaymentInput;
+}): Promise<Order> =>
   fetch(`${API_URL}/orders/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -297,18 +311,6 @@ export interface Seller {
 
 export const fetchSellers = (): Promise<Seller[]> =>
   fetch(`${API_URL}/sellers`).then((res) => handle<Seller[]>(res));
-
-// Registro público de pagos: igual que registerPayment, pero desde el link
-// de registro de pedido (sin sesión admin), atribuido al vendedor elegido.
-export const registerPublicPayment = (
-  orderId: number,
-  data: { amount: number; source: string; operationNumber: string; proofImage: string; sellerId: number }
-): Promise<Order> =>
-  fetch(`${API_URL}/orders/${orderId}/payments/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  }).then((res) => handle<Order>(res));
 
 export const uploadPaymentProof = (file: File): Promise<{ filename: string }> => {
   const formData = new FormData();

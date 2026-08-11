@@ -640,6 +640,79 @@ const mapOrder = (order, items, payments = []) => ({
   payments: payments.map(mapPayment),
 });
 
+const SEPARATION_DAYS = 15;
+
+const validatePaymentInput = ({ amount, source, operationNumber, proofImage }) => {
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+    throw new Error("El monto del pago es inválido");
+  }
+  if (!source?.trim()) {
+    throw new Error("Selecciona el medio de pago");
+  }
+  if (!operationNumber?.trim()) {
+    throw new Error("Ingresa el número de operación");
+  }
+  if (!proofImage?.trim()) {
+    throw new Error("Sube la captura del pago");
+  }
+};
+
+// Inserta el pago y recalcula el estado del pedido sumando TODOS los pagos
+// ya registrados contra el total: si lo cubre pasa a "Pendiente de envío",
+// si no a "Separación" (con un plazo de 15 días calendario para cancelar,
+// que se fija solo la primera vez que entra a ese estado). No abre su
+// propia transacción: el caller decide el alcance — sola (registerPaymentTx)
+// o junto con la creación del pedido, en la misma transacción, cuando el
+// pago se carga al mismo tiempo que los productos.
+const applyPayment = async (client, orderId, total, currentDeadline, { amount, source, operationNumber, proofImage, registeredBy }) => {
+  await client.query(
+    `INSERT INTO payments (order_id, amount, source, operation_number, proof_image, registered_by)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [orderId, amount, source.trim(), operationNumber.trim(), proofImage.trim(), registeredBy]
+  );
+  const { rows: paidRows } = await client.query(
+    "SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE order_id = $1",
+    [orderId]
+  );
+  const paid = Number(paidRows[0].paid);
+  const status = paid >= total ? "Pendiente de envío" : "Separación";
+  const separationDeadline =
+    status === "Separación" ? currentDeadline ?? new Date(Date.now() + SEPARATION_DAYS * 24 * 60 * 60 * 1000) : currentDeadline;
+  await client.query("UPDATE orders SET status = $1, separation_deadline = $2 WHERE id = $3", [status, separationDeadline, orderId]);
+};
+
+// Abre su propia transacción con FOR UPDATE sobre el pedido (para que dos
+// pagos registrados a la vez no se pisen el estado calculado el uno al
+// otro) y aplica applyPayment. Usada para agregar un pago a un pedido que
+// ya existe (panel admin, o un pago adicional desde el link público).
+const registerPaymentTx = async (orderId, paymentData) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: orderRows } = await client.query(
+      "SELECT id, total, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
+      [orderId]
+    );
+    if (orderRows.length === 0) {
+      throw new Error("El pedido no existe");
+    }
+    const order = orderRows[0];
+    await applyPayment(client, orderId, Number(order.total), order.separation_deadline, paymentData);
+
+    const { rows: updatedRows } = await client.query("SELECT * FROM orders WHERE id = $1", [orderId]);
+    const { rows: itemRows } = await client.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [orderId]);
+    const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [orderId]);
+
+    await client.query("COMMIT");
+    return mapOrder(updatedRows[0], itemRows, paymentRows);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
 app.get("/api/orders", requireAuth, async (req, res) => {
   // Los items y los pagos se agregan cada uno en su propio subquery LATERAL
   // (en vez de un solo LEFT JOIN a las dos tablas) para que uno no multiplique
@@ -704,9 +777,11 @@ app.get("/api/orders", requireAuth, async (req, res) => {
 // Registro público de pedidos: fuera del panel admin. Valida el stock de
 // cada producto/color dentro de una transacción (con FOR UPDATE para
 // evitar que dos pedidos a la vez vendan el mismo stock), lo descuenta y
-// recién ahí crea el pedido — si algo falla, no se descuenta nada.
+// recién ahí crea el pedido — si algo falla, no se descuenta nada. El pago
+// (opcional) se carga al mismo tiempo que los productos y queda enlazado
+// al pedido dentro de la misma transacción, sin un paso aparte.
 app.post("/api/orders/register", async (req, res) => {
-  const { customerId, sellerId, items } = req.body;
+  const { customerId, sellerId, items, payment } = req.body;
   if (!Number.isInteger(customerId)) {
     return res.status(400).json({ error: "Cliente inválido" });
   }
@@ -735,10 +810,11 @@ app.post("/api/orders/register", async (req, res) => {
       throw new Error("El cliente no existe");
     }
 
-    const { rows: sellerRows } = await client.query("SELECT id FROM users WHERE id = $1 AND role = 'Vendedor'", [sellerId]);
+    const { rows: sellerRows } = await client.query("SELECT id, username FROM users WHERE id = $1 AND role = 'Vendedor'", [sellerId]);
     if (sellerRows.length === 0) {
       throw new Error("El vendedor no existe o ya no tiene ese perfil");
     }
+    const seller = sellerRows[0];
 
     const lineItems = [];
     let total = 0;
@@ -796,8 +872,15 @@ app.post("/api/orders/register", async (req, res) => {
       insertedItems.push(rows[0]);
     }
 
+    if (payment !== undefined) {
+      validatePaymentInput(payment);
+      await applyPayment(client, order.id, total, null, { ...payment, registeredBy: seller.username });
+    }
+    const { rows: finalOrderRows } = await client.query("SELECT * FROM orders WHERE id = $1", [order.id]);
+    const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [order.id]);
+
     await client.query("COMMIT");
-    res.status(201).json(mapOrder(order, insertedItems));
+    res.status(201).json(mapOrder(finalOrderRows[0], insertedItems, paymentRows));
   } catch (err) {
     await client.query("ROLLBACK");
     res.status(400).json({ error: err.message });
@@ -805,81 +888,6 @@ app.post("/api/orders/register", async (req, res) => {
     client.release();
   }
 });
-
-const SEPARATION_DAYS = 15;
-
-const validatePaymentInput = ({ amount, source, operationNumber, proofImage }) => {
-  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
-    throw new Error("El monto del pago es inválido");
-  }
-  if (!source?.trim()) {
-    throw new Error("Selecciona el medio de pago");
-  }
-  if (!operationNumber?.trim()) {
-    throw new Error("Ingresa el número de operación");
-  }
-  if (!proofImage?.trim()) {
-    throw new Error("Sube la captura del pago");
-  }
-};
-
-// Registra el pago dentro de una transacción y recalcula el estado del
-// pedido sumando TODOS los pagos ya registrados contra el total: si lo
-// cubre pasa a "Pendiente de envío", si no a "Separación" (con un plazo de
-// 15 días calendario para cancelar, que se fija solo la primera vez que
-// entra a ese estado). Usa FOR UPDATE sobre el pedido para que dos pagos
-// registrados a la vez no pisen el estado calculado por el otro. Compartida
-// entre el registro desde el panel admin y el registro público (link de
-// registro de pedido), que solo difieren en quién queda como "registeredBy".
-const registerPaymentTx = async (orderId, { amount, source, operationNumber, proofImage, registeredBy }) => {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
-    const { rows: orderRows } = await client.query(
-      "SELECT id, total, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
-      [orderId]
-    );
-    if (orderRows.length === 0) {
-      throw new Error("El pedido no existe");
-    }
-    const order = orderRows[0];
-
-    await client.query(
-      `INSERT INTO payments (order_id, amount, source, operation_number, proof_image, registered_by)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [orderId, amount, source.trim(), operationNumber.trim(), proofImage.trim(), registeredBy]
-    );
-
-    const { rows: paidRows } = await client.query(
-      "SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE order_id = $1",
-      [orderId]
-    );
-    const paid = Number(paidRows[0].paid);
-    const total = Number(order.total);
-    const status = paid >= total ? "Pendiente de envío" : "Separación";
-    const separationDeadline =
-      status === "Separación"
-        ? order.separation_deadline ?? new Date(Date.now() + SEPARATION_DAYS * 24 * 60 * 60 * 1000)
-        : order.separation_deadline;
-
-    const { rows: updatedRows } = await client.query(
-      "UPDATE orders SET status = $1, separation_deadline = $2 WHERE id = $3 RETURNING *",
-      [status, separationDeadline, orderId]
-    );
-
-    const { rows: itemRows } = await client.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [orderId]);
-    const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [orderId]);
-
-    await client.query("COMMIT");
-    return mapOrder(updatedRows[0], itemRows, paymentRows);
-  } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
-  } finally {
-    client.release();
-  }
-};
 
 // Registro de pago desde el panel admin: queda atribuido al usuario logueado.
 app.post("/api/orders/:id/payments", requireAuth, async (req, res) => {
@@ -890,32 +898,6 @@ app.post("/api/orders/:id/payments", requireAuth, async (req, res) => {
   try {
     validatePaymentInput(req.body);
     const result = await registerPaymentTx(orderId, { ...req.body, registeredBy: req.user.sub });
-    res.status(201).json(result);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-// Registro de pago público: fuera del panel admin, desde el mismo link de
-// registro de pedido. En vez de un usuario logueado, se atribuye al
-// vendedor seleccionado en ese momento (debe existir y tener perfil
-// Vendedor, igual que al registrar el pedido).
-app.post("/api/orders/:id/payments/register", async (req, res) => {
-  const orderId = Number(req.params.id);
-  if (!Number.isInteger(orderId)) {
-    return res.status(400).json({ error: "Pedido inválido" });
-  }
-  const { sellerId } = req.body;
-  if (!Number.isInteger(sellerId)) {
-    return res.status(400).json({ error: "Selecciona el vendedor" });
-  }
-  try {
-    validatePaymentInput(req.body);
-    const { rows: sellerRows } = await pool.query("SELECT username FROM users WHERE id = $1 AND role = 'Vendedor'", [sellerId]);
-    if (sellerRows.length === 0) {
-      throw new Error("El vendedor no existe o ya no tiene ese perfil");
-    }
-    const result = await registerPaymentTx(orderId, { ...req.body, registeredBy: sellerRows[0].username });
     res.status(201).json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
