@@ -102,6 +102,17 @@ export const initSchema = async () => {
   // Dirección exacta, solo tiene sentido para los tipos de delivery
   // "motorizado" (Express y Delivery). Queda vacía para Shalom/Olva/Marvisur.
   await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS address TEXT NOT NULL DEFAULT '';`);
+  // El registro rápido de cliente desde Regularización de Separaciones no
+  // pide documento, así que puede haber varios clientes con document_number
+  // vacío — la UNIQUE (document_type, document_number) original chocaría
+  // entre ellos. Se reemplaza por un índice único parcial que solo exige
+  // unicidad cuando sí hay número de documento.
+  await pool.query(`ALTER TABLE customers DROP CONSTRAINT IF EXISTS customers_document_type_document_number_key;`);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS customers_document_unique
+    ON customers (document_type, document_number)
+    WHERE document_number <> '';
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS agencies (
       id SERIAL PRIMARY KEY,

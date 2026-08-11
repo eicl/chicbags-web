@@ -500,6 +500,39 @@ app.post("/api/customers/register", async (req, res) => {
   }
 });
 
+// Registro público de clientes, pero relajado: lo usa Regularización de
+// Separaciones, donde suele haber datos históricos incompletos. Solo exige
+// nombre y celular; el resto de campos queda opcional (se guardan vacíos si
+// no vienen). No lo usa el registro de cliente normal ni el panel admin,
+// que siguen pidiendo todos los campos vía validateCustomer/insertCustomer.
+app.post("/api/customers/register-minimal", async (req, res) => {
+  if (!req.body.firstName?.trim() || !req.body.mobile?.trim()) {
+    return res.status(400).json({ error: "Ingresa al menos el nombre y el celular" });
+  }
+  const body = {
+    documentType: (req.body.documentType || "").trim(),
+    documentNumber: (req.body.documentNumber || "").trim(),
+    firstName: req.body.firstName,
+    paternalSurname: req.body.paternalSurname || "",
+    maternalSurname: req.body.maternalSurname,
+    mobile: req.body.mobile,
+    department: (req.body.department || "").trim(),
+    province: (req.body.province || "").trim(),
+    district: req.body.district || "",
+    deliveryType: DELIVERY_TYPES.includes(req.body.deliveryType) ? req.body.deliveryType : "Motorizado Express",
+    deliveryMode: req.body.deliveryMode,
+    agency: req.body.agency,
+    address: req.body.address,
+  };
+  try {
+    const row = await insertCustomer(body);
+    res.status(201).json(mapCustomer(row));
+  } catch (err) {
+    if (err.code === "23505") return res.status(409).json({ error: "Ya existe un cliente con ese tipo y número de documento" });
+    throw err;
+  }
+});
+
 app.put("/api/customers/:id", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   const error = validateCustomer(req.body);

@@ -198,6 +198,18 @@ export const registerCustomer = (data: CustomerInput): Promise<Customer> =>
     body: JSON.stringify(data),
   }).then((res) => handle<Customer>(res));
 
+// Igual que registerCustomer, pero relajado: lo usa Regularización de
+// Separaciones, donde solo el nombre y el celular son obligatorios (el
+// resto queda vacío si no se llena).
+export const registerCustomerMinimal = (
+  data: Partial<CustomerInput> & { firstName: string; mobile: string }
+): Promise<Customer> =>
+  fetch(`${API_URL}/customers/register-minimal`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<Customer>(res));
+
 export const updateCustomer = (id: number, data: CustomerInput): Promise<Customer> =>
   fetch(`${API_URL}/customers/${id}`, {
     method: "PUT",

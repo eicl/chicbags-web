@@ -9,7 +9,7 @@ import Header from "@/components/Header";
 import { useProducts } from "@/context/ProductContext";
 import { Product, ProductColor } from "@/context/CartContext";
 import {
-  lookupCustomer, registerCustomer, fetchDistricts, fetchAgencies, registerRegularizedOrder, uploadPaymentProof,
+  lookupCustomer, registerCustomerMinimal, fetchDistricts, fetchAgencies, registerRegularizedOrder, uploadPaymentProof,
   fetchSellers, Customer, CustomerInput, DeliveryType, DeliveryMode, Order,
 } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
@@ -44,17 +44,12 @@ const emptyCustomerForm: CustomerInput = {
   address: "",
 };
 
+// A diferencia del registro de cliente normal, acá solo el nombre y el
+// celular son obligatorios — el resto es dato histórico que puede no
+// conocerse todavía (se completa después si hace falta).
 const REQUIRED_CUSTOMER_FIELD_LABELS: Record<string, string> = {
-  documentNumber: "Número de documento",
   firstName: "Nombres",
-  paternalSurname: "Apellido paterno",
   mobile: "Celular",
-  department: "Departamento",
-  province: "Provincia",
-  district: "Distrito",
-  deliveryMode: "Vía de envío (terrestre/aéreo)",
-  agency: "Sede",
-  address: "Dirección",
 };
 
 interface RegLine {
@@ -109,7 +104,7 @@ const OrderRegularization = () => {
   });
 
   const registerCustomerMutation = useMutation({
-    mutationFn: registerCustomer,
+    mutationFn: registerCustomerMinimal,
     onSuccess: (created) => {
       setCustomer(created);
       setShowNewCustomerForm(false);
@@ -123,10 +118,9 @@ const OrderRegularization = () => {
   const needsDeliveryMode = DELIVERY_MODE_REQUIRED.includes(customerForm.deliveryType);
   const needsAgency = AGENCY_REQUIRED.includes(customerForm.deliveryType);
   const needsAddress = ADDRESS_REQUIRED.includes(customerForm.deliveryType);
-  const canPickDeliveryType = Boolean(
-    customerForm.documentNumber.trim() && customerForm.firstName.trim() && customerForm.paternalSurname.trim() &&
-    customerForm.mobile.trim() && customerForm.department && customerForm.province && customerForm.district.trim()
-  );
+  // Acá solo nombre y celular son obligatorios, así que alcanza con esos dos
+  // para habilitar el tipo de delivery (el resto de campos es opcional).
+  const canPickDeliveryType = Boolean(customerForm.firstName.trim() && customerForm.mobile.trim());
 
   const { data: agencies = [] } = useQuery({
     queryKey: ["agencies", customerForm.deliveryType],
@@ -143,16 +137,8 @@ const OrderRegularization = () => {
 
   const getMissingCustomerFields = () => {
     const missing: string[] = [];
-    if (!customerForm.documentNumber.trim()) missing.push("documentNumber");
     if (!customerForm.firstName.trim()) missing.push("firstName");
-    if (!customerForm.paternalSurname.trim()) missing.push("paternalSurname");
     if (!customerForm.mobile.trim()) missing.push("mobile");
-    if (!customerForm.department) missing.push("department");
-    if (!customerForm.province) missing.push("province");
-    if (!customerForm.district.trim()) missing.push("district");
-    if (needsDeliveryMode && !customerForm.deliveryMode) missing.push("deliveryMode");
-    if (needsAgency && !customerForm.agency.trim()) missing.push("agency");
-    if (needsAddress && !customerForm.address.trim()) missing.push("address");
     return missing;
   };
 
@@ -498,12 +484,11 @@ const OrderRegularization = () => {
                   </select>
                 </div>
                 <div>
-                  <label className={errorLabelClass(hasCustomerError("documentNumber"))}>Número de documento *</label>
+                  <label className="text-sm text-muted-foreground mb-1 block">Número de documento</label>
                   <Input
                     value={customerForm.documentNumber}
                     onChange={(e) => setCustomerForm({ ...customerForm, documentNumber: e.target.value })}
                     placeholder="12345678"
-                    className={errorInputClass(hasCustomerError("documentNumber"))}
                   />
                 </div>
                 <div>
@@ -516,12 +501,11 @@ const OrderRegularization = () => {
                   />
                 </div>
                 <div>
-                  <label className={errorLabelClass(hasCustomerError("paternalSurname"))}>Apellido paterno *</label>
+                  <label className="text-sm text-muted-foreground mb-1 block">Apellido paterno</label>
                   <Input
                     value={customerForm.paternalSurname}
                     onChange={(e) => setCustomerForm({ ...customerForm, paternalSurname: e.target.value })}
                     placeholder="García"
-                    className={errorInputClass(hasCustomerError("paternalSurname"))}
                   />
                 </div>
                 <div>
@@ -542,14 +526,11 @@ const OrderRegularization = () => {
                   />
                 </div>
                 <div>
-                  <label className={errorLabelClass(hasCustomerError("department"))}>Departamento *</label>
+                  <label className="text-sm text-muted-foreground mb-1 block">Departamento</label>
                   <select
                     value={customerForm.department}
                     onChange={(e) => setCustomerForm({ ...customerForm, department: e.target.value, province: "", district: "" })}
-                    className={cn(
-                      "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                      errorInputClass(hasCustomerError("department"))
-                    )}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
                     <option value="">Selecciona...</option>
                     {PERU_DEPARTMENTS.map((d) => (
@@ -558,15 +539,12 @@ const OrderRegularization = () => {
                   </select>
                 </div>
                 <div>
-                  <label className={errorLabelClass(hasCustomerError("province"))}>Provincia *</label>
+                  <label className="text-sm text-muted-foreground mb-1 block">Provincia</label>
                   <select
                     value={customerForm.province}
                     onChange={(e) => setCustomerForm({ ...customerForm, province: e.target.value, district: "" })}
                     disabled={!customerForm.department}
-                    className={cn(
-                      "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-                      errorInputClass(hasCustomerError("province"))
-                    )}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <option value="">Selecciona...</option>
                     {provinces.map((p) => (
@@ -575,15 +553,12 @@ const OrderRegularization = () => {
                   </select>
                 </div>
                 <div>
-                  <label className={errorLabelClass(hasCustomerError("district"))}>Distrito *</label>
+                  <label className="text-sm text-muted-foreground mb-1 block">Distrito</label>
                   <select
                     value={customerForm.district}
                     onChange={(e) => setCustomerForm({ ...customerForm, district: e.target.value })}
                     disabled={!customerForm.province}
-                    className={cn(
-                      "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-                      errorInputClass(hasCustomerError("district"))
-                    )}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <option value="">{customerForm.province ? "Selecciona..." : "Elige antes la provincia"}</option>
                     {districts.map((d) => (
@@ -593,9 +568,9 @@ const OrderRegularization = () => {
                 </div>
                 <div>
                   <label className="text-sm text-muted-foreground mb-1 block">
-                    Tipo de delivery *
+                    Tipo de delivery
                     {!canPickDeliveryType && (
-                      <span className="text-xs font-normal text-destructive"> — completa los datos anteriores primero</span>
+                      <span className="text-xs font-normal text-destructive"> — completa nombre y celular primero</span>
                     )}
                   </label>
                   <select
@@ -618,18 +593,17 @@ const OrderRegularization = () => {
                 </div>
                 {needsAddress && (
                   <div className="md:col-span-2">
-                    <label className={errorLabelClass(hasCustomerError("address"))}>Dirección de entrega *</label>
+                    <label className="text-sm text-muted-foreground mb-1 block">Dirección de entrega</label>
                     <Input
                       value={customerForm.address}
                       onChange={(e) => setCustomerForm({ ...customerForm, address: e.target.value })}
                       placeholder="Av. / Jr. / Calle, número, referencia..."
-                      className={errorInputClass(hasCustomerError("address"))}
                     />
                   </div>
                 )}
                 {needsDeliveryMode && (
                   <div>
-                    <label className={errorLabelClass(hasCustomerError("deliveryMode"))}>Vía de envío *</label>
+                    <label className="text-sm text-muted-foreground mb-1 block">Vía de envío</label>
                     <div className="flex gap-2 h-10 items-center">
                       {DELIVERY_MODES.map((mode) => (
                         <button
@@ -640,8 +614,6 @@ const OrderRegularization = () => {
                             "px-4 py-2 rounded-md border text-sm transition-colors",
                             customerForm.deliveryMode === mode
                               ? "border-primary bg-primary/10 text-foreground"
-                              : hasCustomerError("deliveryMode")
-                              ? "border-destructive text-muted-foreground"
                               : "border-input text-muted-foreground hover:border-muted-foreground/50"
                           )}
                         >
@@ -657,7 +629,7 @@ const OrderRegularization = () => {
                       agencies={agencies}
                       value={customerForm.agency}
                       onChange={(agency) => setCustomerForm({ ...customerForm, agency })}
-                      hasError={hasCustomerError("agency")}
+                      hasError={false}
                       province={customerForm.province}
                       district={customerForm.district}
                     />
