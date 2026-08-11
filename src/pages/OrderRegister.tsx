@@ -20,6 +20,9 @@ interface OrderLine {
 
 const lineKey = (productId: number, colorName: string) => `${productId}::${colorName}`;
 
+const formatDateTime = (iso: string) =>
+  new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
+
 // Lleva la conversación de WhatsApp al celular del cliente con el número
 // de pedido y el resumen ya redactados — solo falta darle Enviar.
 const buildOrderWhatsAppLink = (order: Order, customer: Customer) => {
@@ -31,7 +34,7 @@ const buildOrderWhatsAppLink = (order: Order, customer: Customer) => {
       return `- ${item.productName}${code} (${item.colorName}) x${item.quantity}: S/.${item.subtotal.toFixed(2)}`;
     })
     .join("\n");
-  const message = `Hola ${customer.firstName}, tu pedido #${order.id} fue registrado:\n\n${itemsText}\n\nTotal: S/.${order.total.toFixed(2)}`;
+  const message = `Hola ${customer.firstName}, tu pedido #${order.id} fue registrado el ${formatDateTime(order.createdAt)}:\n\n${itemsText}\n\nTotal: S/.${order.total.toFixed(2)}`;
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 };
 
@@ -166,6 +169,7 @@ const OrderRegister = () => {
           <span className="inline-block px-4 py-2 rounded-md bg-primary/10 text-primary font-semibold text-lg tracking-wide">
             Pedido #{order.id}
           </span>
+          <p className="text-sm text-muted-foreground -mt-4">Registrado el {formatDateTime(order.createdAt)}</p>
           <div className="w-full border border-border rounded-lg p-4 text-left space-y-2">
             {order.items.map((item) => (
               <div key={item.id} className="flex justify-between text-sm">
