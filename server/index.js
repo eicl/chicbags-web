@@ -130,6 +130,14 @@ app.post("/api/upload", requireAuth, upload.single("image"), (req, res) => {
   res.json({ filename: req.file.filename });
 });
 
+// Sin requireAuth: el registro de pagos también se hace desde el link
+// público de registro de pedido, así que la captura del pago debe poder
+// subirse sin sesión de admin.
+app.post("/api/upload-payment-proof", upload.single("image"), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "No se recibió ninguna imagen" });
+  res.json({ filename: req.file.filename });
+});
+
 const uploadVideo = multer({
   storage,
   limits: { fileSize: 50 * 1024 * 1024 },
@@ -800,31 +808,30 @@ app.post("/api/orders/register", async (req, res) => {
 
 const SEPARATION_DAYS = 15;
 
-// Registra un pago de un pedido (desde el panel admin). El estado del pedido
-// se recalcula sumando TODOS los pagos ya registrados contra el total: si lo
+const validatePaymentInput = ({ amount, source, operationNumber, proofImage }) => {
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+    throw new Error("El monto del pago es inválido");
+  }
+  if (!source?.trim()) {
+    throw new Error("Selecciona el medio de pago");
+  }
+  if (!operationNumber?.trim()) {
+    throw new Error("Ingresa el número de operación");
+  }
+  if (!proofImage?.trim()) {
+    throw new Error("Sube la captura del pago");
+  }
+};
+
+// Registra el pago dentro de una transacción y recalcula el estado del
+// pedido sumando TODOS los pagos ya registrados contra el total: si lo
 // cubre pasa a "Pendiente de envío", si no a "Separación" (con un plazo de
 // 15 días calendario para cancelar, que se fija solo la primera vez que
 // entra a ese estado). Usa FOR UPDATE sobre el pedido para que dos pagos
-// registrados a la vez no pisen el estado calculado por el otro.
-app.post("/api/orders/:id/payments", requireAuth, async (req, res) => {
-  const orderId = Number(req.params.id);
-  if (!Number.isInteger(orderId)) {
-    return res.status(400).json({ error: "Pedido inválido" });
-  }
-  const { amount, source, operationNumber, proofImage } = req.body;
-  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
-    return res.status(400).json({ error: "El monto del pago es inválido" });
-  }
-  if (!source?.trim()) {
-    return res.status(400).json({ error: "Selecciona el medio de pago" });
-  }
-  if (!operationNumber?.trim()) {
-    return res.status(400).json({ error: "Ingresa el número de operación" });
-  }
-  if (!proofImage?.trim()) {
-    return res.status(400).json({ error: "Sube la captura del pago" });
-  }
-
+// registrados a la vez no pisen el estado calculado por el otro. Compartida
+// entre el registro desde el panel admin y el registro público (link de
+// registro de pedido), que solo difieren en quién queda como "registeredBy".
+const registerPaymentTx = async (orderId, { amount, source, operationNumber, proofImage, registeredBy }) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -841,7 +848,7 @@ app.post("/api/orders/:id/payments", requireAuth, async (req, res) => {
     await client.query(
       `INSERT INTO payments (order_id, amount, source, operation_number, proof_image, registered_by)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [orderId, amount, source.trim(), operationNumber.trim(), proofImage.trim(), req.user.sub]
+      [orderId, amount, source.trim(), operationNumber.trim(), proofImage.trim(), registeredBy]
     );
 
     const { rows: paidRows } = await client.query(
@@ -865,12 +872,53 @@ app.post("/api/orders/:id/payments", requireAuth, async (req, res) => {
     const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [orderId]);
 
     await client.query("COMMIT");
-    res.status(201).json(mapOrder(updatedRows[0], itemRows, paymentRows));
+    return mapOrder(updatedRows[0], itemRows, paymentRows);
   } catch (err) {
     await client.query("ROLLBACK");
-    res.status(400).json({ error: err.message });
+    throw err;
   } finally {
     client.release();
+  }
+};
+
+// Registro de pago desde el panel admin: queda atribuido al usuario logueado.
+app.post("/api/orders/:id/payments", requireAuth, async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!Number.isInteger(orderId)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  try {
+    validatePaymentInput(req.body);
+    const result = await registerPaymentTx(orderId, { ...req.body, registeredBy: req.user.sub });
+    res.status(201).json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Registro de pago público: fuera del panel admin, desde el mismo link de
+// registro de pedido. En vez de un usuario logueado, se atribuye al
+// vendedor seleccionado en ese momento (debe existir y tener perfil
+// Vendedor, igual que al registrar el pedido).
+app.post("/api/orders/:id/payments/register", async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!Number.isInteger(orderId)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  const { sellerId } = req.body;
+  if (!Number.isInteger(sellerId)) {
+    return res.status(400).json({ error: "Selecciona el vendedor" });
+  }
+  try {
+    validatePaymentInput(req.body);
+    const { rows: sellerRows } = await pool.query("SELECT username FROM users WHERE id = $1 AND role = 'Vendedor'", [sellerId]);
+    if (sellerRows.length === 0) {
+      throw new Error("El vendedor no existe o ya no tiene ese perfil");
+    }
+    const result = await registerPaymentTx(orderId, { ...req.body, registeredBy: sellerRows[0].username });
+    res.status(201).json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

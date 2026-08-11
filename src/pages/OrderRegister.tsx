@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { CheckCircle2, Minus, MessageCircle, Plus, Search, Trash2, X } from "lucide-react";
+import { CheckCircle2, Loader2, Minus, MessageCircle, Plus, Search, Trash2, Upload, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import Header from "@/components/Header";
 import { useProducts } from "@/context/ProductContext";
 import { Product, ProductColor } from "@/context/CartContext";
-import { lookupCustomer, registerOrder, fetchSellers, Customer, Order } from "@/lib/api";
+import { lookupCustomer, registerOrder, registerPublicPayment, uploadPaymentProof, fetchSellers, Customer, Order } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import ProductOrderPicker from "@/components/ProductOrderPicker";
+
+const PAYMENT_SOURCES = ["Yape", "Plin", "Otro"];
 
 interface OrderLine {
   product: Product;
@@ -57,6 +59,13 @@ const OrderRegister = () => {
   const [lines, setLines] = useState<OrderLine[]>([]);
   const [order, setOrder] = useState<Order | null>(null);
 
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentSource, setPaymentSource] = useState(PAYMENT_SOURCES[0]);
+  const [paymentSourceOther, setPaymentSourceOther] = useState("");
+  const [paymentOperationNumber, setPaymentOperationNumber] = useState("");
+  const [paymentProofImage, setPaymentProofImage] = useState("");
+  const [paymentUploading, setPaymentUploading] = useState(false);
+
   const { data: sellers = [] } = useQuery({ queryKey: ["sellers"], queryFn: fetchSellers });
 
   const lookupMutation = useMutation({
@@ -87,6 +96,60 @@ const OrderRegister = () => {
     },
     onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo registrar el pedido"),
   });
+
+  const paymentMutation = useMutation({
+    mutationFn: (data: { amount: number; source: string; operationNumber: string; proofImage: string }) =>
+      registerPublicPayment(order!.id, { ...data, sellerId: Number(sellerId) }),
+    onSuccess: (updated) => {
+      setOrder(updated);
+      toast.success("Pago registrado");
+      setPaymentAmount("");
+      setPaymentSource(PAYMENT_SOURCES[0]);
+      setPaymentSourceOther("");
+      setPaymentOperationNumber("");
+      setPaymentProofImage("");
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo registrar el pago"),
+  });
+
+  const handleUploadProof = async (file: File) => {
+    setPaymentUploading(true);
+    try {
+      const { filename } = await uploadPaymentProof(file);
+      setPaymentProofImage(filename);
+    } catch {
+      toast.error("No se pudo subir la captura");
+    } finally {
+      setPaymentUploading(false);
+    }
+  };
+
+  const handleRegisterPayment = () => {
+    const amountNumber = Number(paymentAmount);
+    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+      toast.error("Ingresa un monto válido");
+      return;
+    }
+    const finalSource = paymentSource === "Otro" ? paymentSourceOther.trim() : paymentSource;
+    if (!finalSource) {
+      toast.error("Ingresa el medio de pago");
+      return;
+    }
+    if (!paymentOperationNumber.trim()) {
+      toast.error("Ingresa el número de operación");
+      return;
+    }
+    if (!paymentProofImage) {
+      toast.error("Sube la captura del pago");
+      return;
+    }
+    paymentMutation.mutate({
+      amount: amountNumber,
+      source: finalSource,
+      operationNumber: paymentOperationNumber.trim(),
+      proofImage: paymentProofImage,
+    });
+  };
 
   const handleLookup = () => {
     if (!code.trim() && !documentNumber.trim()) {
@@ -212,6 +275,87 @@ const OrderRegister = () => {
               <span>S/.{order.total.toFixed(2)}</span>
             </div>
           </div>
+
+          {order.payments.length > 0 && (
+            <div className="w-full border border-border rounded-lg p-4 text-left space-y-2">
+              <h2 className="text-sm font-medium">Pagos registrados</h2>
+              {order.payments.map((payment) => (
+                <div key={payment.id} className="flex justify-between text-sm text-muted-foreground">
+                  <span>{payment.source} · {payment.operationNumber} · {formatDateTime(payment.createdAt)}</span>
+                  <span className="font-medium text-foreground">S/.{payment.amount.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="w-full border border-border rounded-lg p-4 text-left space-y-3">
+            <h2 className="text-sm font-medium">Registrar pago</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Monto</label>
+                <Input
+                  type="number"
+                  min={0}
+                  step={0.1}
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="h-9"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Medio de pago</label>
+                <select
+                  value={paymentSource}
+                  onChange={(e) => setPaymentSource(e.target.value)}
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  {PAYMENT_SOURCES.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+              {paymentSource === "Otro" && (
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">¿Cuál?</label>
+                  <Input value={paymentSourceOther} onChange={(e) => setPaymentSourceOther(e.target.value)} placeholder="Medio de pago" className="h-9" />
+                </div>
+              )}
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">N° de operación</label>
+                <Input value={paymentOperationNumber} onChange={(e) => setPaymentOperationNumber(e.target.value)} placeholder="Ej. 123456" className="h-9" />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Captura del pago</label>
+                <label className="flex items-center justify-center gap-2 h-9 px-3 rounded-md border border-input text-sm cursor-pointer hover:bg-muted/50">
+                  {paymentUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                  {paymentProofImage ? "Cambiar" : "Subir"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleUploadProof(file);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+            {paymentProofImage && (
+              <img src={productImageUrl(paymentProofImage)} alt="Captura del pago" className="w-16 h-16 rounded object-cover border border-border" />
+            )}
+            <Button
+              size="sm"
+              onClick={handleRegisterPayment}
+              disabled={paymentMutation.isPending || paymentUploading}
+              className="w-full sm:w-auto"
+            >
+              {paymentMutation.isPending ? "Registrando..." : "Registrar pago"}
+            </Button>
+          </div>
+
           {customer && (
             <a
               href={buildOrderWhatsAppLink(order, customer)}

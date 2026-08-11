@@ -298,6 +298,26 @@ export interface Seller {
 export const fetchSellers = (): Promise<Seller[]> =>
   fetch(`${API_URL}/sellers`).then((res) => handle<Seller[]>(res));
 
+// Registro público de pagos: igual que registerPayment, pero desde el link
+// de registro de pedido (sin sesión admin), atribuido al vendedor elegido.
+export const registerPublicPayment = (
+  orderId: number,
+  data: { amount: number; source: string; operationNumber: string; proofImage: string; sellerId: number }
+): Promise<Order> =>
+  fetch(`${API_URL}/orders/${orderId}/payments/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<Order>(res));
+
+export const uploadPaymentProof = (file: File): Promise<{ filename: string }> => {
+  const formData = new FormData();
+  formData.append("image", file);
+  return fetch(`${API_URL}/upload-payment-proof`, { method: "POST", body: formData }).then((res) =>
+    handle<{ filename: string }>(res)
+  );
+};
+
 export const createProduct = (product: Omit<Product, "id">): Promise<Product> =>
   fetch(`${API_URL}/products`, {
     method: "POST",
