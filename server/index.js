@@ -386,6 +386,13 @@ app.delete("/api/users/:id", requireAuth, async (req, res) => {
   res.status(204).end();
 });
 
+// Lista pública de vendedores (solo id + usuario, nada sensible): la usa
+// el registro de pedidos fuera del panel admin para elegir quién lo tomó.
+app.get("/api/sellers", async (req, res) => {
+  const { rows } = await pool.query("SELECT id, username FROM users WHERE role = 'Vendedor' ORDER BY username");
+  res.json(rows);
+});
+
 const DELIVERY_TYPES = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Olva", "Marvisur"];
 const DELIVERY_MODE_REQUIRED = ["Shalom", "Olva"];
 const DELIVERY_MODES = ["Terrestre", "Aéreo"];
@@ -593,6 +600,7 @@ app.delete("/api/products/:id", requireAuth, async (req, res) => {
 const mapOrder = (order, items) => ({
   id: order.id,
   customerId: order.customer_id,
+  sellerId: order.seller_id,
   total: Number(order.total),
   createdAt: order.created_at,
   items: items.map((i) => ({
@@ -609,8 +617,9 @@ const mapOrder = (order, items) => ({
 app.get("/api/orders", requireAuth, async (req, res) => {
   const { rows } = await pool.query(`
     SELECT
-      o.id, o.customer_id, o.total, o.created_at,
+      o.id, o.customer_id, o.seller_id, o.total, o.created_at,
       c.first_name, c.paternal_surname, c.maternal_surname, c.document_type, c.document_number, c.mobile,
+      u.username AS seller_username,
       COALESCE(
         json_agg(
           json_build_object(
@@ -622,8 +631,9 @@ app.get("/api/orders", requireAuth, async (req, res) => {
       ) AS items
     FROM orders o
     JOIN customers c ON c.id = o.customer_id
+    LEFT JOIN users u ON u.id = o.seller_id
     LEFT JOIN order_items oi ON oi.order_id = o.id
-    GROUP BY o.id, c.first_name, c.paternal_surname, c.maternal_surname, c.document_type, c.document_number, c.mobile
+    GROUP BY o.id, c.first_name, c.paternal_surname, c.maternal_surname, c.document_type, c.document_number, c.mobile, u.username
     ORDER BY o.id DESC
   `);
   res.json(
@@ -633,6 +643,8 @@ app.get("/api/orders", requireAuth, async (req, res) => {
       customerName: [row.first_name, row.paternal_surname, row.maternal_surname].filter(Boolean).join(" "),
       customerDocument: `${row.document_type} ${row.document_number}`,
       customerMobile: row.mobile,
+      sellerId: row.seller_id,
+      sellerName: row.seller_username ?? "",
       total: Number(row.total),
       createdAt: row.created_at,
       items: row.items.map((i) => ({ ...i, unitPrice: Number(i.unitPrice), subtotal: Number(i.subtotal) })),
@@ -645,9 +657,12 @@ app.get("/api/orders", requireAuth, async (req, res) => {
 // evitar que dos pedidos a la vez vendan el mismo stock), lo descuenta y
 // recién ahí crea el pedido — si algo falla, no se descuenta nada.
 app.post("/api/orders/register", async (req, res) => {
-  const { customerId, items } = req.body;
+  const { customerId, sellerId, items } = req.body;
   if (!Number.isInteger(customerId)) {
     return res.status(400).json({ error: "Cliente inválido" });
+  }
+  if (!Number.isInteger(sellerId)) {
+    return res.status(400).json({ error: "Selecciona el vendedor" });
   }
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "El pedido no tiene productos" });
@@ -665,6 +680,11 @@ app.post("/api/orders/register", async (req, res) => {
     const { rows: customerRows } = await client.query("SELECT id FROM customers WHERE id = $1", [customerId]);
     if (customerRows.length === 0) {
       throw new Error("El cliente no existe");
+    }
+
+    const { rows: sellerRows } = await client.query("SELECT id FROM users WHERE id = $1 AND role = 'Vendedor'", [sellerId]);
+    if (sellerRows.length === 0) {
+      throw new Error("El vendedor no existe o ya no tiene ese perfil");
     }
 
     const lineItems = [];
@@ -705,8 +725,8 @@ app.post("/api/orders/register", async (req, res) => {
     }
 
     const { rows: orderRows } = await client.query(
-      "INSERT INTO orders (customer_id, total) VALUES ($1, $2) RETURNING *",
-      [customerId, total]
+      "INSERT INTO orders (customer_id, seller_id, total) VALUES ($1, $2, $3) RETURNING *",
+      [customerId, sellerId, total]
     );
     const order = orderRows[0];
 

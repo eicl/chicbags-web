@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { CheckCircle2, Minus, MessageCircle, Plus, Search, Trash2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import Header from "@/components/Header";
 import { useProducts } from "@/context/ProductContext";
 import { Product, ProductColor } from "@/context/CartContext";
-import { lookupCustomer, registerOrder, Customer, Order } from "@/lib/api";
+import { lookupCustomer, registerOrder, fetchSellers, Customer, Order } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
 import ProductOrderPicker from "@/components/ProductOrderPicker";
 
@@ -40,8 +40,11 @@ const OrderRegister = () => {
   const [code, setCode] = useState("");
   const [documentNumber, setDocumentNumber] = useState("");
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const [sellerId, setSellerId] = useState("");
   const [lines, setLines] = useState<OrderLine[]>([]);
   const [order, setOrder] = useState<Order | null>(null);
+
+  const { data: sellers = [] } = useQuery({ queryKey: ["sellers"], queryFn: fetchSellers });
 
   const lookupMutation = useMutation({
     mutationFn: lookupCustomer,
@@ -128,12 +131,17 @@ const OrderRegister = () => {
       toast.error("Busca un cliente primero");
       return;
     }
+    if (!sellerId) {
+      toast.error("Selecciona el vendedor");
+      return;
+    }
     if (lines.length === 0) {
       toast.error("Agrega al menos un producto al pedido");
       return;
     }
     orderMutation.mutate({
       customerId: customer.id,
+      sellerId: Number(sellerId),
       items: lines.map((l) => ({ productId: l.product.id, colorName: l.color.name, quantity: l.quantity })),
     });
   };
@@ -249,6 +257,30 @@ const OrderRegister = () => {
         {customer && (
           <>
             <div className="border border-border rounded-lg p-6 mb-6">
+              <h2 className="text-lg font-medium mb-4" style={{ fontFamily: "var(--font-display)" }}>Vendedor</h2>
+              {sellers.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No hay usuarios con perfil Vendedor todavía. Créalos en{" "}
+                  <Link to="/admin" className="text-primary hover:underline">Admin &gt; Usuarios</Link>.
+                </p>
+              ) : (
+                <div className="max-w-xs">
+                  <label className="text-sm text-muted-foreground mb-1 block">¿Quién está registrando el pedido? *</label>
+                  <select
+                    value={sellerId}
+                    onChange={(e) => setSellerId(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    <option value="">Selecciona...</option>
+                    {sellers.map((seller) => (
+                      <option key={seller.id} value={seller.id}>{seller.username}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <div className="border border-border rounded-lg p-6 mb-6">
               <h2 className="text-lg font-medium mb-4" style={{ fontFamily: "var(--font-display)" }}>Agregar productos</h2>
               <ProductOrderPicker products={products} onAdd={handleAdd} />
             </div>
@@ -300,7 +332,7 @@ const OrderRegister = () => {
 
             <Button
               onClick={handleSubmit}
-              disabled={orderMutation.isPending || lines.length === 0}
+              disabled={orderMutation.isPending || lines.length === 0 || !sellerId}
               className="w-full py-6 text-sm tracking-widest uppercase gap-2"
             >
               {orderMutation.isPending ? "Registrando..." : "Registrar pedido"}

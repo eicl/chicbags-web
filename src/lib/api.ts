@@ -222,6 +222,7 @@ export interface OrderItem {
 export interface Order {
   id: number;
   customerId: number;
+  sellerId: number;
   total: number;
   createdAt: string;
   items: OrderItem[];
@@ -235,7 +236,7 @@ export interface OrderItemInput {
 
 // Registro público de pedidos (fuera del panel admin): valida stock,
 // lo descuenta por color y crea el pedido, todo en el servidor.
-export const registerOrder = (data: { customerId: number; items: OrderItemInput[] }): Promise<Order> =>
+export const registerOrder = (data: { customerId: number; sellerId: number; items: OrderItemInput[] }): Promise<Order> =>
   fetch(`${API_URL}/orders/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -246,10 +247,21 @@ export interface AdminOrder extends Order {
   customerName: string;
   customerDocument: string;
   customerMobile: string;
+  sellerName: string;
 }
 
 export const fetchOrders = (): Promise<AdminOrder[]> =>
   fetch(`${API_URL}/orders`, { credentials: "include" }).then((res) => handle<AdminOrder[]>(res));
+
+// Lista pública de vendedores (usuarios con perfil Vendedor), para el
+// registro de pedidos fuera del panel admin.
+export interface Seller {
+  id: number;
+  username: string;
+}
+
+export const fetchSellers = (): Promise<Seller[]> =>
+  fetch(`${API_URL}/sellers`).then((res) => handle<Seller[]>(res));
 
 export const createProduct = (product: Omit<Product, "id">): Promise<Product> =>
   fetch(`${API_URL}/products`, {

@@ -21,6 +21,7 @@ const AdminOrders = () => {
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Cliente</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Documento</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Celular</th>
+                <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Vendedor</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Productos</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Total</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Fecha</th>
@@ -43,6 +44,7 @@ const AdminOrders = () => {
                       </td>
                       <td className="py-3 px-4 text-muted-foreground text-sm">{order.customerDocument}</td>
                       <td className="py-3 px-4 text-muted-foreground text-sm">{order.customerMobile}</td>
+                      <td className="py-3 px-4 text-muted-foreground text-sm">{order.sellerName || "—"}</td>
                       <td className="py-3 px-4 text-muted-foreground text-sm">
                         {order.items.length} {order.items.length === 1 ? "producto" : "productos"}
                       </td>
@@ -58,7 +60,7 @@ const AdminOrders = () => {
                     </tr>
                     {isExpanded && (
                       <tr key={`${order.id}-detail`} className="border-b border-border last:border-0 bg-muted/20">
-                        <td colSpan={8} className="px-4 py-3">
+                        <td colSpan={9} className="px-4 py-3">
                           <table className="w-full text-sm">
                             <thead>
                               <tr className="text-xs uppercase tracking-widest text-muted-foreground">
@@ -89,17 +91,17 @@ const AdminOrders = () => {
               })}
               {isLoading && (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-muted-foreground">Cargando pedidos...</td>
+                  <td colSpan={9} className="py-12 text-center text-muted-foreground">Cargando pedidos...</td>
                 </tr>
               )}
               {isError && (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
+                  <td colSpan={9} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
                 </tr>
               )}
               {!isLoading && !isError && orders.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-muted-foreground">No hay pedidos registrados.</td>
+                  <td colSpan={9} className="py-12 text-center text-muted-foreground">No hay pedidos registrados.</td>
                 </tr>
               )}
             </tbody>

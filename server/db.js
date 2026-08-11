@@ -142,10 +142,13 @@ export const initSchema = async () => {
     CREATE TABLE IF NOT EXISTS orders (
       id SERIAL PRIMARY KEY,
       customer_id INTEGER NOT NULL REFERENCES customers(id),
+      seller_id INTEGER REFERENCES users(id),
       total NUMERIC NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+  // Vendedor (usuario con perfil "Vendedor") que registró el pedido.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS seller_id INTEGER REFERENCES users(id);`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS order_items (
       id SERIAL PRIMARY KEY,
