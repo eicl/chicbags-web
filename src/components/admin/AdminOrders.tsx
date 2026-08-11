@@ -1,7 +1,7 @@
 import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp, MessageCircle, Loader2, Upload } from "lucide-react";
-import { AdminOrder, OrderStatus, fetchOrders, registerPayment, uploadImage } from "@/lib/api";
+import { AdminOrder, OrderStatus, PaymentInput, fetchOrders, registerPayment, uploadImage } from "@/lib/api";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import { productImageUrl } from "@/lib/images";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,8 @@ import { toast } from "sonner";
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
+
+const todayDate = () => new Date().toISOString().slice(0, 10);
 
 const PAYMENT_SOURCES = ["Yape", "Plin", "Otro"];
 
@@ -33,20 +35,19 @@ const PaymentForm = ({ orderId }: { orderId: number }) => {
   const [amount, setAmount] = useState("");
   const [source, setSource] = useState(PAYMENT_SOURCES[0]);
   const [sourceOther, setSourceOther] = useState("");
-  const [operationNumber, setOperationNumber] = useState("");
+  const [date, setDate] = useState(todayDate);
   const [proofImage, setProofImage] = useState("");
   const [uploading, setUploading] = useState(false);
 
   const paymentMutation = useMutation({
-    mutationFn: (data: { amount: number; source: string; operationNumber: string; proofImage: string }) =>
-      registerPayment(orderId, data),
+    mutationFn: (data: PaymentInput) => registerPayment(orderId, data),
     onSuccess: () => {
       toast.success("Pago registrado");
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       setAmount("");
       setSource(PAYMENT_SOURCES[0]);
       setSourceOther("");
-      setOperationNumber("");
+      setDate(todayDate());
       setProofImage("");
     },
     onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo registrar el pago"),
@@ -75,15 +76,11 @@ const PaymentForm = ({ orderId }: { orderId: number }) => {
       toast.error("Ingresa el medio de pago");
       return;
     }
-    if (!operationNumber.trim()) {
-      toast.error("Ingresa el número de operación");
-      return;
-    }
     if (!proofImage) {
       toast.error("Sube la captura del pago");
       return;
     }
-    paymentMutation.mutate({ amount: amountNumber, source: finalSource, operationNumber: operationNumber.trim(), proofImage });
+    paymentMutation.mutate({ amount: amountNumber, source: finalSource, date, proofImage });
   };
 
   return (
@@ -119,8 +116,8 @@ const PaymentForm = ({ orderId }: { orderId: number }) => {
         </div>
       )}
       <div>
-        <label className="block text-xs text-muted-foreground mb-1">N° de operación</label>
-        <Input value={operationNumber} onChange={(e) => setOperationNumber(e.target.value)} placeholder="Ej. 123456" className="h-9 w-32" />
+        <label className="block text-xs text-muted-foreground mb-1">Fecha del pago</label>
+        <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-9" />
       </div>
       <div>
         <label className="block text-xs text-muted-foreground mb-1">Captura del pago</label>
@@ -255,7 +252,6 @@ const AdminOrders = () => {
                                   <tr className="text-xs uppercase tracking-widest text-muted-foreground">
                                     <th className="text-left py-1.5 font-medium">Fecha</th>
                                     <th className="text-left py-1.5 font-medium">Medio</th>
-                                    <th className="text-left py-1.5 font-medium">N° operación</th>
                                     <th className="text-left py-1.5 font-medium">Registrado por</th>
                                     <th className="text-left py-1.5 font-medium">Captura</th>
                                     <th className="text-right py-1.5 font-medium">Monto</th>
@@ -266,7 +262,6 @@ const AdminOrders = () => {
                                     <tr key={payment.id}>
                                       <td className="py-1.5 text-muted-foreground">{formatDate(payment.createdAt)}</td>
                                       <td className="py-1.5">{payment.source}</td>
-                                      <td className="py-1.5 text-muted-foreground">{payment.operationNumber}</td>
                                       <td className="py-1.5 text-muted-foreground">{payment.registeredBy}</td>
                                       <td className="py-1.5">
                                         {payment.proofImage && (

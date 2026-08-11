@@ -31,6 +31,8 @@ const clampDiscount = (value: number) => Math.min(Math.max(value, 0), MAX_ITEM_D
 const formatDateTime = (iso: string) =>
   new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
 
+const todayDate = () => new Date().toISOString().slice(0, 10);
+
 // Lleva la conversación de WhatsApp al celular del cliente con el número
 // de pedido y el resumen ya redactados — solo falta darle Enviar.
 const buildOrderWhatsAppLink = (order: Order, customer: Customer) => {
@@ -62,7 +64,7 @@ const OrderRegister = () => {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentSource, setPaymentSource] = useState(PAYMENT_SOURCES[0]);
   const [paymentSourceOther, setPaymentSourceOther] = useState("");
-  const [paymentOperationNumber, setPaymentOperationNumber] = useState("");
+  const [paymentDate, setPaymentDate] = useState(todayDate);
   const [paymentProofImage, setPaymentProofImage] = useState("");
   const [paymentUploading, setPaymentUploading] = useState(false);
 
@@ -95,7 +97,7 @@ const OrderRegister = () => {
       setPaymentAmount("");
       setPaymentSource(PAYMENT_SOURCES[0]);
       setPaymentSourceOther("");
-      setPaymentOperationNumber("");
+      setPaymentDate(todayDate());
       setPaymentProofImage("");
       queryClient.invalidateQueries({ queryKey: ["products"] });
     },
@@ -177,7 +179,6 @@ const OrderRegister = () => {
   // pasan a ser obligatorios — no tendría sentido un pago a medio llenar.
   const hasPaymentInput =
     paymentAmount.trim() !== "" ||
-    paymentOperationNumber.trim() !== "" ||
     paymentProofImage !== "" ||
     (paymentSource === "Otro" && paymentSourceOther.trim() !== "");
 
@@ -195,7 +196,7 @@ const OrderRegister = () => {
       return;
     }
 
-    let payment: { amount: number; source: string; operationNumber: string; proofImage: string } | undefined;
+    let payment: { amount: number; source: string; date: string; proofImage: string } | undefined;
     if (hasPaymentInput) {
       const amountNumber = Number(paymentAmount);
       if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
@@ -207,15 +208,11 @@ const OrderRegister = () => {
         toast.error("Ingresa el medio de pago");
         return;
       }
-      if (!paymentOperationNumber.trim()) {
-        toast.error("Ingresa el número de operación del pago");
-        return;
-      }
       if (!paymentProofImage) {
         toast.error("Sube la captura del pago");
         return;
       }
-      payment = { amount: amountNumber, source: finalSource, operationNumber: paymentOperationNumber.trim(), proofImage: paymentProofImage };
+      payment = { amount: amountNumber, source: finalSource, date: paymentDate, proofImage: paymentProofImage };
     }
 
     orderMutation.mutate({
@@ -278,7 +275,7 @@ const OrderRegister = () => {
               <h2 className="text-sm font-medium">Pagos registrados</h2>
               {order.payments.map((payment) => (
                 <div key={payment.id} className="flex justify-between text-sm text-muted-foreground">
-                  <span>{payment.source} · {payment.operationNumber} · {formatDateTime(payment.createdAt)}</span>
+                  <span>{payment.source} · {formatDateTime(payment.createdAt)}</span>
                   <span className="font-medium text-foreground">S/.{payment.amount.toFixed(2)}</span>
                 </div>
               ))}
@@ -496,8 +493,8 @@ const OrderRegister = () => {
                   </div>
                 )}
                 <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">N° de operación</label>
-                  <Input value={paymentOperationNumber} onChange={(e) => setPaymentOperationNumber(e.target.value)} placeholder="Ej. 123456" className="h-9" />
+                  <label className="text-xs text-muted-foreground mb-1 block">Fecha del pago</label>
+                  <Input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="h-9" />
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Captura del pago</label>

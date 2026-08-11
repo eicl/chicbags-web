@@ -228,7 +228,6 @@ export interface Payment {
   orderId: number;
   amount: number;
   source: string;
-  operationNumber: string;
   proofImage: string;
   registeredBy: string;
   createdAt: string;
@@ -259,8 +258,10 @@ export interface OrderItemInput {
 export interface PaymentInput {
   amount: number;
   source: string;
-  operationNumber: string;
   proofImage: string;
+  // Fecha en la que se hizo el pago (YYYY-MM-DD); si no se manda, el
+  // servidor usa la fecha y hora del momento en que se registra.
+  date?: string;
 }
 
 // Registro público de pedidos (fuera del panel admin): valida stock,
@@ -291,10 +292,7 @@ export const fetchOrders = (): Promise<AdminOrder[]> =>
 
 // Registra un pago de un pedido (panel admin): el servidor recalcula el
 // estado del pedido sumando todos los pagos contra el total.
-export const registerPayment = (
-  orderId: number,
-  data: { amount: number; source: string; operationNumber: string; proofImage: string }
-): Promise<Order> =>
+export const registerPayment = (orderId: number, data: PaymentInput): Promise<Order> =>
   fetch(`${API_URL}/orders/${orderId}/payments`, {
     method: "POST",
     credentials: "include",

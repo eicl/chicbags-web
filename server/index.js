@@ -642,18 +642,18 @@ const mapOrder = (order, items, payments = []) => ({
 
 const SEPARATION_DAYS = 15;
 
-const validatePaymentInput = ({ amount, source, operationNumber, proofImage }) => {
+const validatePaymentInput = ({ amount, source, proofImage, date }) => {
   if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
     throw new Error("El monto del pago es inválido");
   }
   if (!source?.trim()) {
     throw new Error("Selecciona el medio de pago");
   }
-  if (!operationNumber?.trim()) {
-    throw new Error("Ingresa el número de operación");
-  }
   if (!proofImage?.trim()) {
     throw new Error("Sube la captura del pago");
+  }
+  if (date !== undefined && date !== "" && Number.isNaN(new Date(date).getTime())) {
+    throw new Error("La fecha del pago es inválida");
   }
 };
 
@@ -664,11 +664,12 @@ const validatePaymentInput = ({ amount, source, operationNumber, proofImage }) =
 // propia transacción: el caller decide el alcance — sola (registerPaymentTx)
 // o junto con la creación del pedido, en la misma transacción, cuando el
 // pago se carga al mismo tiempo que los productos.
-const applyPayment = async (client, orderId, total, currentDeadline, { amount, source, operationNumber, proofImage, registeredBy }) => {
+const applyPayment = async (client, orderId, total, currentDeadline, { amount, source, proofImage, registeredBy, date }) => {
+  const paidAt = date ? new Date(date) : new Date();
   await client.query(
-    `INSERT INTO payments (order_id, amount, source, operation_number, proof_image, registered_by)
+    `INSERT INTO payments (order_id, amount, source, proof_image, registered_by, created_at)
      VALUES ($1, $2, $3, $4, $5, $6)`,
-    [orderId, amount, source.trim(), operationNumber.trim(), proofImage.trim(), registeredBy]
+    [orderId, amount, source.trim(), proofImage.trim(), registeredBy, paidAt]
   );
   const { rows: paidRows } = await client.query(
     "SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE order_id = $1",
