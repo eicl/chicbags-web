@@ -217,6 +217,7 @@ export interface OrderItem {
   colorName: string;
   unitPrice: number;
   quantity: number;
+  discount: number;
   subtotal: number;
 }
 
@@ -233,6 +234,8 @@ export interface OrderItemInput {
   productId: number;
   colorName: string;
   quantity: number;
+  // Descuento manual en soles aplicado a este ítem (tope de S/.4, validado en el servidor).
+  discount?: number;
 }
 
 // Registro público de pedidos (fuera del panel admin): valida stock,

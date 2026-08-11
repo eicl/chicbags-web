@@ -69,6 +69,7 @@ const AdminOrders = () => {
                                 <th className="text-left py-1.5 font-medium">Color</th>
                                 <th className="text-right py-1.5 font-medium">Precio</th>
                                 <th className="text-right py-1.5 font-medium">Cant.</th>
+                                <th className="text-right py-1.5 font-medium">Dcto.</th>
                                 <th className="text-right py-1.5 font-medium">Subtotal</th>
                               </tr>
                             </thead>
@@ -80,6 +81,9 @@ const AdminOrders = () => {
                                   <td className="py-1.5 text-muted-foreground">{item.colorName}</td>
                                   <td className="py-1.5 text-right">S/.{item.unitPrice.toFixed(2)}</td>
                                   <td className="py-1.5 text-right">{item.quantity}</td>
+                                  <td className="py-1.5 text-right text-muted-foreground">
+                                    {item.discount > 0 ? `S/.${item.discount.toFixed(2)}` : "—"}
+                                  </td>
                                   <td className="py-1.5 text-right font-medium">S/.{item.subtotal.toFixed(2)}</td>
                                 </tr>
                               ))}

@@ -166,6 +166,9 @@ export const initSchema = async () => {
   // es una foto del momento: si luego cambia el código, el pedido conserva
   // el que tenía al venderse).
   await pool.query(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_code TEXT NOT NULL DEFAULT '';`);
+  // Descuento manual aplicado al ítem (en soles, tope de S/.4 validado en
+  // el servidor); ya viene restado en subtotal.
+  await pool.query(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS discount NUMERIC NOT NULL DEFAULT 0;`);
 };
 
 // Busca una marca por nombre (sin distinguir mayúsculas/minúsculas) o la crea

@@ -16,9 +16,14 @@ interface OrderLine {
   product: Product;
   color: ProductColor;
   quantity: number;
+  // Descuento manual en soles para este ítem, tope de S/.4 (validado también en el servidor).
+  discount: number;
 }
 
 const lineKey = (productId: number, colorName: string) => `${productId}::${colorName}`;
+
+const MAX_ITEM_DISCOUNT = 4;
+const clampDiscount = (value: number) => Math.min(Math.max(value, 0), MAX_ITEM_DISCOUNT);
 
 const formatDateTime = (iso: string) =>
   new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
@@ -31,7 +36,8 @@ const buildOrderWhatsAppLink = (order: Order, customer: Customer) => {
   const itemsText = order.items
     .map((item) => {
       const code = item.productCode ? ` [${item.productCode}]` : "";
-      return `- ${item.productName}${code} (${item.colorName}) x${item.quantity}: S/.${item.subtotal.toFixed(2)}`;
+      const discount = item.discount > 0 ? ` (dcto. S/.${item.discount.toFixed(2)})` : "";
+      return `- ${item.productName}${code} (${item.colorName}) x${item.quantity}${discount}: S/.${item.subtotal.toFixed(2)}`;
     })
     .join("\n");
   const message = `Hola ${customer.firstName}, tu pedido #${order.id} fue registrado el ${formatDateTime(order.createdAt)}:\n\n${itemsText}\n\nTotal: S/.${order.total.toFixed(2)}`;
@@ -106,8 +112,15 @@ const OrderRegister = () => {
         }
         return prev.map((l) => (l === existing ? { ...l, quantity: l.quantity + 1 } : l));
       }
-      return [...prev, { product, color, quantity: 1 }];
+      return [...prev, { product, color, quantity: 1, discount: 0 }];
     });
+  };
+
+  const handleDiscount = (line: OrderLine, value: number) => {
+    const discount = clampDiscount(Number.isFinite(value) ? value : 0);
+    setLines((prev) =>
+      prev.map((l) => (l.product.id === line.product.id && l.color.name === line.color.name ? { ...l, discount } : l))
+    );
   };
 
   const handleQuantity = (line: OrderLine, delta: number) => {
@@ -130,7 +143,7 @@ const OrderRegister = () => {
     setLines((prev) => prev.filter((l) => !(l.product.id === line.product.id && l.color.name === line.color.name)));
   };
 
-  const total = lines.reduce((sum, l) => sum + l.product.price * l.quantity, 0);
+  const total = lines.reduce((sum, l) => sum + l.product.price * l.quantity - l.discount, 0);
 
   const handleSubmit = () => {
     if (!customer) {
@@ -148,7 +161,7 @@ const OrderRegister = () => {
     orderMutation.mutate({
       customerId: customer.id,
       sellerId: Number(sellerId),
-      items: lines.map((l) => ({ productId: l.product.id, colorName: l.color.name, quantity: l.quantity })),
+      items: lines.map((l) => ({ productId: l.product.id, colorName: l.color.name, quantity: l.quantity, discount: l.discount })),
     });
   };
 
@@ -177,6 +190,9 @@ const OrderRegister = () => {
                   {item.productName}
                   {item.productCode && <span className="text-muted-foreground"> [{item.productCode}]</span>}
                   {" "}({item.colorName}) x{item.quantity}
+                  {item.discount > 0 && (
+                    <span className="text-muted-foreground"> (dcto. S/.{item.discount.toFixed(2)})</span>
+                  )}
                 </span>
                 <span className="font-medium">S/.{item.subtotal.toFixed(2)}</span>
               </div>
@@ -325,7 +341,22 @@ const OrderRegister = () => {
                           <Plus className="w-3.5 h-3.5" />
                         </Button>
                       </div>
-                      <p className="w-20 text-right text-sm font-medium shrink-0">S/.{(line.product.price * line.quantity).toFixed(2)}</p>
+                      <div className="shrink-0 text-center">
+                        <label className="block text-[10px] text-muted-foreground leading-tight">Dcto. (máx S/.{MAX_ITEM_DISCOUNT})</label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={MAX_ITEM_DISCOUNT}
+                          step={0.5}
+                          value={line.discount || ""}
+                          onChange={(e) => handleDiscount(line, e.target.valueAsNumber)}
+                          placeholder="0"
+                          className="h-7 w-16 text-sm text-right px-2"
+                        />
+                      </div>
+                      <p className="w-20 text-right text-sm font-medium shrink-0">
+                        S/.{(line.product.price * line.quantity - line.discount).toFixed(2)}
+                      </p>
                       <button
                         type="button"
                         onClick={() => handleRemove(line)}

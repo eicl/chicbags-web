@@ -394,6 +394,8 @@ app.get("/api/sellers", async (req, res) => {
 });
 
 const DELIVERY_TYPES = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Olva", "Marvisur"];
+// Tope de descuento manual por ítem que puede aplicar un vendedor al registrar un pedido.
+const MAX_ITEM_DISCOUNT = 4;
 const DELIVERY_MODE_REQUIRED = ["Shalom", "Olva"];
 const DELIVERY_MODES = ["Terrestre", "Aéreo"];
 // Solo Shalom tiene sedes cargadas por ahora; cuando se cargue Olva se
@@ -611,6 +613,7 @@ const mapOrder = (order, items) => ({
     colorName: i.color_name,
     unitPrice: Number(i.unit_price),
     quantity: i.quantity,
+    discount: Number(i.discount),
     subtotal: Number(i.subtotal),
   })),
 });
@@ -625,7 +628,8 @@ app.get("/api/orders", requireAuth, async (req, res) => {
         json_agg(
           json_build_object(
             'id', oi.id, 'productId', oi.product_id, 'productName', oi.product_name, 'productCode', oi.product_code,
-            'colorName', oi.color_name, 'unitPrice', oi.unit_price, 'quantity', oi.quantity, 'subtotal', oi.subtotal
+            'colorName', oi.color_name, 'unitPrice', oi.unit_price, 'quantity', oi.quantity, 'discount', oi.discount,
+            'subtotal', oi.subtotal
           ) ORDER BY oi.id
         ) FILTER (WHERE oi.id IS NOT NULL),
         '[]'
@@ -648,7 +652,12 @@ app.get("/api/orders", requireAuth, async (req, res) => {
       sellerName: row.seller_username ?? "",
       total: Number(row.total),
       createdAt: row.created_at,
-      items: row.items.map((i) => ({ ...i, unitPrice: Number(i.unitPrice), subtotal: Number(i.subtotal) })),
+      items: row.items.map((i) => ({
+        ...i,
+        unitPrice: Number(i.unitPrice),
+        discount: Number(i.discount),
+        subtotal: Number(i.subtotal),
+      })),
     }))
   );
 });
@@ -671,6 +680,10 @@ app.post("/api/orders/register", async (req, res) => {
   for (const item of items) {
     if (!Number.isInteger(item?.productId) || !item?.colorName || !Number.isInteger(item?.quantity) || item.quantity <= 0) {
       return res.status(400).json({ error: "Hay un producto inválido en el pedido" });
+    }
+    const discount = item.discount ?? 0;
+    if (typeof discount !== "number" || !Number.isFinite(discount) || discount < 0 || discount > MAX_ITEM_DISCOUNT) {
+      return res.status(400).json({ error: `El descuento por ítem no puede superar S/.${MAX_ITEM_DISCOUNT}` });
     }
   }
 
@@ -713,7 +726,8 @@ app.post("/api/orders/register", async (req, res) => {
       await client.query("UPDATE products SET colors = $1 WHERE id = $2", [JSON.stringify(colors), product.id]);
 
       const unitPrice = Number(product.price);
-      const subtotal = unitPrice * item.quantity;
+      const discount = Math.min(item.discount ?? 0, unitPrice * item.quantity);
+      const subtotal = unitPrice * item.quantity - discount;
       total += subtotal;
       lineItems.push({
         productId: product.id,
@@ -722,6 +736,7 @@ app.post("/api/orders/register", async (req, res) => {
         colorName: item.colorName,
         unitPrice,
         quantity: item.quantity,
+        discount,
         subtotal,
       });
     }
@@ -735,9 +750,9 @@ app.post("/api/orders/register", async (req, res) => {
     const insertedItems = [];
     for (const li of lineItems) {
       const { rows } = await client.query(
-        `INSERT INTO order_items (order_id, product_id, product_name, product_code, color_name, unit_price, quantity, subtotal)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-        [order.id, li.productId, li.productName, li.productCode, li.colorName, li.unitPrice, li.quantity, li.subtotal]
+        `INSERT INTO order_items (order_id, product_id, product_name, product_code, color_name, unit_price, quantity, discount, subtotal)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+        [order.id, li.productId, li.productName, li.productCode, li.colorName, li.unitPrice, li.quantity, li.discount, li.subtotal]
       );
       insertedItems.push(rows[0]);
     }
