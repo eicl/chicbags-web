@@ -221,13 +221,31 @@ export interface OrderItem {
   subtotal: number;
 }
 
+export type OrderStatus = "Registrado" | "Separación" | "Pendiente de envío";
+
+export interface Payment {
+  id: number;
+  orderId: number;
+  amount: number;
+  source: string;
+  operationNumber: string;
+  proofImage: string;
+  registeredBy: string;
+  createdAt: string;
+}
+
 export interface Order {
   id: number;
   customerId: number;
   sellerId: number;
+  status: OrderStatus;
+  // Fecha límite para cancelar (15 días calendario), fijada solo mientras el
+  // pedido está en "Separación"; null en cualquier otro estado.
+  separationDeadline: string | null;
   total: number;
   createdAt: string;
   items: OrderItem[];
+  payments: Payment[];
 }
 
 export interface OrderItemInput {
@@ -256,6 +274,19 @@ export interface AdminOrder extends Order {
 
 export const fetchOrders = (): Promise<AdminOrder[]> =>
   fetch(`${API_URL}/orders`, { credentials: "include" }).then((res) => handle<AdminOrder[]>(res));
+
+// Registra un pago de un pedido (panel admin): el servidor recalcula el
+// estado del pedido sumando todos los pagos contra el total.
+export const registerPayment = (
+  orderId: number,
+  data: { amount: number; source: string; operationNumber: string; proofImage: string }
+): Promise<Order> =>
+  fetch(`${API_URL}/orders/${orderId}/payments`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<Order>(res));
 
 // Lista pública de vendedores (usuarios con perfil Vendedor), para el
 // registro de pedidos fuera del panel admin.

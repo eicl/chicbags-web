@@ -149,6 +149,26 @@ export const initSchema = async () => {
   `);
   // Vendedor (usuario con perfil "Vendedor") que registró el pedido.
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS seller_id INTEGER REFERENCES users(id);`);
+  // Ciclo de vida del pedido: arranca en "Registrado"; al registrar un pago
+  // pasa a "Pendiente de envío" (si lo pagado cubre el total) o a
+  // "Separación" (si es un pago parcial). separation_deadline se fija una
+  // sola vez, la primera vez que entra a "Separación" (15 días calendario
+  // desde ese momento), y no se vuelve a mover con pagos parciales
+  // posteriores.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'Registrado';`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS separation_deadline TIMESTAMPTZ;`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS payments (
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      amount NUMERIC NOT NULL,
+      source TEXT NOT NULL DEFAULT '',
+      operation_number TEXT NOT NULL DEFAULT '',
+      proof_image TEXT NOT NULL DEFAULT '',
+      registered_by TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS order_items (
       id SERIAL PRIMARY KEY,

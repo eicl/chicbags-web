@@ -599,10 +599,23 @@ app.delete("/api/products/:id", requireAuth, async (req, res) => {
   res.status(204).end();
 });
 
-const mapOrder = (order, items) => ({
+const mapPayment = (p) => ({
+  id: p.id,
+  orderId: p.order_id,
+  amount: Number(p.amount),
+  source: p.source,
+  operationNumber: p.operation_number,
+  proofImage: p.proof_image,
+  registeredBy: p.registered_by,
+  createdAt: p.created_at,
+});
+
+const mapOrder = (order, items, payments = []) => ({
   id: order.id,
   customerId: order.customer_id,
   sellerId: order.seller_id,
+  status: order.status,
+  separationDeadline: order.separation_deadline,
   total: Number(order.total),
   createdAt: order.created_at,
   items: items.map((i) => ({
@@ -616,29 +629,44 @@ const mapOrder = (order, items) => ({
     discount: Number(i.discount),
     subtotal: Number(i.subtotal),
   })),
+  payments: payments.map(mapPayment),
 });
 
 app.get("/api/orders", requireAuth, async (req, res) => {
+  // Los items y los pagos se agregan cada uno en su propio subquery LATERAL
+  // (en vez de un solo LEFT JOIN a las dos tablas) para que uno no multiplique
+  // las filas del otro: un pedido con 3 items y 2 pagos daría 6 filas si se
+  // unieran directamente, duplicando cada item y cada pago.
   const { rows } = await pool.query(`
     SELECT
-      o.id, o.customer_id, o.seller_id, o.total, o.created_at,
+      o.id, o.customer_id, o.seller_id, o.status, o.separation_deadline, o.total, o.created_at,
       c.first_name, c.paternal_surname, c.maternal_surname, c.document_type, c.document_number, c.mobile,
       u.username AS seller_username,
-      COALESCE(
-        json_agg(
-          json_build_object(
-            'id', oi.id, 'productId', oi.product_id, 'productName', oi.product_name, 'productCode', oi.product_code,
-            'colorName', oi.color_name, 'unitPrice', oi.unit_price, 'quantity', oi.quantity, 'discount', oi.discount,
-            'subtotal', oi.subtotal
-          ) ORDER BY oi.id
-        ) FILTER (WHERE oi.id IS NOT NULL),
-        '[]'
-      ) AS items
+      COALESCE(items.items, '[]') AS items,
+      COALESCE(payments.payments, '[]') AS payments
     FROM orders o
     JOIN customers c ON c.id = o.customer_id
     LEFT JOIN users u ON u.id = o.seller_id
-    LEFT JOIN order_items oi ON oi.order_id = o.id
-    GROUP BY o.id, c.first_name, c.paternal_surname, c.maternal_surname, c.document_type, c.document_number, c.mobile, u.username
+    LEFT JOIN LATERAL (
+      SELECT json_agg(
+        json_build_object(
+          'id', oi.id, 'productId', oi.product_id, 'productName', oi.product_name, 'productCode', oi.product_code,
+          'colorName', oi.color_name, 'unitPrice', oi.unit_price, 'quantity', oi.quantity, 'discount', oi.discount,
+          'subtotal', oi.subtotal
+        ) ORDER BY oi.id
+      ) AS items
+      FROM order_items oi WHERE oi.order_id = o.id
+    ) items ON true
+    LEFT JOIN LATERAL (
+      SELECT json_agg(
+        json_build_object(
+          'id', p.id, 'orderId', p.order_id, 'amount', p.amount, 'source', p.source,
+          'operationNumber', p.operation_number, 'proofImage', p.proof_image,
+          'registeredBy', p.registered_by, 'createdAt', p.created_at
+        ) ORDER BY p.id
+      ) AS payments
+      FROM payments p WHERE p.order_id = o.id
+    ) payments ON true
     ORDER BY o.id DESC
   `);
   res.json(
@@ -650,6 +678,8 @@ app.get("/api/orders", requireAuth, async (req, res) => {
       customerMobile: row.mobile,
       sellerId: row.seller_id,
       sellerName: row.seller_username ?? "",
+      status: row.status,
+      separationDeadline: row.separation_deadline,
       total: Number(row.total),
       createdAt: row.created_at,
       items: row.items.map((i) => ({
@@ -658,6 +688,7 @@ app.get("/api/orders", requireAuth, async (req, res) => {
         discount: Number(i.discount),
         subtotal: Number(i.subtotal),
       })),
+      payments: row.payments.map((p) => ({ ...p, amount: Number(p.amount) })),
     }))
   );
 });
@@ -759,6 +790,82 @@ app.post("/api/orders/register", async (req, res) => {
 
     await client.query("COMMIT");
     res.status(201).json(mapOrder(order, insertedItems));
+  } catch (err) {
+    await client.query("ROLLBACK");
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+const SEPARATION_DAYS = 15;
+
+// Registra un pago de un pedido (desde el panel admin). El estado del pedido
+// se recalcula sumando TODOS los pagos ya registrados contra el total: si lo
+// cubre pasa a "Pendiente de envío", si no a "Separación" (con un plazo de
+// 15 días calendario para cancelar, que se fija solo la primera vez que
+// entra a ese estado). Usa FOR UPDATE sobre el pedido para que dos pagos
+// registrados a la vez no pisen el estado calculado por el otro.
+app.post("/api/orders/:id/payments", requireAuth, async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!Number.isInteger(orderId)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  const { amount, source, operationNumber, proofImage } = req.body;
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({ error: "El monto del pago es inválido" });
+  }
+  if (!source?.trim()) {
+    return res.status(400).json({ error: "Selecciona el medio de pago" });
+  }
+  if (!operationNumber?.trim()) {
+    return res.status(400).json({ error: "Ingresa el número de operación" });
+  }
+  if (!proofImage?.trim()) {
+    return res.status(400).json({ error: "Sube la captura del pago" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const { rows: orderRows } = await client.query(
+      "SELECT id, total, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
+      [orderId]
+    );
+    if (orderRows.length === 0) {
+      throw new Error("El pedido no existe");
+    }
+    const order = orderRows[0];
+
+    await client.query(
+      `INSERT INTO payments (order_id, amount, source, operation_number, proof_image, registered_by)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [orderId, amount, source.trim(), operationNumber.trim(), proofImage.trim(), req.user.sub]
+    );
+
+    const { rows: paidRows } = await client.query(
+      "SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE order_id = $1",
+      [orderId]
+    );
+    const paid = Number(paidRows[0].paid);
+    const total = Number(order.total);
+    const status = paid >= total ? "Pendiente de envío" : "Separación";
+    const separationDeadline =
+      status === "Separación"
+        ? order.separation_deadline ?? new Date(Date.now() + SEPARATION_DAYS * 24 * 60 * 60 * 1000)
+        : order.separation_deadline;
+
+    const { rows: updatedRows } = await client.query(
+      "UPDATE orders SET status = $1, separation_deadline = $2 WHERE id = $3 RETURNING *",
+      [status, separationDeadline, orderId]
+    );
+
+    const { rows: itemRows } = await client.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [orderId]);
+    const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [orderId]);
+
+    await client.query("COMMIT");
+    res.status(201).json(mapOrder(updatedRows[0], itemRows, paymentRows));
   } catch (err) {
     await client.query("ROLLBACK");
     res.status(400).json({ error: err.message });

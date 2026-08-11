@@ -10,6 +10,7 @@ import { useProducts } from "@/context/ProductContext";
 import { Product, ProductColor } from "@/context/CartContext";
 import { lookupCustomer, registerOrder, fetchSellers, Customer, Order } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
+import { buildOrderStatusText } from "@/lib/orderMessages";
 import ProductOrderPicker from "@/components/ProductOrderPicker";
 
 interface OrderLine {
@@ -40,7 +41,7 @@ const buildOrderWhatsAppLink = (order: Order, customer: Customer) => {
       return `- ${item.productName}${code} (${item.colorName}) x${item.quantity}${discount}: S/.${item.subtotal.toFixed(2)}`;
     })
     .join("\n");
-  const message = `Hola ${customer.firstName}, tu pedido #${order.id} fue registrado el ${formatDateTime(order.createdAt)}:\n\n${itemsText}\n\nTotal: S/.${order.total.toFixed(2)}`;
+  const message = `Hola ${customer.firstName}, tu pedido #${order.id} fue registrado el ${formatDateTime(order.createdAt)}:\n\n${itemsText}\n\nTotal: S/.${order.total.toFixed(2)}\n\n${buildOrderStatusText(order)}`;
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 };
 
@@ -183,6 +184,15 @@ const OrderRegister = () => {
             Pedido #{order.id}
           </span>
           <p className="text-sm text-muted-foreground -mt-4">Registrado el {formatDateTime(order.createdAt)}</p>
+          <span className="inline-block px-3 py-1 rounded-md bg-muted text-sm font-medium">
+            Estado: {order.status}
+          </span>
+          {order.status === "Separación" && order.separationDeadline && (
+            <p className="text-sm text-muted-foreground max-w-md">
+              Tienes 15 días calendario para cancelar tu pedido. Fecha límite:{" "}
+              <span className="font-medium text-foreground">{formatDateTime(order.separationDeadline)}</span>.
+            </p>
+          )}
           <div className="w-full border border-border rounded-lg p-4 text-left space-y-2">
             {order.items.map((item) => (
               <div key={item.id} className="flex justify-between text-sm">
