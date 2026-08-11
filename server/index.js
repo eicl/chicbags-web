@@ -5,7 +5,7 @@ import multer from "multer";
 import cookieParser from "cookie-parser";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { mkdir } from "fs/promises";
+import { mkdir, readFile } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -990,12 +990,71 @@ app.post("/api/orders/:id/payments", requireAuth, async (req, res) => {
   }
 });
 
+// Metadatos Open Graph/Twitter por ruta: así, cuando se comparte por
+// WhatsApp el link de una de estas páginas, la vista previa muestra su
+// propio título/ícono y la URL real (en vez de siempre el logo y la URL de
+// inicio, que es lo que salía con las etiquetas fijas del index.html).
+const ROUTE_META = [
+  {
+    prefix: "/regularizacion-separaciones",
+    title: "Regularización de Separaciones - ChicBags",
+    description: "Registra pedidos históricos sin descontar stock, con precio editable y registro de cliente si hace falta.",
+    image: "/og-regularizacion.png",
+  },
+  {
+    prefix: "/registro-pedido",
+    title: "Registrar pedido - ChicBags",
+    description: "Busca al cliente, agrega los productos y registra su pedido.",
+    image: "/og-registro-pedido.png",
+  },
+  {
+    prefix: "/registro-cliente",
+    title: "Regístrate como cliente - ChicBags",
+    description: "Completa tus datos para que podamos atenderte y coordinar tus envíos.",
+    image: "/og-registro-cliente.png",
+  },
+];
+const DEFAULT_META = { title: "ChicBags", description: "Tu tienda de confianza", image: "/chicBags.jpeg" };
+
+const getRouteMeta = (pathname) => ROUTE_META.find((r) => pathname.startsWith(r.prefix)) ?? DEFAULT_META;
+
+const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+const replaceMetaContent = (html, selectorRegex, value) => html.replace(selectorRegex, (_match, before, after) => `${before}${escapeHtml(value)}${after}`);
+
 // En producción, este mismo servicio sirve la web ya compilada (dist/) y
-// resuelve las rutas del cliente (React Router) devolviendo el index.html.
+// resuelve las rutas del cliente (React Router) devolviendo el index.html,
+// con los metadatos de la ruta ya reemplazados.
 if (existsSync(DIST_DIR)) {
-  app.use(express.static(DIST_DIR));
-  app.get(/^(?!\/api\/).*/, (req, res) => {
-    res.sendFile(path.join(DIST_DIR, "index.html"));
+  // { index: false } para que también pase por acá la ruta "/" y le
+  // calculemos su og:url real, en vez de que express.static la sirva tal
+  // cual desde disco (sin pasar por el reemplazo de abajo).
+  app.use(express.static(DIST_DIR, { index: false }));
+
+  let indexHtmlTemplate = null;
+
+  app.get(/^(?!\/api\/).*/, async (req, res) => {
+    if (!indexHtmlTemplate) {
+      indexHtmlTemplate = await readFile(path.join(DIST_DIR, "index.html"), "utf-8");
+    }
+    const meta = getRouteMeta(req.path);
+    const origin = `${req.protocol}://${req.get("host")}`;
+    const url = `${origin}${req.originalUrl}`;
+    const image = meta.image.startsWith("http") ? meta.image : `${origin}${meta.image}`;
+
+    let html = indexHtmlTemplate;
+    html = replaceMetaContent(html, /(<title>)[^<]*(<\/title>)/, meta.title);
+    html = replaceMetaContent(html, /(<meta name="description" content=")[^"]*(")/, meta.description);
+    html = replaceMetaContent(html, /(<meta property="og:title" content=")[^"]*(")/, meta.title);
+    html = replaceMetaContent(html, /(<meta property="og:description" content=")[^"]*(")/, meta.description);
+    html = replaceMetaContent(html, /(<meta property="og:image" content=")[^"]*(")/, image);
+    html = replaceMetaContent(html, /(<meta property="og:url" content=")[^"]*(")/, url);
+    html = replaceMetaContent(html, /(<meta name="twitter:title" content=")[^"]*(")/, meta.title);
+    html = replaceMetaContent(html, /(<meta name="twitter:description" content=")[^"]*(")/, meta.description);
+    html = replaceMetaContent(html, /(<meta name="twitter:image" content=")[^"]*(")/, image);
+
+    res.set("Content-Type", "text/html");
+    res.send(html);
   });
 }
 
