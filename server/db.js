@@ -155,12 +155,17 @@ export const initSchema = async () => {
       order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
       product_id INTEGER NOT NULL REFERENCES products(id),
       product_name TEXT NOT NULL,
+      product_code TEXT NOT NULL DEFAULT '',
       color_name TEXT NOT NULL,
       unit_price NUMERIC NOT NULL,
       quantity INTEGER NOT NULL,
       subtotal NUMERIC NOT NULL
     );
   `);
+  // Código del producto al momento del pedido (como product_name/unit_price,
+  // es una foto del momento: si luego cambia el código, el pedido conserva
+  // el que tenía al venderse).
+  await pool.query(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_code TEXT NOT NULL DEFAULT '';`);
 };
 
 // Busca una marca por nombre (sin distinguir mayúsculas/minúsculas) o la crea

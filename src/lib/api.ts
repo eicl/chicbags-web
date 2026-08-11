@@ -213,6 +213,7 @@ export interface OrderItem {
   id: number;
   productId: number;
   productName: string;
+  productCode: string;
   colorName: string;
   unitPrice: number;
   quantity: number;

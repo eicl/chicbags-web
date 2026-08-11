@@ -64,6 +64,7 @@ const AdminOrders = () => {
                           <table className="w-full text-sm">
                             <thead>
                               <tr className="text-xs uppercase tracking-widest text-muted-foreground">
+                                <th className="text-left py-1.5 font-medium">Código</th>
                                 <th className="text-left py-1.5 font-medium">Producto</th>
                                 <th className="text-left py-1.5 font-medium">Color</th>
                                 <th className="text-right py-1.5 font-medium">Precio</th>
@@ -74,6 +75,7 @@ const AdminOrders = () => {
                             <tbody>
                               {order.items.map((item) => (
                                 <tr key={item.id}>
+                                  <td className="py-1.5 text-muted-foreground">{item.productCode || "—"}</td>
                                   <td className="py-1.5">{item.productName}</td>
                                   <td className="py-1.5 text-muted-foreground">{item.colorName}</td>
                                   <td className="py-1.5 text-right">S/.{item.unitPrice.toFixed(2)}</td>

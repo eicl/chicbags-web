@@ -26,7 +26,10 @@ const buildOrderWhatsAppLink = (order: Order, customer: Customer) => {
   const digits = customer.mobile.replace(/\D/g, "");
   const phone = digits.startsWith("51") ? digits : `51${digits}`;
   const itemsText = order.items
-    .map((item) => `- ${item.productName} (${item.colorName}) x${item.quantity}: S/.${item.subtotal.toFixed(2)}`)
+    .map((item) => {
+      const code = item.productCode ? ` [${item.productCode}]` : "";
+      return `- ${item.productName}${code} (${item.colorName}) x${item.quantity}: S/.${item.subtotal.toFixed(2)}`;
+    })
     .join("\n");
   const message = `Hola ${customer.firstName}, tu pedido #${order.id} fue registrado:\n\n${itemsText}\n\nTotal: S/.${order.total.toFixed(2)}`;
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
@@ -166,7 +169,11 @@ const OrderRegister = () => {
           <div className="w-full border border-border rounded-lg p-4 text-left space-y-2">
             {order.items.map((item) => (
               <div key={item.id} className="flex justify-between text-sm">
-                <span>{item.productName} ({item.colorName}) x{item.quantity}</span>
+                <span>
+                  {item.productName}
+                  {item.productCode && <span className="text-muted-foreground"> [{item.productCode}]</span>}
+                  {" "}({item.colorName}) x{item.quantity}
+                </span>
                 <span className="font-medium">S/.{item.subtotal.toFixed(2)}</span>
               </div>
             ))}
@@ -299,7 +306,10 @@ const OrderRegister = () => {
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium truncate">{line.product.name}</p>
+                        <p className="text-sm font-medium truncate">
+                          {line.product.name}
+                          {line.product.code && <span className="text-muted-foreground"> [{line.product.code}]</span>}
+                        </p>
                         <p className="text-xs text-muted-foreground">{line.color.name} · S/.{line.product.price.toFixed(2)} c/u</p>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">

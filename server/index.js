@@ -607,6 +607,7 @@ const mapOrder = (order, items) => ({
     id: i.id,
     productId: i.product_id,
     productName: i.product_name,
+    productCode: i.product_code,
     colorName: i.color_name,
     unitPrice: Number(i.unit_price),
     quantity: i.quantity,
@@ -623,7 +624,7 @@ app.get("/api/orders", requireAuth, async (req, res) => {
       COALESCE(
         json_agg(
           json_build_object(
-            'id', oi.id, 'productId', oi.product_id, 'productName', oi.product_name,
+            'id', oi.id, 'productId', oi.product_id, 'productName', oi.product_name, 'productCode', oi.product_code,
             'colorName', oi.color_name, 'unitPrice', oi.unit_price, 'quantity', oi.quantity, 'subtotal', oi.subtotal
           ) ORDER BY oi.id
         ) FILTER (WHERE oi.id IS NOT NULL),
@@ -692,7 +693,7 @@ app.post("/api/orders/register", async (req, res) => {
 
     for (const item of items) {
       const { rows: productRows } = await client.query(
-        "SELECT id, name, price, colors FROM products WHERE id = $1 FOR UPDATE",
+        "SELECT id, name, code, price, colors FROM products WHERE id = $1 FOR UPDATE",
         [item.productId]
       );
       if (productRows.length === 0) {
@@ -717,6 +718,7 @@ app.post("/api/orders/register", async (req, res) => {
       lineItems.push({
         productId: product.id,
         productName: product.name,
+        productCode: product.code ?? "",
         colorName: item.colorName,
         unitPrice,
         quantity: item.quantity,
@@ -733,9 +735,9 @@ app.post("/api/orders/register", async (req, res) => {
     const insertedItems = [];
     for (const li of lineItems) {
       const { rows } = await client.query(
-        `INSERT INTO order_items (order_id, product_id, product_name, color_name, unit_price, quantity, subtotal)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-        [order.id, li.productId, li.productName, li.colorName, li.unitPrice, li.quantity, li.subtotal]
+        `INSERT INTO order_items (order_id, product_id, product_name, product_code, color_name, unit_price, quantity, subtotal)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        [order.id, li.productId, li.productName, li.productCode, li.colorName, li.unitPrice, li.quantity, li.subtotal]
       );
       insertedItems.push(rows[0]);
     }
