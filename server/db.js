@@ -223,6 +223,27 @@ export const initSchema = async () => {
     );
   `);
   await pool.query(`INSERT INTO settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`);
+
+  // Título y descripción que se muestran al compartir cada link (ej. por
+  // WhatsApp) — editables desde el panel. La imagen y a qué ruta aplica
+  // cada fila siguen fijas en el código (server/index.js), solo el texto
+  // es configurable acá.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS route_meta (
+      route_key TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL
+    );
+  `);
+  await pool.query(`
+    INSERT INTO route_meta (route_key, title, description) VALUES
+      ('default', 'ChicBags', 'Tu tienda de confianza'),
+      ('registro-pedido', 'Registrar pedido - ChicBags', 'Busca al cliente, agrega los productos y registra su pedido.'),
+      ('registro-cliente', 'Regístrate como cliente - ChicBags', 'Completa tus datos para que podamos atenderte y coordinar tus envíos.'),
+      ('regularizacion-separaciones', 'Regularización de Separaciones - ChicBags', 'Registra pedidos históricos sin descontar stock, con precio editable y registro de cliente si hace falta.'),
+      ('catalogo', 'Catálogo - ChicBags', 'Aquí podrás ver todas nuestras hermosas carteras.')
+    ON CONFLICT (route_key) DO NOTHING;
+  `);
 };
 
 // Busca una marca por nombre (sin distinguir mayúsculas/minúsculas) o la crea

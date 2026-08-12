@@ -376,6 +376,28 @@ export const updateSettings = (data: DiscountSettings): Promise<DiscountSettings
     body: JSON.stringify(data),
   }).then((res) => handle<DiscountSettings>(res));
 
+// Título y descripción que se muestran al compartir cada link (ej. por
+// WhatsApp): editables desde el panel. path/label son solo informativos
+// (a qué página corresponde cada fila); el ícono queda fijo en el servidor.
+export interface RouteMeta {
+  key: string;
+  label: string;
+  path: string;
+  title: string;
+  description: string;
+}
+
+export const fetchRouteMeta = (): Promise<RouteMeta[]> =>
+  fetch(`${API_URL}/route-meta`, { credentials: "include" }).then((res) => handle<RouteMeta[]>(res));
+
+export const updateRouteMeta = (key: string, data: { title: string; description: string }): Promise<RouteMeta> =>
+  fetch(`${API_URL}/route-meta/${key}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<RouteMeta>(res));
+
 // Registra un pago de un pedido (panel admin): el servidor recalcula el
 // estado del pedido sumando todos los pagos contra el total.
 export const registerPayment = (orderId: number, data: PaymentInput): Promise<Order> =>

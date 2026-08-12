@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, LogOut, Package, Tag, Layers, Users, IdCard, MapPin, ShoppingBag } from "lucide-react";
+import { ArrowLeft, LogOut, Package, Tag, Layers, Users, IdCard, MapPin, ShoppingBag, Share2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import AdminProducts from "@/components/admin/AdminProducts";
@@ -10,8 +10,9 @@ import AdminCustomers from "@/components/admin/AdminCustomers";
 import AdminDistricts from "@/components/admin/AdminDistricts";
 import AdminUsers from "@/components/admin/AdminUsers";
 import AdminOrders from "@/components/admin/AdminOrders";
+import AdminLinkPreviews from "@/components/admin/AdminLinkPreviews";
 
-type Tab = "products" | "brands" | "categories" | "customers" | "districts" | "orders" | "users";
+type Tab = "products" | "brands" | "categories" | "customers" | "districts" | "orders" | "users" | "linkPreviews";
 
 const TABS: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "products", label: "Productos", icon: Package },
@@ -21,6 +22,7 @@ const TABS: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "districts", label: "Distritos", icon: MapPin },
   { id: "orders", label: "Pedidos", icon: ShoppingBag },
   { id: "users", label: "Usuarios", icon: Users },
+  { id: "linkPreviews", label: "Vistas previas", icon: Share2 },
 ];
 
 const Admin = () => {
@@ -75,6 +77,7 @@ const Admin = () => {
         {tab === "districts" && <AdminDistricts />}
         {tab === "orders" && <AdminOrders />}
         {tab === "users" && <AdminUsers />}
+        {tab === "linkPreviews" && <AdminLinkPreviews />}
       </div>
     </div>
   );

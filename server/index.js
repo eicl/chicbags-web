@@ -1192,35 +1192,53 @@ app.post("/api/orders/:id/payments", requireAuth, async (req, res) => {
 // WhatsApp el link de una de estas páginas, la vista previa muestra su
 // propio título/ícono y la URL real (en vez de siempre el logo y la URL de
 // inicio, que es lo que salía con las etiquetas fijas del index.html).
-const ROUTE_META = [
-  {
-    prefix: "/regularizacion-separaciones",
-    title: "Regularización de Separaciones - ChicBags",
-    description: "Registra pedidos históricos sin descontar stock, con precio editable y registro de cliente si hace falta.",
-    image: "/og-regularizacion.png",
-  },
-  {
-    prefix: "/registro-pedido",
-    title: "Registrar pedido - ChicBags",
-    description: "Busca al cliente, agrega los productos y registra su pedido.",
-    image: "/og-registro-pedido.png",
-  },
-  {
-    prefix: "/registro-cliente",
-    title: "Regístrate como cliente - ChicBags",
-    description: "Completa tus datos para que podamos atenderte y coordinar tus envíos.",
-    image: "/og-registro-cliente.png",
-  },
-  {
-    prefix: "/catalogo",
-    title: "Catálogo - ChicBags",
-    description: "Aquí podrás ver todas nuestras hermosas carteras.",
-    image: "/og-catalogo.png",
-  },
+// El ícono y a qué ruta aplica cada uno quedan fijos acá; el título y la
+// descripción son editables desde el panel (tabla route_meta).
+const ROUTE_KEYS = [
+  { key: "regularizacion-separaciones", prefix: "/regularizacion-separaciones", image: "/og-regularizacion.png" },
+  { key: "registro-pedido", prefix: "/registro-pedido", image: "/og-registro-pedido.png" },
+  { key: "registro-cliente", prefix: "/registro-cliente", image: "/og-registro-cliente.png" },
+  { key: "catalogo", prefix: "/catalogo", image: "/og-catalogo.png" },
 ];
-const DEFAULT_META = { title: "ChicBags", description: "Tu tienda de confianza", image: "/chicBags.jpeg" };
+const DEFAULT_ROUTE_KEY = "default";
+const DEFAULT_ROUTE_IMAGE = "/chicBags.jpeg";
+const DEFAULT_ROUTE_META = { title: "ChicBags", description: "Tu tienda de confianza" };
 
-const getRouteMeta = (pathname) => ROUTE_META.find((r) => pathname.startsWith(r.prefix)) ?? DEFAULT_META;
+// Etiqueta/ruta para mostrar en el panel admin (el título/descripción sí
+// vienen de la base de datos).
+const ROUTE_META_ADMIN_INFO = {
+  default: { label: "Inicio", path: "/" },
+  "registro-pedido": { label: "Registrar pedido", path: "/registro-pedido" },
+  "registro-cliente": { label: "Registro de cliente", path: "/registro-cliente" },
+  "regularizacion-separaciones": { label: "Regularización de Separaciones", path: "/regularizacion-separaciones" },
+  catalogo: { label: "Catálogo", path: "/catalogo" },
+};
+
+app.get("/api/route-meta", requireAuth, async (req, res) => {
+  const { rows } = await pool.query("SELECT route_key, title, description FROM route_meta ORDER BY route_key");
+  res.json(
+    rows.map((r) => ({
+      key: r.route_key,
+      label: ROUTE_META_ADMIN_INFO[r.route_key]?.label ?? r.route_key,
+      path: ROUTE_META_ADMIN_INFO[r.route_key]?.path ?? `/${r.route_key}`,
+      title: r.title,
+      description: r.description,
+    }))
+  );
+});
+
+app.put("/api/route-meta/:key", requireAuth, async (req, res) => {
+  const { title, description } = req.body;
+  if (!title?.trim() || !description?.trim()) {
+    return res.status(400).json({ error: "Completa el título y la descripción" });
+  }
+  const { rows } = await pool.query(
+    "UPDATE route_meta SET title = $1, description = $2 WHERE route_key = $3 RETURNING *",
+    [title.trim(), description.trim(), req.params.key]
+  );
+  if (rows.length === 0) return res.status(404).json({ error: "No existe esa ruta" });
+  res.json({ key: rows[0].route_key, title: rows[0].title, description: rows[0].description });
+});
 
 const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -1241,7 +1259,14 @@ if (existsSync(DIST_DIR)) {
     if (!indexHtmlTemplate) {
       indexHtmlTemplate = await readFile(path.join(DIST_DIR, "index.html"), "utf-8");
     }
-    const meta = getRouteMeta(req.path);
+    const matchedRoute = ROUTE_KEYS.find((r) => req.path.startsWith(r.prefix));
+    const routeKey = matchedRoute?.key ?? DEFAULT_ROUTE_KEY;
+    const { rows: metaRows } = await pool.query("SELECT title, description FROM route_meta WHERE route_key = $1", [routeKey]);
+    const meta = {
+      title: metaRows[0]?.title ?? DEFAULT_ROUTE_META.title,
+      description: metaRows[0]?.description ?? DEFAULT_ROUTE_META.description,
+      image: matchedRoute?.image ?? DEFAULT_ROUTE_IMAGE,
+    };
     const origin = `${req.protocol}://${req.get("host")}`;
     const url = `${origin}${req.originalUrl}`;
     const image = meta.image.startsWith("http") ? meta.image : `${origin}${meta.image}`;
