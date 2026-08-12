@@ -337,6 +337,17 @@ export const fetchOrders = (): Promise<AdminOrder[]> =>
 export const deleteOrder = (id: number): Promise<void> =>
   fetch(`${API_URL}/orders/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
 
+// Cambia el color de un ítem de un pedido. En un pedido normal con producto
+// de catálogo, el servidor devuelve el stock del color anterior y descuenta
+// el del nuevo (rechaza el cambio si no alcanza).
+export const updateOrderItemColor = (orderId: number, itemId: number, colorName: string): Promise<Order> =>
+  fetch(`${API_URL}/orders/${orderId}/items/${itemId}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ colorName }),
+  }).then((res) => handle<Order>(res));
+
 // Registra un pago de un pedido (panel admin): el servidor recalcula el
 // estado del pedido sumando todos los pagos contra el total.
 export const registerPayment = (orderId: number, data: PaymentInput): Promise<Order> =>

@@ -1,9 +1,10 @@
 import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronUp, MessageCircle, Loader2, Trash2, Upload } from "lucide-react";
-import { AdminOrder, OrderStatus, PaymentInput, deleteOrder, fetchOrders, registerPayment, uploadImage } from "@/lib/api";
+import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Trash2, Upload, X } from "lucide-react";
+import { AdminOrder, OrderItem, OrderStatus, PaymentInput, deleteOrder, fetchOrders, registerPayment, updateOrderItemColor, uploadImage } from "@/lib/api";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import { productImageUrl } from "@/lib/images";
+import { useProducts } from "@/context/ProductContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -28,6 +29,84 @@ const buildStatusWhatsAppLink = (order: AdminOrder) => {
   const phone = digits.startsWith("51") ? digits : `51${digits}`;
   const message = `Hola ${order.customerName}, novedades de tu pedido #${order.id}:\n\n${buildOrderStatusText(order)}`;
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+};
+
+// Deja cambiar el color de un ítem ya registrado. Si el producto sigue en
+// el catálogo, ofrece sus colores actuales (con el stock de cada uno) en
+// un select; si no, un texto libre. El servidor es quien ajusta el stock
+// (devuelve el del color anterior, descuenta el del nuevo).
+const ItemColorEditor = ({ orderId, item }: { orderId: number; item: OrderItem }) => {
+  const queryClient = useQueryClient();
+  const { products } = useProducts();
+  const [editing, setEditing] = useState(false);
+  const [color, setColor] = useState(item.colorName);
+
+  const product = item.productId !== null ? products.find((p) => p.id === item.productId) : undefined;
+
+  const mutation = useMutation({
+    mutationFn: (colorName: string) => updateOrderItemColor(orderId, item.id, colorName),
+    onSuccess: () => {
+      toast.success("Color actualizado");
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      setEditing(false);
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo cambiar el color"),
+  });
+
+  if (!editing) {
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        {item.colorName}
+        <button
+          type="button"
+          onClick={() => {
+            setColor(item.colorName);
+            setEditing(true);
+          }}
+          className="text-muted-foreground hover:text-primary"
+          aria-label="Cambiar color"
+        >
+          <Pencil className="w-3 h-3" />
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {product ? (
+        <select
+          value={color}
+          onChange={(e) => setColor(e.target.value)}
+          className="h-7 rounded-md border border-input bg-background px-1.5 text-xs"
+        >
+          {(product.colors ?? []).map((c) => (
+            <option key={c.name} value={c.name}>{c.name} · {c.stock}</option>
+          ))}
+        </select>
+      ) : (
+        <Input value={color} onChange={(e) => setColor(e.target.value)} className="h-7 w-24 text-xs px-2" />
+      )}
+      <button
+        type="button"
+        onClick={() => mutation.mutate(color)}
+        disabled={mutation.isPending || !color.trim()}
+        className="text-primary hover:text-primary/80 disabled:opacity-50"
+        aria-label="Guardar color"
+      >
+        <Check className="w-3.5 h-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={() => setEditing(false)}
+        className="text-muted-foreground hover:text-destructive"
+        aria-label="Cancelar"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </span>
+  );
 };
 
 const PaymentForm = ({ orderId }: { orderId: number }) => {
@@ -248,7 +327,9 @@ const AdminOrders = () => {
                                 <tr key={item.id}>
                                   <td className="py-1.5 text-muted-foreground">{item.productCode || "—"}</td>
                                   <td className="py-1.5">{item.productName}</td>
-                                  <td className="py-1.5 text-muted-foreground">{item.colorName}</td>
+                                  <td className="py-1.5 text-muted-foreground">
+                                    <ItemColorEditor orderId={order.id} item={item} />
+                                  </td>
                                   <td className="py-1.5 text-right">S/.{item.unitPrice.toFixed(2)}</td>
                                   <td className="py-1.5 text-right">{item.quantity}</td>
                                   <td className="py-1.5 text-right text-muted-foreground">

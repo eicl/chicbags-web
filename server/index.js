@@ -858,6 +858,79 @@ app.delete("/api/orders/:id", requireAuth, async (req, res) => {
   }
 });
 
+// Cambia el color de un ítem de un pedido, desde el panel admin. En un
+// pedido normal ("Pedido") con producto de catálogo, ajusta el stock: le
+// devuelve al color anterior lo que tenía descontado y le descuenta al
+// color nuevo la misma cantidad (rechaza el cambio si no le alcanza el
+// stock). En Regularización, o en ítems sin product_id (cargados a mano),
+// solo cambia el texto — nunca tocaron stock, así que tampoco ahora.
+app.put("/api/orders/:orderId/items/:itemId", requireAuth, async (req, res) => {
+  const orderId = Number(req.params.orderId);
+  const itemId = Number(req.params.itemId);
+  const { colorName } = req.body;
+  if (!Number.isInteger(orderId) || !Number.isInteger(itemId)) {
+    return res.status(400).json({ error: "Pedido o ítem inválido" });
+  }
+  if (!colorName?.trim()) {
+    return res.status(400).json({ error: "Selecciona un color" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const { rows: orderRows } = await client.query("SELECT type FROM orders WHERE id = $1", [orderId]);
+    if (orderRows.length === 0) {
+      throw new Error("El pedido no existe");
+    }
+
+    const { rows: itemRows } = await client.query(
+      "SELECT id, product_id, color_name, quantity FROM order_items WHERE id = $1 AND order_id = $2",
+      [itemId, orderId]
+    );
+    if (itemRows.length === 0) {
+      throw new Error("El ítem no existe en este pedido");
+    }
+    const item = itemRows[0];
+    const newColorName = colorName.trim();
+
+    if (orderRows[0].type === "Pedido" && item.product_id !== null && newColorName !== item.color_name) {
+      const { rows: productRows } = await client.query("SELECT colors FROM products WHERE id = $1 FOR UPDATE", [item.product_id]);
+      if (productRows.length === 0) {
+        throw new Error("El producto de este ítem ya no existe");
+      }
+      const colors = productRows[0].colors ?? [];
+      const newColorIndex = colors.findIndex((c) => c.name === newColorName);
+      if (newColorIndex === -1) {
+        throw new Error(`El producto ya no tiene el color "${newColorName}"`);
+      }
+      if (colors[newColorIndex].stock < item.quantity) {
+        throw new Error(`No hay suficiente stock de "${newColorName}": quedan ${colors[newColorIndex].stock}`);
+      }
+      const oldColorIndex = colors.findIndex((c) => c.name === item.color_name);
+      if (oldColorIndex !== -1) {
+        colors[oldColorIndex] = { ...colors[oldColorIndex], stock: colors[oldColorIndex].stock + item.quantity };
+      }
+      colors[newColorIndex] = { ...colors[newColorIndex], stock: colors[newColorIndex].stock - item.quantity };
+      await client.query("UPDATE products SET colors = $1 WHERE id = $2", [JSON.stringify(colors), item.product_id]);
+    }
+
+    await client.query("UPDATE order_items SET color_name = $1 WHERE id = $2", [newColorName, itemId]);
+
+    const { rows: finalOrderRows } = await client.query("SELECT * FROM orders WHERE id = $1", [orderId]);
+    const { rows: finalItemRows } = await client.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [orderId]);
+    const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [orderId]);
+
+    await client.query("COMMIT");
+    res.json(mapOrder(finalOrderRows[0], finalItemRows, paymentRows));
+  } catch (err) {
+    await client.query("ROLLBACK");
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 // Registro público de pedidos: fuera del panel admin. Valida el stock de
 // cada producto/color dentro de una transacción (con FOR UPDATE para
 // evitar que dos pedidos a la vez vendan el mismo stock), lo descuenta y
