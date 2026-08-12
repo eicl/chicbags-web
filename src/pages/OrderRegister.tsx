@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import Header from "@/components/Header";
 import { useProducts } from "@/context/ProductContext";
+import { useAuth } from "@/context/AuthContext";
 import { Product, ProductColor } from "@/context/CartContext";
 import { lookupCustomer, registerOrder, uploadPaymentProof, fetchSellers, Customer, Order } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
@@ -19,14 +20,17 @@ interface OrderLine {
   product: Product;
   color: ProductColor;
   quantity: number;
-  // Descuento manual en soles para este ítem, tope de S/.4 (validado también en el servidor).
+  // Descuento manual en soles para este ítem (tope validado también en el servidor).
   discount: number;
 }
 
 const lineKey = (productId: number, colorName: string) => `${productId}::${colorName}`;
 
-const MAX_ITEM_DISCOUNT = 4;
-const clampDiscount = (value: number) => Math.min(Math.max(value, 0), MAX_ITEM_DISCOUNT);
+// El link de registro de pedidos es público, pero si en ese mismo navegador
+// hay una sesión de admin abierta, se permite un descuento manual mayor.
+const PUBLIC_MAX_ITEM_DISCOUNT = 4;
+const ADMIN_MAX_ITEM_DISCOUNT = 10;
+const clampDiscount = (value: number, maxDiscount: number) => Math.min(Math.max(value, 0), maxDiscount);
 
 const formatDateTime = (iso: string) =>
   new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
@@ -53,6 +57,8 @@ const OrderRegister = () => {
   const { customerId: customerIdParam } = useParams();
   const queryClient = useQueryClient();
   const { products } = useProducts();
+  const { user } = useAuth();
+  const maxItemDiscount = user ? ADMIN_MAX_ITEM_DISCOUNT : PUBLIC_MAX_ITEM_DISCOUNT;
 
   const [code, setCode] = useState("");
   const [documentNumber, setDocumentNumber] = useState("");
@@ -146,7 +152,7 @@ const OrderRegister = () => {
   };
 
   const handleDiscount = (line: OrderLine, value: number) => {
-    const discount = clampDiscount(Number.isFinite(value) ? value : 0);
+    const discount = clampDiscount(Number.isFinite(value) ? value : 0, maxItemDiscount);
     setLines((prev) =>
       prev.map((l) => (l.product.id === line.product.id && l.color.name === line.color.name ? { ...l, discount } : l))
     );
@@ -422,11 +428,11 @@ const OrderRegister = () => {
                         </Button>
                       </div>
                       <div className="shrink-0 text-center">
-                        <label className="block text-[10px] text-muted-foreground leading-tight">Dcto. (máx S/.{MAX_ITEM_DISCOUNT})</label>
+                        <label className="block text-[10px] text-muted-foreground leading-tight">Dcto. (máx S/.{maxItemDiscount})</label>
                         <Input
                           type="number"
                           min={0}
-                          max={MAX_ITEM_DISCOUNT}
+                          max={maxItemDiscount}
                           step={0.5}
                           value={line.discount || ""}
                           onChange={(e) => handleDiscount(line, e.target.valueAsNumber)}

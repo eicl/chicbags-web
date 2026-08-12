@@ -402,8 +402,12 @@ app.get("/api/sellers", async (req, res) => {
 });
 
 const DELIVERY_TYPES = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Olva", "Marvisur"];
-// Tope de descuento manual por ítem que puede aplicar un vendedor al registrar un pedido.
+// Tope de descuento manual por ítem al registrar un pedido: más alto si
+// quien registra tiene sesión de admin abierta en el navegador (aunque el
+// registro de pedidos en sí sea público), más bajo por el link público sin
+// sesión.
 const MAX_ITEM_DISCOUNT = 4;
+const MAX_ITEM_DISCOUNT_ADMIN = 10;
 const DELIVERY_MODE_REQUIRED = ["Shalom", "Olva"];
 const DELIVERY_MODES = ["Terrestre", "Aéreo"];
 // Solo Shalom tiene sedes cargadas por ahora; cuando se cargue Olva se
@@ -948,13 +952,14 @@ app.post("/api/orders/register", async (req, res) => {
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "El pedido no tiene productos" });
   }
+  const maxDiscount = isAuthenticated(req) ? MAX_ITEM_DISCOUNT_ADMIN : MAX_ITEM_DISCOUNT;
   for (const item of items) {
     if (!Number.isInteger(item?.productId) || !item?.colorName || !Number.isInteger(item?.quantity) || item.quantity <= 0) {
       return res.status(400).json({ error: "Hay un producto inválido en el pedido" });
     }
     const discount = item.discount ?? 0;
-    if (typeof discount !== "number" || !Number.isFinite(discount) || discount < 0 || discount > MAX_ITEM_DISCOUNT) {
-      return res.status(400).json({ error: `El descuento por ítem no puede superar S/.${MAX_ITEM_DISCOUNT}` });
+    if (typeof discount !== "number" || !Number.isFinite(discount) || discount < 0 || discount > maxDiscount) {
+      return res.status(400).json({ error: `El descuento por ítem no puede superar S/.${maxDiscount}` });
     }
   }
 
