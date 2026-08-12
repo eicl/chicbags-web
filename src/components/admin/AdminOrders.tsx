@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Printer, Trash2, Upload, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Plus, Printer, Trash2, Upload, X } from "lucide-react";
 import { AdminOrder, OrderItem, OrderStatus, PaymentInput, deleteOrder, fetchOrders, registerPayment, updateOrderItemColor, uploadImage } from "@/lib/api";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import { productImageUrl } from "@/lib/images";
@@ -342,6 +343,14 @@ const AdminOrders = () => {
 
   return (
     <div>
+      <div className="flex justify-end mb-6">
+        <Link to="/registro-pedido" target="_blank" rel="noopener noreferrer">
+          <Button className="gap-2">
+            <Plus className="w-4 h-4" /> Registrar pedido
+          </Button>
+        </Link>
+      </div>
+
       <div className="border border-border rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
