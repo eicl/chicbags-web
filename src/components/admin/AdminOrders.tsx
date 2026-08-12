@@ -1,7 +1,7 @@
 import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronUp, MessageCircle, Loader2, Upload } from "lucide-react";
-import { AdminOrder, OrderStatus, PaymentInput, fetchOrders, registerPayment, uploadImage } from "@/lib/api";
+import { ChevronDown, ChevronUp, MessageCircle, Loader2, Trash2, Upload } from "lucide-react";
+import { AdminOrder, OrderStatus, PaymentInput, deleteOrder, fetchOrders, registerPayment, uploadImage } from "@/lib/api";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import { productImageUrl } from "@/lib/images";
 import { Button } from "@/components/ui/button";
@@ -147,8 +147,26 @@ const PaymentForm = ({ orderId }: { orderId: number }) => {
 };
 
 const AdminOrders = () => {
+  const queryClient = useQueryClient();
   const { data: orders = [], isLoading, isError } = useQuery({ queryKey: ["orders"], queryFn: fetchOrders });
   const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteOrder,
+    onSuccess: (_data, id) => {
+      toast.success("Pedido eliminado");
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      setExpandedId((current) => (current === id ? null : current));
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo eliminar el pedido"),
+  });
+
+  const handleDelete = (order: AdminOrder) => {
+    const stockNote = order.type === "Pedido" ? " Se devolverá el stock descontado." : "";
+    if (!confirm(`¿Eliminar el pedido #${order.id}?${stockNote}`)) return;
+    deleteMutation.mutate(order.id);
+  };
 
   return (
     <div>
@@ -293,16 +311,27 @@ const AdminOrders = () => {
                             <PaymentForm orderId={order.id} />
                           </div>
 
-                          <a
-                            href={buildStatusWhatsAppLink(order)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-white font-medium text-sm transition-transform hover:scale-105"
-                            style={{ backgroundColor: "#25D366" }}
-                          >
-                            <MessageCircle className="w-4 h-4" fill="white" />
-                            Enviar estado por WhatsApp
-                          </a>
+                          <div className="flex flex-wrap items-center gap-3">
+                            <a
+                              href={buildStatusWhatsAppLink(order)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-white font-medium text-sm transition-transform hover:scale-105"
+                              style={{ backgroundColor: "#25D366" }}
+                            >
+                              <MessageCircle className="w-4 h-4" fill="white" />
+                              Enviar estado por WhatsApp
+                            </a>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDelete(order)}
+                              disabled={deleteMutation.isPending}
+                              className="gap-2 text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" /> Eliminar pedido
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     )}

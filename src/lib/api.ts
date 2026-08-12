@@ -332,6 +332,11 @@ export interface AdminOrder extends Order {
 export const fetchOrders = (): Promise<AdminOrder[]> =>
   fetch(`${API_URL}/orders`, { credentials: "include" }).then((res) => handle<AdminOrder[]>(res));
 
+// Si el pedido es de tipo "Pedido" (no una Regularización), el servidor
+// devuelve el stock de cada ítem a su producto y color antes de borrarlo.
+export const deleteOrder = (id: number): Promise<void> =>
+  fetch(`${API_URL}/orders/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
+
 // Registra un pago de un pedido (panel admin): el servidor recalcula el
 // estado del pedido sumando todos los pagos contra el total.
 export const registerPayment = (orderId: number, data: PaymentInput): Promise<Order> =>

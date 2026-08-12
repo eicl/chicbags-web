@@ -810,6 +810,54 @@ app.get("/api/orders", requireAuth, async (req, res) => {
   );
 });
 
+// Elimina un pedido desde el panel admin. Si es un pedido normal (no una
+// Regularización, que nunca descontó stock), devuelve el stock de cada
+// ítem a su producto y color antes de borrar — si el producto o el color
+// ya no existen (se borró/renombró después), simplemente no hay a quién
+// devolvérselo y se sigue de largo. order_items y payments se borran solos
+// por el ON DELETE CASCADE de sus FK a orders.
+app.delete("/api/orders/:id", requireAuth, async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!Number.isInteger(orderId)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const { rows: orderRows } = await client.query("SELECT type FROM orders WHERE id = $1", [orderId]);
+    if (orderRows.length === 0) {
+      throw new Error("El pedido no existe");
+    }
+
+    if (orderRows[0].type === "Pedido") {
+      const { rows: items } = await client.query(
+        "SELECT product_id, color_name, quantity FROM order_items WHERE order_id = $1 AND product_id IS NOT NULL",
+        [orderId]
+      );
+      for (const item of items) {
+        const { rows: productRows } = await client.query("SELECT colors FROM products WHERE id = $1 FOR UPDATE", [item.product_id]);
+        if (productRows.length === 0) continue;
+        const colors = productRows[0].colors ?? [];
+        const colorIndex = colors.findIndex((c) => c.name === item.color_name);
+        if (colorIndex === -1) continue;
+        colors[colorIndex] = { ...colors[colorIndex], stock: colors[colorIndex].stock + item.quantity };
+        await client.query("UPDATE products SET colors = $1 WHERE id = $2", [JSON.stringify(colors), item.product_id]);
+      }
+    }
+
+    await client.query("DELETE FROM orders WHERE id = $1", [orderId]);
+
+    await client.query("COMMIT");
+    res.status(204).end();
+  } catch (err) {
+    await client.query("ROLLBACK");
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 // Registro público de pedidos: fuera del panel admin. Valida el stock de
 // cada producto/color dentro de una transacción (con FOR UPDATE para
 // evitar que dos pedidos a la vez vendan el mismo stock), lo descuenta y
