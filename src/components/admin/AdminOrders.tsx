@@ -1,6 +1,6 @@
 import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Trash2, Upload, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Printer, Trash2, Upload, X } from "lucide-react";
 import { AdminOrder, OrderItem, OrderStatus, PaymentInput, deleteOrder, fetchOrders, registerPayment, updateOrderItemColor, uploadImage } from "@/lib/api";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import { productImageUrl } from "@/lib/images";
@@ -29,6 +29,99 @@ const buildStatusWhatsAppLink = (order: AdminOrder) => {
   const phone = digits.startsWith("51") ? digits : `51${digits}`;
   const message = `Hola ${order.customerName}, novedades de tu pedido #${order.id}:\n\n${buildOrderStatusText(order)}`;
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+};
+
+// Solo estos tipos de delivery piden vía de envío (terrestre/aéreo) o
+// dirección exacta — mismas reglas que en el registro de cliente/pedido.
+const DELIVERY_MODE_TYPES = ["Shalom", "Olva"];
+const ADDRESS_TYPES = ["Motorizado Express", "Motorizado Delivery"];
+
+const escapeHtml = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+const PRINT_STYLES = `
+  @page { size: A5 portrait; margin: 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 0; }
+`;
+
+// Reporte para pedidos "Pendiente de envío" (ya pagados): datos de entrega
+// del cliente, listos para pegar en el paquete.
+const buildShippingLabelHtml = (order: AdminOrder) => {
+  const showMode = DELIVERY_MODE_TYPES.includes(order.customerDeliveryType);
+  const showAddress = ADDRESS_TYPES.includes(order.customerDeliveryType);
+  const rows: [string, string][] = [
+    ["Tipo de delivery", order.customerDeliveryType],
+    ...(order.customerAgency ? ([["Agencia", order.customerAgency]] as [string, string][]) : []),
+    ["Departamento", order.customerDepartment],
+    ["Provincia", order.customerProvince],
+    ["Distrito", order.customerDistrict],
+    ["Tipo de documento", order.customerDocumentType],
+    ["Número de documento", order.customerDocumentNumber],
+    ["Nombres y apellidos", order.customerName],
+    ...(showMode && order.customerDeliveryMode ? ([["Vía de envío", order.customerDeliveryMode]] as [string, string][]) : []),
+    ...(showAddress && order.customerAddress ? ([["Dirección", order.customerAddress]] as [string, string][]) : []),
+  ];
+  return `
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Pedido #${order.id}</title>
+        <style>
+          ${PRINT_STYLES}
+          h1 { font-size: 18px; margin: 0 0 14px; }
+          table { width: 100%; border-collapse: collapse; font-size: 13px; }
+          td { padding: 7px 4px; border-bottom: 1px solid #ddd; vertical-align: top; }
+          td:first-child { font-weight: 700; width: 42%; color: #444; }
+        </style>
+      </head>
+      <body>
+        <h1>Pedido #${order.id}</h1>
+        <table>
+          ${rows.map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(value)}</td></tr>`).join("")}
+        </table>
+      </body>
+    </html>
+  `;
+};
+
+// Reporte para pedidos en "Separación" (pago parcial): solo el número de
+// pedido bien grande y el nombre del cliente abajo, para identificarlo
+// mientras espera el resto del pago.
+const buildSeparationLabelHtml = (order: AdminOrder) => `
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>Pedido #${order.id}</title>
+      <style>
+        ${PRINT_STYLES}
+        body { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: space-between; text-align: center; padding: 20mm 0; }
+        .order-number { font-size: 110px; font-weight: 800; }
+        .customer-name { font-size: 20px; font-weight: 600; }
+      </style>
+    </head>
+    <body>
+      <div></div>
+      <div class="order-number">#${order.id}</div>
+      <div class="customer-name">${escapeHtml(order.customerName)}</div>
+    </body>
+  </html>
+`;
+
+const printOrder = (order: AdminOrder) => {
+  const html =
+    order.status === "Pendiente de envío" ? buildShippingLabelHtml(order) : buildSeparationLabelHtml(order);
+  const printWindow = window.open("", "_blank", "width=600,height=800");
+  if (!printWindow) {
+    toast.error("El navegador bloqueó la ventana de impresión");
+    return;
+  }
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.onload = () => {
+    printWindow.focus();
+    printWindow.print();
+  };
 };
 
 // Deja cambiar el color de un ítem ya registrado. Si el producto sigue en
@@ -403,6 +496,16 @@ const AdminOrders = () => {
                               <MessageCircle className="w-4 h-4" fill="white" />
                               Enviar estado por WhatsApp
                             </a>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => printOrder(order)}
+                              disabled={order.status === "Registrado"}
+                              title={order.status === "Registrado" ? "Registra un pago primero" : "Imprimir reporte A5"}
+                              className="gap-2"
+                            >
+                              <Printer className="w-3.5 h-3.5" /> Imprimir
+                            </Button>
                             <Button
                               variant="outline"
                               size="sm"

@@ -325,7 +325,16 @@ export const registerRegularizedOrder = (data: {
 export interface AdminOrder extends Order {
   customerName: string;
   customerDocument: string;
+  customerDocumentType: string;
+  customerDocumentNumber: string;
   customerMobile: string;
+  customerDepartment: string;
+  customerProvince: string;
+  customerDistrict: string;
+  customerDeliveryType: DeliveryType;
+  customerDeliveryMode: DeliveryMode | null;
+  customerAgency: string;
+  customerAddress: string;
   sellerName: string;
 }
 
