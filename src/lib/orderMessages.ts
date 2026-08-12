@@ -5,11 +5,17 @@ export const formatDeadlineDate = (iso: string) =>
 
 // Texto de estado que se agrega siempre que se le comparte al cliente el
 // número de su pedido (registro inicial o actualizaciones de pago). En
-// "Separación" además avisa el plazo de 15 días calendario para cancelar.
+// "Separación" además indica cuánto pagó, cuánto le falta, y el plazo de
+// 15 días calendario para cancelar.
 export const buildOrderStatusText = (order: Order) => {
   let text = `Estado del pedido: ${order.status}`;
-  if (order.status === "Separación" && order.separationDeadline) {
-    text += `\n\nTienes 15 días calendario para cancelar tu pedido. Fecha límite: ${formatDeadlineDate(order.separationDeadline)}.`;
+  if (order.status === "Separación") {
+    const paid = order.payments.reduce((sum, p) => sum + p.amount, 0);
+    const remaining = order.total - paid;
+    text += `\n\nPagado: S/.${paid.toFixed(2)}\nSaldo pendiente: S/.${remaining.toFixed(2)}`;
+    if (order.separationDeadline) {
+      text += `\n\nTienes 15 días calendario para cancelar tu pedido. Fecha límite: ${formatDeadlineDate(order.separationDeadline)}.`;
+    }
   }
   return text;
 };
