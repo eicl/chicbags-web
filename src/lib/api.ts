@@ -357,6 +357,25 @@ export const updateOrderItemColor = (orderId: number, itemId: number, colorName:
     body: JSON.stringify({ colorName }),
   }).then((res) => handle<Order>(res));
 
+// Tope de descuento manual por ítem al registrar un pedido: uno para el
+// link público (sin sesión) y otro, más alto, para cuando se registra con
+// sesión de admin abierta. Editable desde el panel.
+export interface DiscountSettings {
+  maxItemDiscountPublic: number;
+  maxItemDiscountAdmin: number;
+}
+
+export const fetchSettings = (): Promise<DiscountSettings> =>
+  fetch(`${API_URL}/settings`).then((res) => handle<DiscountSettings>(res));
+
+export const updateSettings = (data: DiscountSettings): Promise<DiscountSettings> =>
+  fetch(`${API_URL}/settings`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<DiscountSettings>(res));
+
 // Registra un pago de un pedido (panel admin): el servidor recalcula el
 // estado del pedido sumando todos los pagos contra el total.
 export const registerPayment = (orderId: number, data: PaymentInput): Promise<Order> =>

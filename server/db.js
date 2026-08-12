@@ -209,6 +209,20 @@ export const initSchema = async () => {
   // el flujo normal) permite ítems que no corresponden a ningún producto
   // del catálogo, así que product_id queda opcional para esos casos.
   await pool.query(`ALTER TABLE order_items ALTER COLUMN product_id DROP NOT NULL;`);
+
+  // Fila única de configuración general. Por ahora solo el tope de
+  // descuento manual por ítem al registrar un pedido: uno para el link
+  // público (sin sesión) y otro, más alto, para cuando se registra con
+  // sesión de admin abierta — ambos editables desde el panel.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS settings (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      max_item_discount_public NUMERIC NOT NULL DEFAULT 4,
+      max_item_discount_admin NUMERIC NOT NULL DEFAULT 10,
+      CONSTRAINT settings_singleton CHECK (id = 1)
+    );
+  `);
+  await pool.query(`INSERT INTO settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`);
 };
 
 // Busca una marca por nombre (sin distinguir mayúsculas/minúsculas) o la crea

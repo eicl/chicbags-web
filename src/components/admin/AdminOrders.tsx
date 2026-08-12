@@ -1,8 +1,11 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Plus, Printer, Trash2, Upload, X } from "lucide-react";
-import { AdminOrder, OrderItem, OrderStatus, PaymentInput, deleteOrder, fetchOrders, registerPayment, updateOrderItemColor, uploadImage } from "@/lib/api";
+import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Plus, Printer, Settings, Trash2, Upload, X } from "lucide-react";
+import {
+  AdminOrder, DiscountSettings, OrderItem, OrderStatus, PaymentInput,
+  deleteOrder, fetchOrders, fetchSettings, registerPayment, updateOrderItemColor, updateSettings, uploadImage,
+} from "@/lib/api";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import { productImageUrl } from "@/lib/images";
 import { useProducts } from "@/context/ProductContext";
@@ -319,6 +322,89 @@ const PaymentForm = ({ orderId }: { orderId: number }) => {
   );
 };
 
+// Deja editar los topes de descuento manual por ítem (link público de
+// registro de pedidos vs. con sesión de admin abierta), guardados en la
+// fila única de settings.
+const DiscountSettingsPanel = () => {
+  const queryClient = useQueryClient();
+  const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
+  const [open, setOpen] = useState(false);
+  const [publicMax, setPublicMax] = useState("");
+  const [adminMax, setAdminMax] = useState("");
+
+  useEffect(() => {
+    if (settings) {
+      setPublicMax(String(settings.maxItemDiscountPublic));
+      setAdminMax(String(settings.maxItemDiscountAdmin));
+    }
+  }, [settings]);
+
+  const mutation = useMutation({
+    mutationFn: (data: DiscountSettings) => updateSettings(data),
+    onSuccess: () => {
+      toast.success("Configuración guardada");
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
+      setOpen(false);
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo guardar la configuración"),
+  });
+
+  const handleSave = () => {
+    const publicValue = Number(publicMax);
+    const adminValue = Number(adminMax);
+    if (!Number.isFinite(publicValue) || publicValue < 0) {
+      toast.error("Ingresa un descuento máximo público válido");
+      return;
+    }
+    if (!Number.isFinite(adminValue) || adminValue < 0) {
+      toast.error("Ingresa un descuento máximo con admin válido");
+      return;
+    }
+    mutation.mutate({ maxItemDiscountPublic: publicValue, maxItemDiscountAdmin: adminValue });
+  };
+
+  return (
+    <div className="mb-6">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <Settings className="w-4 h-4" /> Descuento máximo por ítem
+      </button>
+      {open && (
+        <div className="mt-3 flex flex-wrap items-end gap-3 p-4 rounded-md border border-border bg-muted/20">
+          <div>
+            <label className="block text-xs text-muted-foreground mb-1">Sin sesión (link público)</label>
+            <Input
+              type="number"
+              min={0}
+              step={0.5}
+              value={publicMax}
+              onChange={(e) => setPublicMax(e.target.value)}
+              className="h-9 w-28"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-muted-foreground mb-1">Con sesión de admin</label>
+            <Input
+              type="number"
+              min={0}
+              step={0.5}
+              value={adminMax}
+              onChange={(e) => setAdminMax(e.target.value)}
+              className="h-9 w-28"
+            />
+          </div>
+          <Button size="sm" onClick={handleSave} disabled={mutation.isPending}>
+            {mutation.isPending ? "Guardando..." : "Guardar"}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const AdminOrders = () => {
   const queryClient = useQueryClient();
   const { data: orders = [], isLoading, isError } = useQuery({ queryKey: ["orders"], queryFn: fetchOrders });
@@ -343,6 +429,8 @@ const AdminOrders = () => {
 
   return (
     <div>
+      <DiscountSettingsPanel />
+
       <div className="flex justify-end mb-6">
         <Link to="/registro-pedido" target="_blank" rel="noopener noreferrer">
           <Button className="gap-2">

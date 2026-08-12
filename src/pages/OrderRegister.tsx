@@ -9,7 +9,7 @@ import Header from "@/components/Header";
 import { useProducts } from "@/context/ProductContext";
 import { useAuth } from "@/context/AuthContext";
 import { Product, ProductColor } from "@/context/CartContext";
-import { lookupCustomer, registerOrder, uploadPaymentProof, fetchSellers, Customer, Order } from "@/lib/api";
+import { lookupCustomer, registerOrder, uploadPaymentProof, fetchSellers, fetchSettings, Customer, Order } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import ProductOrderPicker from "@/components/ProductOrderPicker";
@@ -28,8 +28,10 @@ const lineKey = (productId: number, colorName: string) => `${productId}::${color
 
 // El link de registro de pedidos es público, pero si en ese mismo navegador
 // hay una sesión de admin abierta, se permite un descuento manual mayor.
-const PUBLIC_MAX_ITEM_DISCOUNT = 4;
-const ADMIN_MAX_ITEM_DISCOUNT = 10;
+// Los topes son configurables desde el panel (Admin > Pedidos); estos son
+// solo el valor de respaldo mientras se cargan desde el servidor.
+const FALLBACK_PUBLIC_MAX_ITEM_DISCOUNT = 4;
+const FALLBACK_ADMIN_MAX_ITEM_DISCOUNT = 10;
 const clampDiscount = (value: number, maxDiscount: number) => Math.min(Math.max(value, 0), maxDiscount);
 
 const formatDateTime = (iso: string) =>
@@ -58,7 +60,10 @@ const OrderRegister = () => {
   const queryClient = useQueryClient();
   const { products } = useProducts();
   const { user } = useAuth();
-  const maxItemDiscount = user ? ADMIN_MAX_ITEM_DISCOUNT : PUBLIC_MAX_ITEM_DISCOUNT;
+  const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
+  const maxItemDiscount = user
+    ? settings?.maxItemDiscountAdmin ?? FALLBACK_ADMIN_MAX_ITEM_DISCOUNT
+    : settings?.maxItemDiscountPublic ?? FALLBACK_PUBLIC_MAX_ITEM_DISCOUNT;
 
   const [code, setCode] = useState("");
   const [documentNumber, setDocumentNumber] = useState("");

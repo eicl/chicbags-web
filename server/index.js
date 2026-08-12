@@ -402,12 +402,40 @@ app.get("/api/sellers", async (req, res) => {
 });
 
 const DELIVERY_TYPES = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Olva", "Marvisur"];
+
 // Tope de descuento manual por ítem al registrar un pedido: más alto si
 // quien registra tiene sesión de admin abierta en el navegador (aunque el
 // registro de pedidos en sí sea público), más bajo por el link público sin
-// sesión.
-const MAX_ITEM_DISCOUNT = 4;
-const MAX_ITEM_DISCOUNT_ADMIN = 10;
+// sesión. Editable desde el panel — vive en la fila única de settings.
+const mapSettings = (row) => ({
+  maxItemDiscountPublic: Number(row.max_item_discount_public),
+  maxItemDiscountAdmin: Number(row.max_item_discount_admin),
+});
+
+const getSettings = async () => {
+  const { rows } = await pool.query("SELECT * FROM settings WHERE id = 1");
+  return mapSettings(rows[0]);
+};
+
+app.get("/api/settings", async (req, res) => {
+  res.json(await getSettings());
+});
+
+app.put("/api/settings", requireAuth, async (req, res) => {
+  const { maxItemDiscountPublic, maxItemDiscountAdmin } = req.body;
+  if (typeof maxItemDiscountPublic !== "number" || !Number.isFinite(maxItemDiscountPublic) || maxItemDiscountPublic < 0) {
+    return res.status(400).json({ error: "El descuento máximo del link público es inválido" });
+  }
+  if (typeof maxItemDiscountAdmin !== "number" || !Number.isFinite(maxItemDiscountAdmin) || maxItemDiscountAdmin < 0) {
+    return res.status(400).json({ error: "El descuento máximo con sesión de admin es inválido" });
+  }
+  const { rows } = await pool.query(
+    "UPDATE settings SET max_item_discount_public = $1, max_item_discount_admin = $2 WHERE id = 1 RETURNING *",
+    [maxItemDiscountPublic, maxItemDiscountAdmin]
+  );
+  res.json(mapSettings(rows[0]));
+});
+
 const DELIVERY_MODE_REQUIRED = ["Shalom", "Olva"];
 const DELIVERY_MODES = ["Terrestre", "Aéreo"];
 // Solo Shalom tiene sedes cargadas por ahora; cuando se cargue Olva se
@@ -962,7 +990,8 @@ app.post("/api/orders/register", async (req, res) => {
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "El pedido no tiene productos" });
   }
-  const maxDiscount = isAuthenticated(req) ? MAX_ITEM_DISCOUNT_ADMIN : MAX_ITEM_DISCOUNT;
+  const settings = await getSettings();
+  const maxDiscount = isAuthenticated(req) ? settings.maxItemDiscountAdmin : settings.maxItemDiscountPublic;
   for (const item of items) {
     if (!Number.isInteger(item?.productId) || !item?.colorName || !Number.isInteger(item?.quantity) || item.quantity <= 0) {
       return res.status(400).json({ error: "Hay un producto inválido en el pedido" });
