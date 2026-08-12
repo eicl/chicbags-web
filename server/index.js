@@ -1211,6 +1211,12 @@ const ROUTE_META = [
     description: "Completa tus datos para que podamos atenderte y coordinar tus envíos.",
     image: "/og-registro-cliente.png",
   },
+  {
+    prefix: "/catalogo",
+    title: "Catálogo - ChicBags",
+    description: "Aquí podrás ver todas nuestras hermosas carteras.",
+    image: "/og-catalogo.png",
+  },
 ];
 const DEFAULT_META = { title: "ChicBags", description: "Tu tienda de confianza", image: "/chicBags.jpeg" };
 
