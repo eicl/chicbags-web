@@ -14,8 +14,10 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import Pagination from "@/components/admin/Pagination";
 
+// Fecha de creación del pedido en el listado: solo día/mes, para no ocupar
+// tanto espacio en la tabla.
 const formatDate = (iso: string) =>
-  new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
+  new Date(iso).toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit" });
 
 // A diferencia de formatDate (para momentos reales, como cuándo se creó el
 // pedido), esta es para fechas de calendario sin hora (fecha de pago, plazo
@@ -505,7 +507,6 @@ const AdminOrders = () => {
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Ubicación</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Vendedor</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Estado</th>
-                <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Productos</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Total</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Pagado</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Restante</th>
@@ -545,9 +546,6 @@ const AdminOrders = () => {
                           {order.status}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-muted-foreground text-sm">
-                        {order.items.length} {order.items.length === 1 ? "producto" : "productos"}
-                      </td>
                       <td className="py-3 px-4 font-medium">S/.{order.total.toFixed(2)}</td>
                       <td className="py-3 px-4 text-emerald-600 text-sm">S/.{paid.toFixed(2)}</td>
                       <td className="py-3 px-4 text-sm">
@@ -564,7 +562,7 @@ const AdminOrders = () => {
                     </tr>
                     {isExpanded && (
                       <tr key={`${order.id}-detail`} className="border-b border-border last:border-0 bg-muted/20">
-                        <td colSpan={13} className="px-4 py-3 space-y-4">
+                        <td colSpan={12} className="px-4 py-3 space-y-4">
                           <p className="text-sm">
                             <span className="text-muted-foreground">Celular:</span> <span className="font-medium">{order.customerMobile}</span>
                             {order.customerAddress && (
@@ -574,6 +572,9 @@ const AdminOrders = () => {
                               </>
                             )}
                           </p>
+                          <h4 className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
+                            Productos ({order.items.length})
+                          </h4>
                           <table className="w-full text-sm">
                             <thead>
                               <tr className="text-xs uppercase tracking-widest text-muted-foreground">
@@ -706,17 +707,17 @@ const AdminOrders = () => {
               })}
               {isLoading && (
                 <tr>
-                  <td colSpan={13} className="py-12 text-center text-muted-foreground">Cargando pedidos...</td>
+                  <td colSpan={12} className="py-12 text-center text-muted-foreground">Cargando pedidos...</td>
                 </tr>
               )}
               {isError && (
                 <tr>
-                  <td colSpan={13} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
+                  <td colSpan={12} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
                 </tr>
               )}
               {!isLoading && !isError && filteredOrders.length === 0 && (
                 <tr>
-                  <td colSpan={13} className="py-12 text-center text-muted-foreground">
+                  <td colSpan={12} className="py-12 text-center text-muted-foreground">
                     {orders.length === 0 ? "No hay pedidos registrados." : "Ningún pedido coincide con la búsqueda."}
                   </td>
                 </tr>
