@@ -947,8 +947,11 @@ const applyPayment = async (client, orderId, total, currentDeadline, { amount, s
   );
   const paid = Number(paidRows[0].paid);
   const status = paid >= total ? "Pendiente de envío" : "Separación";
+  // El plazo se cuenta desde la fecha del pago (no desde que se registró en
+  // el sistema), así que si el pago se carga con una fecha pasada, el plazo
+  // también arranca desde esa fecha y no desde "ahora".
   const separationDeadline =
-    status === "Separación" ? currentDeadline ?? new Date(Date.now() + SEPARATION_DAYS * 24 * 60 * 60 * 1000) : currentDeadline;
+    status === "Separación" ? currentDeadline ?? new Date(paidAt.getTime() + SEPARATION_DAYS * 24 * 60 * 60 * 1000) : currentDeadline;
   await client.query("UPDATE orders SET status = $1, separation_deadline = $2 WHERE id = $3", [status, separationDeadline, orderId]);
   return { status, separationDeadline };
 };
