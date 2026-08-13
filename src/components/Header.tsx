@@ -59,12 +59,13 @@ const Header = () => {
           >
             <Search className="w-5 h-5 text-foreground" />
           </button>
-          <button
+          <Link
+            to="/mi-cuenta"
             className="hidden sm:inline-flex p-2 hover:bg-muted rounded-full transition-colors"
             aria-label="Mi cuenta"
           >
             <User className="w-5 h-5 text-foreground" />
-          </button>
+          </Link>
           <button
             onClick={() => setIsCartOpen(true)}
             className="relative p-2 hover:bg-muted rounded-full transition-colors"

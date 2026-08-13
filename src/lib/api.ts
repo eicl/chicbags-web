@@ -221,6 +221,56 @@ export const updateCustomer = (id: number, data: CustomerInput): Promise<Custome
 export const deleteCustomer = (id: number): Promise<void> =>
   fetch(`${API_URL}/customers/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
 
+// Cuenta de cliente (con contraseña) para iniciar sesión en la tienda y
+// dejar valoraciones — distinta de la sesión de admin, cookie aparte.
+export const registerCustomerAccount = (data: CustomerInput & { password: string }): Promise<Customer> =>
+  fetch(`${API_URL}/customers/register-account`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<Customer>(res));
+
+// El cliente puede iniciar sesión con su documento, su celular o su código
+// de cliente.
+export const loginCustomer = (identifier: string, password: string): Promise<Customer> =>
+  fetch(`${API_URL}/customers/login`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier, password }),
+  }).then((res) => handle<Customer>(res));
+
+export const logoutCustomer = (): Promise<void> =>
+  fetch(`${API_URL}/customers/logout`, { method: "POST", credentials: "include" }).then((res) => handle<void>(res));
+
+export const fetchCustomerMe = (): Promise<Customer> =>
+  fetch(`${API_URL}/customers/me`, { credentials: "include" }).then((res) => handle<Customer>(res));
+
+// Valoraciones de la tienda (no de un producto en particular), visibles al
+// final de la página de inicio.
+export interface Review {
+  id: number;
+  customerId: number;
+  customerName: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
+}
+
+export const fetchReviews = (): Promise<Review[]> =>
+  fetch(`${API_URL}/reviews`).then((res) => handle<Review[]>(res));
+
+// Un cliente logueado solo puede tener una valoración: si ya dejó una,
+// esto la actualiza en vez de crear otra.
+export const submitReview = (data: { rating: number; comment: string }): Promise<Review> =>
+  fetch(`${API_URL}/reviews`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<Review>(res));
+
 export interface OrderItem {
   id: number;
   // null en ítems de un pedido de Regularización que no corresponden a

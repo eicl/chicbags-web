@@ -109,6 +109,33 @@ app.get("/api/auth/me", requireAuth, (req, res) => {
   res.json({ username: req.user.sub });
 });
 
+// Sesión de CLIENTE (para iniciar sesión en la tienda y dejar valoraciones):
+// va en una cookie separada de la de admin, así un mismo navegador puede
+// tener las dos sesiones a la vez sin pisarse.
+const CUSTOMER_COOKIE_NAME = "nc_customer_token";
+
+const signCustomerToken = (customerId) => jwt.sign({ sub: String(customerId) }, JWT_SECRET, { expiresIn: "30d" });
+
+const setCustomerAuthCookie = (res, token) => {
+  res.cookie(CUSTOMER_COOKIE_NAME, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isProd,
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+  });
+};
+
+const requireCustomerAuth = (req, res, next) => {
+  const token = req.cookies[CUSTOMER_COOKIE_NAME];
+  if (!token) return res.status(401).json({ error: "Inicia sesión para continuar" });
+  try {
+    req.customerId = Number(jwt.verify(token, JWT_SECRET).sub);
+    next();
+  } catch {
+    res.status(401).json({ error: "Sesión inválida o expirada" });
+  }
+};
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, IMAGES_DIR),
   filename: (req, file, cb) => {
@@ -499,7 +526,7 @@ app.get("/api/customers", requireAuth, async (req, res) => {
   res.json(rows.map(mapCustomer));
 });
 
-const insertCustomer = async (body) => {
+const insertCustomer = async (body, passwordHash = null) => {
   const {
     documentType, documentNumber, firstName, paternalSurname, maternalSurname,
     mobile, department, province, district, deliveryType, deliveryMode, agency, address,
@@ -509,11 +536,48 @@ const insertCustomer = async (body) => {
   const addressValue = ADDRESS_REQUIRED.includes(deliveryType) ? (address ?? "").trim() : "";
   await ensureDistrictExists(province, district);
   const { rows } = await pool.query(
-    `INSERT INTO customers (document_type, document_number, first_name, paternal_surname, maternal_surname, mobile, country, department, province, district, delivery_type, delivery_mode, agency, address)
-     VALUES ($1, $2, $3, $4, $5, $6, 'Perú', $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
-    [documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue, agencyValue, addressValue]
+    `INSERT INTO customers (document_type, document_number, first_name, paternal_surname, maternal_surname, mobile, country, department, province, district, delivery_type, delivery_mode, agency, address, password_hash)
+     VALUES ($1, $2, $3, $4, $5, $6, 'Perú', $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
+    [documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue, agencyValue, addressValue, passwordHash]
   );
   return rows[0];
+};
+
+// Si ya existe un cliente con ese documento pero nunca creó cuenta (lo
+// registró un vendedor), esto "reclama" ese registro: actualiza su perfil
+// y le pone contraseña, en vez de duplicarlo. Si ya tiene cuenta, avisa
+// que inicie sesión en vez de registrarse de nuevo.
+const claimOrCreateCustomerAccount = async (body, passwordHash) => {
+  const trimmedDoc = (body.documentNumber ?? "").trim();
+  if (trimmedDoc) {
+    const { rows: existing } = await pool.query(
+      "SELECT id, password_hash FROM customers WHERE document_type = $1 AND document_number = $2",
+      [body.documentType, trimmedDoc]
+    );
+    if (existing.length > 0) {
+      if (existing[0].password_hash) {
+        throw new Error("ACCOUNT_EXISTS");
+      }
+      const { firstName, paternalSurname, maternalSurname, mobile, department, province, district, deliveryType, deliveryMode, agency, address } = body;
+      const deliveryModeValue = DELIVERY_MODE_REQUIRED.includes(deliveryType) ? deliveryMode : null;
+      const agencyValue = AGENCY_REQUIRED.includes(deliveryType) ? (agency ?? "").trim() : "";
+      const addressValue = ADDRESS_REQUIRED.includes(deliveryType) ? (address ?? "").trim() : "";
+      await ensureDistrictExists(province, district);
+      const { rows } = await pool.query(
+        `UPDATE customers SET first_name = $1, paternal_surname = $2, maternal_surname = $3, mobile = $4,
+           department = $5, province = $6, district = $7, delivery_type = $8, delivery_mode = $9, agency = $10, address = $11,
+           password_hash = $12
+         WHERE id = $13 RETURNING *`,
+        [
+          firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(),
+          department, province, district.trim(), deliveryType, deliveryModeValue, agencyValue, addressValue,
+          passwordHash, existing[0].id,
+        ]
+      );
+      return rows[0];
+    }
+  }
+  return insertCustomer(body, passwordHash);
 };
 
 app.post("/api/customers", requireAuth, async (req, res) => {
@@ -626,6 +690,106 @@ app.get("/api/customers/lookup", async (req, res) => {
     : await pool.query("SELECT * FROM customers WHERE document_number = $1", [documentNumber]);
   if (rows.length === 0) return res.status(404).json({ error: "No se encontró ningún cliente con ese dato" });
   res.json(mapCustomer(rows[0]));
+});
+
+// Registro de cuenta de cliente (con contraseña), para iniciar sesión en la
+// tienda y dejar valoraciones. Mismos datos que el registro de cliente
+// normal, más contraseña. Si ya existe un cliente con ese documento sin
+// cuenta (lo registró un vendedor), la "reclama" en vez de duplicarlo.
+app.post("/api/customers/register-account", async (req, res) => {
+  const error = validateCustomer(req.body);
+  if (error) return res.status(400).json({ error });
+  const { password } = req.body;
+  if (!password || password.length < 6) {
+    return res.status(400).json({ error: "La contraseña debe tener al menos 6 caracteres" });
+  }
+  try {
+    const passwordHash = await bcrypt.hash(password, 10);
+    const row = await claimOrCreateCustomerAccount(req.body, passwordHash);
+    setCustomerAuthCookie(res, signCustomerToken(row.id));
+    res.status(201).json(mapCustomer(row));
+  } catch (err) {
+    if (err.message === "ACCOUNT_EXISTS") {
+      return res.status(409).json({ error: "Ya existe una cuenta con ese documento. Inicia sesión." });
+    }
+    if (err.code === "23505") return res.status(409).json({ error: "Ya existe un cliente con ese tipo y número de documento" });
+    throw err;
+  }
+});
+
+// El cliente puede iniciar sesión con su documento, su celular o su código
+// de cliente — lo que le resulte más fácil de recordar.
+app.post("/api/customers/login", async (req, res) => {
+  const identifier = (req.body.identifier ?? "").toString().trim();
+  const { password } = req.body;
+  if (!identifier || !password) {
+    return res.status(400).json({ error: "Ingresa tu usuario y contraseña" });
+  }
+  const { rows } = await pool.query(
+    `SELECT * FROM customers
+     WHERE password_hash IS NOT NULL AND (document_number = $1 OR mobile = $1 OR id::text = $1)
+     LIMIT 1`,
+    [identifier]
+  );
+  const customer = rows[0];
+  const valid = customer && (await bcrypt.compare(password, customer.password_hash));
+  if (!valid) return res.status(401).json({ error: "Usuario o contraseña incorrectos" });
+  setCustomerAuthCookie(res, signCustomerToken(customer.id));
+  res.json(mapCustomer(customer));
+});
+
+app.post("/api/customers/logout", (req, res) => {
+  res.clearCookie(CUSTOMER_COOKIE_NAME);
+  res.status(204).end();
+});
+
+app.get("/api/customers/me", requireCustomerAuth, async (req, res) => {
+  const { rows } = await pool.query("SELECT * FROM customers WHERE id = $1", [req.customerId]);
+  if (rows.length === 0) return res.status(401).json({ error: "Sesión inválida" });
+  res.json(mapCustomer(rows[0]));
+});
+
+const mapReview = (row) => ({
+  id: row.id,
+  customerId: row.customer_id,
+  customerName: `${row.first_name} ${(row.paternal_surname ?? "").charAt(0)}${row.paternal_surname ? "." : ""}`.trim(),
+  rating: row.rating,
+  comment: row.comment,
+  createdAt: row.created_at,
+});
+
+// Valoraciones de la tienda (no de un producto en particular): se muestran
+// al final de la página de inicio. Un cliente solo puede tener una — si
+// vuelve a enviar, se actualiza la que ya tenía (UNIQUE en customer_id).
+app.get("/api/reviews", async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT r.*, c.first_name, c.paternal_surname FROM reviews r
+     JOIN customers c ON c.id = r.customer_id
+     ORDER BY r.created_at DESC LIMIT 100`
+  );
+  res.json(rows.map(mapReview));
+});
+
+app.post("/api/reviews", requireCustomerAuth, async (req, res) => {
+  const { rating, comment } = req.body;
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return res.status(400).json({ error: "La calificación debe ser de 1 a 5 estrellas" });
+  }
+  if (!comment?.trim()) {
+    return res.status(400).json({ error: "Escribe tu comentario" });
+  }
+  const { rows } = await pool.query(
+    `INSERT INTO reviews (customer_id, rating, comment)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (customer_id) DO UPDATE SET rating = EXCLUDED.rating, comment = EXCLUDED.comment, created_at = now()
+     RETURNING id`,
+    [req.customerId, rating, comment.trim()]
+  );
+  const { rows: withName } = await pool.query(
+    "SELECT r.*, c.first_name, c.paternal_surname FROM reviews r JOIN customers c ON c.id = r.customer_id WHERE r.id = $1",
+    [rows[0].id]
+  );
+  res.status(201).json(mapReview(withName[0]));
 });
 
 app.get("/api/products/:id", async (req, res) => {

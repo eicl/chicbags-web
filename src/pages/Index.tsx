@@ -3,6 +3,7 @@ import HeroSection from "@/components/HeroSection";
 import TrustBar from "@/components/TrustBar";
 import AboutSection from "@/components/AboutSection";
 import ContactSection from "@/components/ContactSection";
+import ReviewsSection from "@/components/ReviewsSection";
 import CartDrawer from "@/components/CartDrawer";
 import Footer from "@/components/Footer";
 import WhatsAppButton from "@/components/WhatsAppButton";
@@ -14,6 +15,7 @@ const Index = () => (
     <TrustBar />
     <AboutSection />
     <ContactSection />
+    <ReviewsSection />
     <CartDrawer />
     <WhatsAppButton />
     <Footer />

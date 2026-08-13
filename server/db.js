@@ -128,6 +128,19 @@ export const initSchema = async () => {
     ON customers (document_type, document_number)
     WHERE document_number <> '';
   `);
+  // Le permite al cliente crear una cuenta (con contraseña) para iniciar
+  // sesión en la tienda y dejar valoraciones. Null para los clientes que
+  // solo existen porque un vendedor los registró — nunca se creó cuenta.
+  await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS password_hash TEXT;`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS reviews (
+      id SERIAL PRIMARY KEY,
+      customer_id INTEGER NOT NULL UNIQUE REFERENCES customers(id) ON DELETE CASCADE,
+      rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+      comment TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS agencies (
       id SERIAL PRIMARY KEY,
