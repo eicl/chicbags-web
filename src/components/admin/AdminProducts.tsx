@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useProducts } from "@/context/ProductContext";
 import { Product, ProductColor } from "@/context/CartContext";
-import { Plus, Pencil, Trash2, X, Upload, Loader2, Video as VideoIcon } from "lucide-react";
+import { Plus, Pencil, Pipette, Trash2, X, Upload, Loader2, Video as VideoIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -14,6 +14,21 @@ const emptyForm = { name: "", price: 0, cost: "", category: "", description: "",
 const emptyColor: ProductColor = { name: "", hex: "#161616", image: "", stock: 0 };
 const MAX_PHOTOS = 5;
 const MAX_VIDEOS = 2;
+
+// El gotero para sacar el color exacto de la foto del producto (API nativa
+// del navegador, todavía no está en los tipos de TS por defecto). Solo
+// Chrome/Edge la soportan por ahora.
+interface EyeDropperResult {
+  sRGBHex: string;
+}
+interface EyeDropperInstance {
+  open: () => Promise<EyeDropperResult>;
+}
+declare global {
+  interface Window {
+    EyeDropper?: new () => EyeDropperInstance;
+  }
+}
 
 const AdminProducts = () => {
   const { products, addProduct, updateProduct, deleteProduct, isLoading, isError } = useProducts();
@@ -77,6 +92,21 @@ const AdminProducts = () => {
 
   const handleColorChange = (index: number, field: keyof ProductColor, value: string | number) => {
     setColors((prev) => prev.map((c, i) => (i === index ? { ...c, [field]: value } : c)));
+  };
+
+  // Deja sacar el color exacto de cualquier punto de la pantalla (ej. la
+  // foto del producto) en vez de adivinarlo a ojo.
+  const handleEyedropper = async (index: number) => {
+    if (!window.EyeDropper) {
+      toast.error("El gotero de color solo está disponible en Chrome o Edge");
+      return;
+    }
+    try {
+      const { sRGBHex } = await new window.EyeDropper().open();
+      handleColorChange(index, "hex", sRGBHex);
+    } catch {
+      // El usuario canceló (Esc / clic afuera) — no es un error real.
+    }
   };
 
   const handleColorImageUpload = async (index: number, file: File) => {
@@ -374,6 +404,14 @@ const AdminProducts = () => {
                       className="w-9 h-9 rounded border border-border bg-transparent cursor-pointer shrink-0"
                       title="Elegir color"
                     />
+                    <button
+                      type="button"
+                      onClick={() => handleEyedropper(index)}
+                      className="w-9 h-9 flex items-center justify-center rounded border border-border text-muted-foreground hover:text-foreground hover:border-primary transition-colors shrink-0"
+                      title="Sacar color de la foto (gotero)"
+                    >
+                      <Pipette className="w-4 h-4" />
+                    </button>
                     <Input
                       value={color.hex}
                       onChange={(e) => handleColorChange(index, "hex", e.target.value)}
