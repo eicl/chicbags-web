@@ -67,7 +67,13 @@ interface RegLine {
 const formatDateTime = (iso: string) =>
   new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
 
-const todayDate = () => new Date().toISOString().slice(0, 10);
+// OJO: no usar toISOString() acá — convierte a UTC, y Perú (UTC-5) ya está
+// "mañana" en UTC después de las 7pm, lo que adelantaba la fecha por defecto
+// un día en pagos registrados de noche.
+const todayDate = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
 
 const buildOrderWhatsAppLink = (order: Order, customer: Customer) => {
   const digits = customer.mobile.replace(/\D/g, "");
