@@ -114,9 +114,11 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
   `;
 };
 
-// Reporte para pedidos en "Separación" (pago parcial): solo el número de
-// pedido bien grande y el nombre del cliente abajo, para identificarlo
-// mientras espera el resto del pago.
+// Reporte para pedidos en "Separación" (pago parcial): el número de pedido
+// bien grande (lo más notorio, para ubicarlo rápido entre los demás), y
+// abajo, más chico, el nombre del cliente y el detalle de cada ítem
+// (código, color y cantidad) para identificar el paquete mientras espera
+// el resto del pago.
 const buildSeparationLabelHtml = (order: AdminOrder) => `
   <html>
     <head>
@@ -126,13 +128,22 @@ const buildSeparationLabelHtml = (order: AdminOrder) => `
         ${PRINT_STYLES}
         body { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: space-between; text-align: center; padding: 20mm 0; }
         .order-number { font-size: 110px; font-weight: 800; }
-        .customer-name { font-size: 20px; font-weight: 600; }
+        .customer-name { font-size: 20px; font-weight: 600; margin-bottom: 10px; }
+        .items { font-size: 14px; color: #333; }
+        .items div { margin: 2px 0; }
       </style>
     </head>
     <body>
       <div></div>
       <div class="order-number">#${order.id}</div>
-      <div class="customer-name">${escapeHtml(order.customerName)}</div>
+      <div>
+        <div class="customer-name">${escapeHtml(order.customerName)}</div>
+        <div class="items">
+          ${order.items
+            .map((item) => `<div>${escapeHtml(item.productCode || "—")} · ${escapeHtml(item.colorName)} · x${item.quantity}</div>`)
+            .join("")}
+        </div>
+      </div>
     </body>
   </html>
 `;
