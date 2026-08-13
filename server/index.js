@@ -499,6 +499,8 @@ const mapCustomer = (row) => ({
   deliveryMode: row.delivery_mode,
   agency: row.agency,
   address: row.address,
+  locationLat: row.location_lat === null || row.location_lat === undefined ? null : Number(row.location_lat),
+  locationLng: row.location_lng === null || row.location_lng === undefined ? null : Number(row.location_lng),
 });
 
 const validateCustomer = (body) => {
@@ -526,19 +528,24 @@ app.get("/api/customers", requireAuth, async (req, res) => {
   res.json(rows.map(mapCustomer));
 });
 
+const isFiniteNumber = (n) => typeof n === "number" && Number.isFinite(n);
+
 const insertCustomer = async (body, passwordHash = null) => {
   const {
     documentType, documentNumber, firstName, paternalSurname, maternalSurname,
     mobile, department, province, district, deliveryType, deliveryMode, agency, address,
+    locationLat, locationLng,
   } = body;
   const deliveryModeValue = DELIVERY_MODE_REQUIRED.includes(deliveryType) ? deliveryMode : null;
   const agencyValue = AGENCY_REQUIRED.includes(deliveryType) ? (agency ?? "").trim() : "";
   const addressValue = ADDRESS_REQUIRED.includes(deliveryType) ? (address ?? "").trim() : "";
+  const locationLatValue = ADDRESS_REQUIRED.includes(deliveryType) && isFiniteNumber(locationLat) ? locationLat : null;
+  const locationLngValue = ADDRESS_REQUIRED.includes(deliveryType) && isFiniteNumber(locationLng) ? locationLng : null;
   await ensureDistrictExists(province, district);
   const { rows } = await pool.query(
-    `INSERT INTO customers (document_type, document_number, first_name, paternal_surname, maternal_surname, mobile, country, department, province, district, delivery_type, delivery_mode, agency, address, password_hash)
-     VALUES ($1, $2, $3, $4, $5, $6, 'Perú', $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
-    [documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue, agencyValue, addressValue, passwordHash]
+    `INSERT INTO customers (document_type, document_number, first_name, paternal_surname, maternal_surname, mobile, country, department, province, district, delivery_type, delivery_mode, agency, address, password_hash, location_lat, location_lng)
+     VALUES ($1, $2, $3, $4, $5, $6, 'Perú', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
+    [documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue, agencyValue, addressValue, passwordHash, locationLatValue, locationLngValue]
   );
   return rows[0];
 };
@@ -558,20 +565,24 @@ const claimOrCreateCustomerAccount = async (body, passwordHash) => {
       if (existing[0].password_hash) {
         throw new Error("ACCOUNT_EXISTS");
       }
-      const { firstName, paternalSurname, maternalSurname, mobile, department, province, district, deliveryType, deliveryMode, agency, address } = body;
+      const { firstName, paternalSurname, maternalSurname, mobile, department, province, district, deliveryType, deliveryMode, agency, address, locationLat, locationLng } = body;
       const deliveryModeValue = DELIVERY_MODE_REQUIRED.includes(deliveryType) ? deliveryMode : null;
       const agencyValue = AGENCY_REQUIRED.includes(deliveryType) ? (agency ?? "").trim() : "";
       const addressValue = ADDRESS_REQUIRED.includes(deliveryType) ? (address ?? "").trim() : "";
+      // Este formulario (creación de cuenta) no captura ubicación, así que
+      // si no viene en el body se conserva la que ya tuviera el registro.
+      const locationLatParam = isFiniteNumber(locationLat) ? locationLat : null;
+      const locationLngParam = isFiniteNumber(locationLng) ? locationLng : null;
       await ensureDistrictExists(province, district);
       const { rows } = await pool.query(
         `UPDATE customers SET first_name = $1, paternal_surname = $2, maternal_surname = $3, mobile = $4,
            department = $5, province = $6, district = $7, delivery_type = $8, delivery_mode = $9, agency = $10, address = $11,
-           password_hash = $12
+           password_hash = $12, location_lat = COALESCE($14, location_lat), location_lng = COALESCE($15, location_lng)
          WHERE id = $13 RETURNING *`,
         [
           firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(),
           department, province, district.trim(), deliveryType, deliveryModeValue, agencyValue, addressValue,
-          passwordHash, existing[0].id,
+          passwordHash, existing[0].id, locationLatParam, locationLngParam,
         ]
       );
       return rows[0];
@@ -598,6 +609,12 @@ app.post("/api/customers", requireAuth, async (req, res) => {
 app.post("/api/customers/register", async (req, res) => {
   const error = validateCustomer(req.body);
   if (error) return res.status(400).json({ error });
+  // Los tipos de delivery "motorizado" reparten a domicilio, así que además
+  // de la dirección exigen que el cliente comparta su ubicación GPS actual
+  // (solo en este link público; el panel admin no lo pide al editar).
+  if (ADDRESS_REQUIRED.includes(req.body.deliveryType) && !(isFiniteNumber(req.body.locationLat) && isFiniteNumber(req.body.locationLng))) {
+    return res.status(400).json({ error: "Comparte tu ubicación actual para continuar" });
+  }
   try {
     const row = await insertCustomer(req.body);
     res.status(201).json(mapCustomer(row));
@@ -647,17 +664,23 @@ app.put("/api/customers/:id", requireAuth, async (req, res) => {
   const {
     documentType, documentNumber, firstName, paternalSurname, maternalSurname,
     mobile, department, province, district, deliveryType, deliveryMode, agency, address,
+    locationLat, locationLng,
   } = req.body;
   const deliveryModeValue = DELIVERY_MODE_REQUIRED.includes(deliveryType) ? deliveryMode : null;
   const agencyValue = AGENCY_REQUIRED.includes(deliveryType) ? (agency ?? "").trim() : "";
   const addressValue = ADDRESS_REQUIRED.includes(deliveryType) ? (address ?? "").trim() : "";
+  // El panel admin no edita la ubicación GPS, así que si no viene en el
+  // body se conserva la que ya tuviera el cliente.
+  const locationLatParam = isFiniteNumber(locationLat) ? locationLat : null;
+  const locationLngParam = isFiniteNumber(locationLng) ? locationLng : null;
   await ensureDistrictExists(province, district);
   try {
     const { rows } = await pool.query(
       `UPDATE customers SET document_type = $1, document_number = $2, first_name = $3, paternal_surname = $4,
-         maternal_surname = $5, mobile = $6, department = $7, province = $8, district = $9, delivery_type = $10, delivery_mode = $11, agency = $12, address = $13
+         maternal_surname = $5, mobile = $6, department = $7, province = $8, district = $9, delivery_type = $10, delivery_mode = $11, agency = $12, address = $13,
+         location_lat = COALESCE($15, location_lat), location_lng = COALESCE($16, location_lng)
        WHERE id = $14 RETURNING *`,
-      [documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue, agencyValue, addressValue, id]
+      [documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue, agencyValue, addressValue, id, locationLatParam, locationLngParam]
     );
     if (rows.length === 0) return res.status(404).json({ error: "Cliente no encontrado" });
     res.json(mapCustomer(rows[0]));

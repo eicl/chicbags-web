@@ -132,6 +132,12 @@ export const initSchema = async () => {
   // sesión en la tienda y dejar valoraciones. Null para los clientes que
   // solo existen porque un vendedor los registró — nunca se creó cuenta.
   await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS password_hash TEXT;`);
+  // Ubicación GPS capturada por el cliente al registrarse desde el link
+  // público con un tipo de delivery "motorizado" (obligatoria en ese caso).
+  // Null para los demás tipos de delivery o clientes registrados antes de
+  // este campo.
+  await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS location_lat DOUBLE PRECISION;`);
+  await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS location_lng DOUBLE PRECISION;`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS reviews (
       id SERIAL PRIMARY KEY,

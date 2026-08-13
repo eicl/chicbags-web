@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { CheckCircle2, Info, MessageCircle, Save } from "lucide-react";
+import { CheckCircle2, Info, MapPin, MessageCircle, Save } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -35,6 +35,8 @@ const emptyForm: CustomerInput = {
   deliveryMode: null,
   agency: "",
   address: "",
+  locationLat: null,
+  locationLng: null,
 };
 
 // Lleva al cliente de vuelta al chat de WhatsApp de la empresa con su
@@ -59,12 +61,36 @@ const REQUIRED_FIELD_LABELS: Record<string, string> = {
   deliveryMode: "Vía de envío (terrestre/aéreo)",
   agency: "Sede",
   address: "Dirección",
+  location: "Ubicación actual",
 };
 
 const CustomerRegister = () => {
   const [form, setForm] = useState<CustomerInput>(emptyForm);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [registered, setRegistered] = useState<Customer | null>(null);
+  const [locating, setLocating] = useState(false);
+
+  // Los tipos de delivery "motorizado" reparten a domicilio, así que además
+  // de la dirección piden la ubicación GPS actual del cliente.
+  const handleShareLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Tu navegador no soporta compartir tu ubicación");
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setForm((f) => ({ ...f, locationLat: position.coords.latitude, locationLng: position.coords.longitude }));
+        setLocating(false);
+        toast.success("Ubicación capturada");
+      },
+      () => {
+        setLocating(false);
+        toast.error("No se pudo obtener tu ubicación. Revisa los permisos de ubicación del navegador.");
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
 
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : "Algo salió mal");
 
@@ -102,6 +128,7 @@ const CustomerRegister = () => {
     if (needsDeliveryMode && !form.deliveryMode) missing.push("deliveryMode");
     if (needsAgency && !form.agency.trim()) missing.push("agency");
     if (needsAddress && !form.address.trim()) missing.push("address");
+    if (needsAddress && (form.locationLat == null || form.locationLng == null)) missing.push("location");
     return missing;
   };
 
@@ -121,6 +148,8 @@ const CustomerRegister = () => {
       deliveryMode: needsDeliveryMode ? form.deliveryMode : null,
       agency: needsAgency ? form.agency.trim() : "",
       address: needsAddress ? form.address.trim() : "",
+      locationLat: needsAddress ? form.locationLat : null,
+      locationLng: needsAddress ? form.locationLng : null,
     };
     registerMutation.mutate(payload);
   };
@@ -328,6 +357,34 @@ const CustomerRegister = () => {
                   placeholder="Av. / Jr. / Calle, número, referencia..."
                   className={errorInputClass(hasError("address"))}
                 />
+              </div>
+            )}
+            {needsAddress && (
+              <div className="md:col-span-2">
+                <label className={errorLabelClass(hasError("location"))}>Ubicación actual *</label>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button type="button" variant="outline" onClick={handleShareLocation} disabled={locating} className="gap-2">
+                    <MapPin className="w-4 h-4" />
+                    {locating
+                      ? "Obteniendo ubicación..."
+                      : form.locationLat != null
+                      ? "Actualizar ubicación"
+                      : "Compartir mi ubicación actual"}
+                  </Button>
+                  {form.locationLat != null && form.locationLng != null && (
+                    <a
+                      href={`https://www.google.com/maps?q=${form.locationLat},${form.locationLng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-primary hover:underline"
+                    >
+                      Ver ubicación capturada en el mapa
+                    </a>
+                  )}
+                </div>
+                {hasError("location") && (
+                  <p className="mt-1 text-xs text-destructive">Comparte tu ubicación actual para continuar.</p>
+                )}
               </div>
             )}
             {needsDeliveryMode && (

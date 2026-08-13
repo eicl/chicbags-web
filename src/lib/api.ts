@@ -123,6 +123,12 @@ export interface Customer {
   // Dirección exacta de entrega, solo aplica (y es obligatorio) para los
   // tipos de delivery "motorizado" (Express y Delivery).
   address: string;
+  // Ubicación GPS capturada al registrarse desde el link público — obligatoria
+  // solo para los tipos de delivery "motorizado" en ese formulario. Opcional
+  // acá para no forzarla en los demás formularios que construyen un Customer
+  // (panel admin, regularización, cuenta de cliente) y no la capturan.
+  locationLat?: number | null;
+  locationLng?: number | null;
 }
 
 export type CustomerInput = Omit<Customer, "id" | "country">;
