@@ -127,15 +127,15 @@ const buildSeparationLabelHtml = (order: AdminOrder) => `
       <style>
         ${PRINT_STYLES}
         body { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: space-between; text-align: center; padding: 20mm 0; }
-        .order-number { font-size: 110px; font-weight: 800; }
-        .customer-name { font-size: 20px; font-weight: 600; margin-bottom: 10px; }
-        .items { font-size: 14px; color: #333; }
+        .order-number { font-size: 220px; font-weight: 800; }
+        .customer-name { font-size: 40px; font-weight: 600; margin-bottom: 10px; }
+        .items { font-size: 28px; color: #333; }
         .items div { margin: 2px 0; }
       </style>
     </head>
     <body>
       <div></div>
-      <div class="order-number">#${order.id}</div>
+      <div class="order-number">${order.id}</div>
       <div>
         <div class="customer-name">${escapeHtml(order.customerName)}</div>
         <div class="items">
