@@ -502,10 +502,13 @@ const AdminOrders = () => {
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Cliente</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Documento</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Celular</th>
+                <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Ubicación</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Vendedor</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Estado</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Productos</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Total</th>
+                <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Pagado</th>
+                <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Restante</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Fecha</th>
                 <th className="text-right text-xs uppercase tracking-widest text-muted-foreground py-3 px-4"></th>
               </tr>
@@ -514,6 +517,7 @@ const AdminOrders = () => {
               {pageOrders.map((order) => {
                 const isExpanded = expandedId === order.id;
                 const paid = order.payments.reduce((sum, p) => sum + p.amount, 0);
+                const remaining = Math.max(order.total - paid, 0);
                 return (
                   <Fragment key={order.id}>
                     <tr
@@ -532,6 +536,9 @@ const AdminOrders = () => {
                       </td>
                       <td className="py-3 px-4 text-muted-foreground text-sm">{order.customerDocument}</td>
                       <td className="py-3 px-4 text-muted-foreground text-sm">{order.customerMobile}</td>
+                      <td className="py-3 px-4 text-muted-foreground text-sm">
+                        {order.customerDistrict}, {order.customerProvince}, {order.customerDepartment}
+                      </td>
                       <td className="py-3 px-4 text-muted-foreground text-sm">{order.sellerName || "—"}</td>
                       <td className="py-3 px-4">
                         <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-semibold ${STATUS_BADGE_CLASS[order.status]}`}>
@@ -542,6 +549,10 @@ const AdminOrders = () => {
                         {order.items.length} {order.items.length === 1 ? "producto" : "productos"}
                       </td>
                       <td className="py-3 px-4 font-medium">S/.{order.total.toFixed(2)}</td>
+                      <td className="py-3 px-4 text-emerald-600 text-sm">S/.{paid.toFixed(2)}</td>
+                      <td className="py-3 px-4 text-sm">
+                        {remaining > 0 ? <span className="text-amber-600">S/.{remaining.toFixed(2)}</span> : "—"}
+                      </td>
                       <td className="py-3 px-4 text-muted-foreground text-sm">{formatDate(order.createdAt)}</td>
                       <td className="py-3 px-4 text-right">
                         {isExpanded ? (
@@ -553,7 +564,16 @@ const AdminOrders = () => {
                     </tr>
                     {isExpanded && (
                       <tr key={`${order.id}-detail`} className="border-b border-border last:border-0 bg-muted/20">
-                        <td colSpan={10} className="px-4 py-3 space-y-4">
+                        <td colSpan={13} className="px-4 py-3 space-y-4">
+                          <p className="text-sm">
+                            <span className="text-muted-foreground">Celular:</span> <span className="font-medium">{order.customerMobile}</span>
+                            {order.customerAddress && (
+                              <>
+                                {" · "}
+                                <span className="text-muted-foreground">Dirección:</span> <span className="font-medium">{order.customerAddress}</span>
+                              </>
+                            )}
+                          </p>
                           <table className="w-full text-sm">
                             <thead>
                               <tr className="text-xs uppercase tracking-widest text-muted-foreground">
@@ -686,17 +706,17 @@ const AdminOrders = () => {
               })}
               {isLoading && (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-muted-foreground">Cargando pedidos...</td>
+                  <td colSpan={13} className="py-12 text-center text-muted-foreground">Cargando pedidos...</td>
                 </tr>
               )}
               {isError && (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
+                  <td colSpan={13} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
                 </tr>
               )}
               {!isLoading && !isError && filteredOrders.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-muted-foreground">
+                  <td colSpan={13} className="py-12 text-center text-muted-foreground">
                     {orders.length === 0 ? "No hay pedidos registrados." : "Ningún pedido coincide con la búsqueda."}
                   </td>
                 </tr>
