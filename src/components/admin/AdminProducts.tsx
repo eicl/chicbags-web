@@ -1,8 +1,8 @@
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useProducts } from "@/context/ProductContext";
 import { Product, ProductColor } from "@/context/CartContext";
-import { Plus, Pencil, Pipette, Trash2, X, Upload, Loader2, Video as VideoIcon } from "lucide-react";
+import { Plus, Pipette, Trash2, X, Upload, Loader2, Video as VideoIcon, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -227,16 +227,8 @@ const AdminProducts = () => {
     setAttemptedSubmit(false);
   };
 
-  return (
-    <div>
-      <div className="flex justify-end mb-6">
-        <Button onClick={handleAdd} className="gap-2">
-          <Plus className="w-4 h-4" /> Agregar
-        </Button>
-      </div>
-
-      {(isAdding || editing) && (
-        <div className="mb-8 p-6 border border-border rounded-lg bg-card">
+  const renderForm = () => (
+        <div className="p-6 border border-border rounded-lg bg-card">
           <h2 className="text-lg font-medium mb-4" style={{ fontFamily: "var(--font-display)" }}>
             {editing ? "Editar Producto" : "Nuevo Producto"}
           </h2>
@@ -547,7 +539,17 @@ const AdminProducts = () => {
             <Button variant="outline" onClick={handleCancel} className="gap-2"><X className="w-4 h-4" /> Cancelar</Button>
           </div>
         </div>
-      )}
+  );
+
+  return (
+    <div>
+      <div className="flex justify-end mb-6">
+        <Button onClick={handleAdd} className="gap-2">
+          <Plus className="w-4 h-4" /> Agregar
+        </Button>
+      </div>
+
+      {isAdding && <div className="mb-8">{renderForm()}</div>}
 
       <div className="border border-border rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
@@ -569,38 +571,61 @@ const AdminProducts = () => {
             <tbody>
               {products.map((product) => {
                 const totalStock = product.colors?.reduce((sum, c) => sum + c.stock, 0) ?? 0;
+                const isExpanded = editing?.id === product.id;
                 return (
-                  <tr key={product.id} className="border-b border-border last:border-0 hover:bg-muted/10 transition-colors">
-                    <td className="py-3 px-4">
-                      <div className="w-12 h-12 rounded bg-muted overflow-hidden">
-                        {product.image && <img src={productImageUrl(product.image)} alt={product.name} className="w-full h-full object-cover" />}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-muted-foreground text-sm">{product.sortOrder ?? "—"}</td>
-                    <td className="py-3 px-4 text-muted-foreground text-sm">{product.code || "—"}</td>
-                    <td className="py-3 px-4 text-muted-foreground text-sm">{product.brand || "—"}</td>
-                    <td className="py-3 px-4 font-medium">{product.name}</td>
-                    <td className="py-3 px-4 text-muted-foreground text-sm">{product.category}</td>
-                    <td className="py-3 px-4">S/.{product.price.toFixed(2)}</td>
-                    <td className="py-3 px-4 text-muted-foreground text-sm">
-                      {product.cost == null ? "—" : `S/.${product.cost.toFixed(2)}`}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={totalStock === 0 ? "text-destructive" : "text-muted-foreground"}>
-                        {totalStock === 0 ? "Agotado" : totalStock}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex gap-2 justify-end">
-                        <Button variant="ghost" size="icon" onClick={() => handleEdit(product)}>
-                          <Pencil className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(product.id)} className="text-destructive hover:text-destructive">
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
+                  <Fragment key={product.id}>
+                    <tr
+                      onClick={() => (isExpanded ? handleCancel() : handleEdit(product))}
+                      className="border-b border-border last:border-0 hover:bg-muted/10 transition-colors cursor-pointer"
+                    >
+                      <td className="py-3 px-4">
+                        <div className="w-12 h-12 rounded bg-muted overflow-hidden">
+                          {product.image && <img src={productImageUrl(product.image)} alt={product.name} className="w-full h-full object-cover" />}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-muted-foreground text-sm">{product.sortOrder ?? "—"}</td>
+                      <td className="py-3 px-4 text-muted-foreground text-sm">{product.code || "—"}</td>
+                      <td className="py-3 px-4 text-muted-foreground text-sm">{product.brand || "—"}</td>
+                      <td className="py-3 px-4 font-medium">{product.name}</td>
+                      <td className="py-3 px-4 text-muted-foreground text-sm">{product.category}</td>
+                      <td className="py-3 px-4">S/.{product.price.toFixed(2)}</td>
+                      <td className="py-3 px-4 text-muted-foreground text-sm">
+                        {product.cost == null ? "—" : `S/.${product.cost.toFixed(2)}`}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={totalStock === 0 ? "text-destructive" : "text-muted-foreground"}>
+                          {totalStock === 0 ? "Agotado" : totalStock}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-2 justify-end">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(product.id);
+                            }}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                          {isExpanded ? (
+                            <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr className="border-b border-border last:border-0 bg-muted/20">
+                        <td colSpan={10} className="px-4 py-4">
+                          {renderForm()}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
               {isLoading && (
