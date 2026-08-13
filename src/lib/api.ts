@@ -291,7 +291,7 @@ export interface OrderItem {
   subtotal: number;
 }
 
-export type OrderStatus = "Registrado" | "Separación" | "Pendiente de envío";
+export type OrderStatus = "Registrado" | "Separación" | "Pendiente de envío" | "Entregado a delivery";
 export type OrderType = "Pedido" | "Regularización";
 
 export interface Payment {
@@ -462,6 +462,14 @@ export const registerPayment = (orderId: number, data: PaymentInput): Promise<Or
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
+  }).then((res) => handle<Order>(res));
+
+// Única transición de estado manual desde el panel: marca un pedido
+// "Pendiente de envío" como ya entregado al courier/delivery.
+export const markOrderDelivered = (orderId: number): Promise<Order> =>
+  fetch(`${API_URL}/orders/${orderId}/deliver`, {
+    method: "PUT",
+    credentials: "include",
   }).then((res) => handle<Order>(res));
 
 // Lista pública de vendedores (usuarios con perfil Vendedor), para el

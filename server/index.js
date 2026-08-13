@@ -1407,6 +1407,30 @@ app.post("/api/orders/:id/payments", requireAuth, async (req, res) => {
   }
 });
 
+// Única transición de estado que se hace a mano desde el panel: cuando el
+// paquete ya se le entregó al courier/delivery, deja de estar "Pendiente de
+// envío" y pasa a "Entregado a delivery". El resto del ciclo de vida
+// (Registrado → Separación/Pendiente de envío) sigue calculándose solo a
+// partir de los pagos, nunca a mano.
+app.put("/api/orders/:id/deliver", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  const { rows } = await pool.query(
+    "UPDATE orders SET status = 'Entregado a delivery' WHERE id = $1 AND status = 'Pendiente de envío' RETURNING *",
+    [id]
+  );
+  if (rows.length === 0) {
+    const { rows: existing } = await pool.query("SELECT id FROM orders WHERE id = $1", [id]);
+    if (existing.length === 0) return res.status(404).json({ error: "Pedido no encontrado" });
+    return res.status(400).json({ error: "Solo se puede marcar como entregado a delivery un pedido Pendiente de envío" });
+  }
+  const { rows: itemRows } = await pool.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [id]);
+  const { rows: paymentRows } = await pool.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [id]);
+  res.json(mapOrder(rows[0], itemRows, paymentRows));
+});
+
 // Metadatos Open Graph/Twitter por ruta: así, cuando se comparte por
 // WhatsApp el link de una de estas páginas, la vista previa muestra su
 // propio título/ícono y la URL real (en vez de siempre el logo y la URL de

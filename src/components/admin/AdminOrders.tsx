@@ -1,10 +1,10 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Plus, Printer, Search, Settings, Trash2, Upload, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Plus, Printer, Search, Settings, Trash2, Truck, Upload, X } from "lucide-react";
 import {
   AdminOrder, DiscountSettings, OrderItem, OrderStatus, PaymentInput,
-  deleteOrder, fetchOrders, fetchSettings, registerPayment, updateOrderItemColor, updateSettings, uploadImage,
+  deleteOrder, fetchOrders, fetchSettings, markOrderDelivered, registerPayment, updateOrderItemColor, updateSettings, uploadImage,
 } from "@/lib/api";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import { productImageUrl } from "@/lib/images";
@@ -46,6 +46,7 @@ const STATUS_BADGE_CLASS: Record<OrderStatus, string> = {
   "Registrado": "bg-muted text-muted-foreground",
   "Separación": "bg-amber-500/10 text-amber-600",
   "Pendiente de envío": "bg-primary/10 text-primary",
+  "Entregado a delivery": "bg-emerald-500/10 text-emerald-600",
 };
 
 // Lleva la conversación de WhatsApp al celular del cliente con el estado
@@ -136,7 +137,9 @@ const buildSeparationLabelHtml = (order: AdminOrder) => `
 
 const printOrder = (order: AdminOrder) => {
   const html =
-    order.status === "Pendiente de envío" ? buildShippingLabelHtml(order) : buildSeparationLabelHtml(order);
+    order.status === "Pendiente de envío" || order.status === "Entregado a delivery"
+      ? buildShippingLabelHtml(order)
+      : buildSeparationLabelHtml(order);
   const printWindow = window.open("", "_blank", "width=600,height=800");
   if (!printWindow) {
     toast.error("El navegador bloqueó la ventana de impresión");
@@ -460,6 +463,15 @@ const AdminOrders = () => {
     deleteMutation.mutate(order.id);
   };
 
+  const deliverMutation = useMutation({
+    mutationFn: markOrderDelivered,
+    onSuccess: () => {
+      toast.success("Pedido marcado como entregado a delivery");
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo actualizar el pedido"),
+  });
+
   return (
     <div>
       <DiscountSettingsPanel />
@@ -645,6 +657,17 @@ const AdminOrders = () => {
                             >
                               <Printer className="w-3.5 h-3.5" /> Imprimir
                             </Button>
+                            {order.status === "Pendiente de envío" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => deliverMutation.mutate(order.id)}
+                                disabled={deliverMutation.isPending}
+                                className="gap-2 text-emerald-600 hover:text-emerald-600"
+                              >
+                                <Truck className="w-3.5 h-3.5" /> Marcar como entregado a delivery
+                              </Button>
+                            )}
                             <Button
                               variant="outline"
                               size="sm"
