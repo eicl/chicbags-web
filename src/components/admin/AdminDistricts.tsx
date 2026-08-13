@@ -1,17 +1,22 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, X, Save } from "lucide-react";
+import { Plus, Pencil, Search, Trash2, X, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { fetchDistricts, createDistrict, updateDistrict, deleteDistrict, District } from "@/lib/api";
 import { PERU_DEPARTMENTS, PERU_LOCATIONS } from "@/lib/peru-locations";
 import { errorLabelClass, errorInputClass } from "@/lib/utils";
+import Pagination from "@/components/admin/Pagination";
+
+const PAGE_SIZE = 20;
 
 const AdminDistricts = () => {
   const queryClient = useQueryClient();
   const [department, setDepartment] = useState("");
   const [province, setProvince] = useState("");
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
 
   const { data: districts = [], isLoading, isError } = useQuery({
     queryKey: ["districts", province],
@@ -75,6 +80,13 @@ const AdminDistricts = () => {
     setProvince(value);
     setIsAdding(false);
     setEditingId(null);
+    setQuery("");
+    setPage(1);
+  };
+
+  const handleQueryChange = (value: string) => {
+    setQuery(value);
+    setPage(1);
   };
 
   const handleAdd = () => {
@@ -116,6 +128,10 @@ const AdminDistricts = () => {
     deleteMutation.mutate(district.id);
   };
 
+  const filteredDistricts = districts.filter((d) => d.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const totalPages = Math.max(1, Math.ceil(filteredDistricts.length / PAGE_SIZE));
+  const pageDistricts = filteredDistricts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   return (
     <div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 max-w-xl">
@@ -152,7 +168,11 @@ const AdminDistricts = () => {
         <p className="text-sm text-muted-foreground">Elige un departamento y una provincia para ver y administrar sus distritos.</p>
       ) : (
         <>
-          <div className="flex justify-end mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+            <div className="relative w-full sm:w-72">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input value={query} onChange={(e) => handleQueryChange(e.target.value)} placeholder="Buscar distrito..." className="pl-9" />
+            </div>
             <Button onClick={handleAdd} className="gap-2">
               <Plus className="w-4 h-4" /> Agregar distrito en {province}
             </Button>
@@ -190,7 +210,7 @@ const AdminDistricts = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {districts.map((district) => (
+                  {pageDistricts.map((district) => (
                     <tr key={district.id} className="border-b border-border last:border-0 hover:bg-muted/10 transition-colors">
                       <td className="py-3 px-4 font-medium">{district.name}</td>
                       <td className="py-3 px-4">
@@ -215,10 +235,12 @@ const AdminDistricts = () => {
                       <td colSpan={2} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
                     </tr>
                   )}
-                  {!isLoading && !isError && districts.length === 0 && (
+                  {!isLoading && !isError && filteredDistricts.length === 0 && (
                     <tr>
                       <td colSpan={2} className="py-12 text-center text-muted-foreground">
-                        No hay distritos registrados en {province} todavía.
+                        {districts.length === 0
+                          ? `No hay distritos registrados en ${province} todavía.`
+                          : "Ningún distrito coincide con la búsqueda."}
                       </td>
                     </tr>
                   )}
@@ -226,6 +248,8 @@ const AdminDistricts = () => {
               </table>
             </div>
           </div>
+
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </>
       )}
     </div>

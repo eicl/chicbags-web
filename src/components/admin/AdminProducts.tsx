@@ -2,18 +2,27 @@ import { Fragment, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useProducts } from "@/context/ProductContext";
 import { Product, ProductColor } from "@/context/CartContext";
-import { Plus, Pipette, Trash2, X, Upload, Loader2, Video as VideoIcon, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Pipette, Search, Trash2, X, Upload, Loader2, Video as VideoIcon, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { uploadImage, uploadVideo, fetchBrands, fetchCategories } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
 import { errorLabelClass, errorInputClass, cn } from "@/lib/utils";
+import Pagination from "@/components/admin/Pagination";
 
 const emptyForm = { name: "", price: 0, cost: "", category: "", description: "", code: "", brand: "", extraDescription: "", sortOrder: "" };
 const emptyColor: ProductColor = { name: "", hex: "#161616", image: "", stock: 0 };
 const MAX_PHOTOS = 5;
 const MAX_VIDEOS = 2;
+const PAGE_SIZE = 20;
+
+const matchesProduct = (product: Product, query: string) => {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return [product.name, product.code, product.brand, product.category]
+    .some((field) => (field ?? "").toLowerCase().includes(q));
+};
 
 // El gotero para sacar el color exacto de la foto del producto (API nativa
 // del navegador, todavía no está en los tipos de TS por defecto). Solo
@@ -36,6 +45,8 @@ const AdminProducts = () => {
   const { data: categories = [] } = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
   const [editing, setEditing] = useState<Product | null>(null);
   const [isAdding, setIsAdding] = useState(false);
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [form, setForm] = useState(emptyForm);
   const [colors, setColors] = useState<ProductColor[]>([]);
   const [photos, setPhotos] = useState<string[]>([]);
@@ -225,6 +236,15 @@ const AdminProducts = () => {
     setPhotos([]);
     setVideos([]);
     setAttemptedSubmit(false);
+  };
+
+  const filteredProducts = products.filter((p) => matchesProduct(p, query));
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
+  const pageProducts = filteredProducts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const handleQueryChange = (value: string) => {
+    setQuery(value);
+    setPage(1);
   };
 
   const renderForm = () => (
@@ -543,7 +563,16 @@ const AdminProducts = () => {
 
   return (
     <div>
-      <div className="flex justify-end mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => handleQueryChange(e.target.value)}
+            placeholder="Buscar por nombre, código, marca o categoría..."
+            className="pl-9"
+          />
+        </div>
         <Button onClick={handleAdd} className="gap-2">
           <Plus className="w-4 h-4" /> Agregar
         </Button>
@@ -569,7 +598,7 @@ const AdminProducts = () => {
               </tr>
             </thead>
             <tbody>
-              {products.map((product) => {
+              {pageProducts.map((product) => {
                 const totalStock = product.colors?.reduce((sum, c) => sum + c.stock, 0) ?? 0;
                 const isExpanded = editing?.id === product.id;
                 return (
@@ -579,7 +608,7 @@ const AdminProducts = () => {
                       className="border-b border-border last:border-0 hover:bg-muted/10 transition-colors cursor-pointer"
                     >
                       <td className="py-3 px-4">
-                        <div className="w-12 h-12 rounded bg-muted overflow-hidden">
+                        <div className="w-24 h-24 rounded bg-muted overflow-hidden">
                           {product.image && <img src={productImageUrl(product.image)} alt={product.name} className="w-full h-full object-cover" />}
                         </div>
                       </td>
@@ -642,10 +671,10 @@ const AdminProducts = () => {
                   </td>
                 </tr>
               )}
-              {!isLoading && !isError && products.length === 0 && (
+              {!isLoading && !isError && filteredProducts.length === 0 && (
                 <tr>
                   <td colSpan={10} className="py-12 text-center text-muted-foreground">
-                    No hay productos. Agrega uno nuevo.
+                    {products.length === 0 ? "No hay productos. Agrega uno nuevo." : "Ningún producto coincide con la búsqueda."}
                   </td>
                 </tr>
               )}
@@ -653,6 +682,8 @@ const AdminProducts = () => {
           </table>
         </div>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
     </div>
   );
 };

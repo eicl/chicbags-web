@@ -1,15 +1,17 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, X, Save } from "lucide-react";
+import { Plus, Pencil, Search, Trash2, X, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { fetchUsers, createUser, updateUser, deleteUser, UserAccount, UserRole } from "@/lib/api";
 import { errorLabelClass, errorInputClass } from "@/lib/utils";
+import Pagination from "@/components/admin/Pagination";
 
 const USER_ROLES: UserRole[] = ["Administrador", "Vendedor"];
 const emptyForm = { username: "", password: "", role: "Vendedor" as UserRole };
+const PAGE_SIZE = 20;
 
 const AdminUsers = () => {
   const { user: currentUser } = useAuth();
@@ -19,6 +21,8 @@ const AdminUsers = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const usernameError = attemptedSubmit && !form.username.trim();
   const passwordError = attemptedSubmit && editingId === null && !form.password;
@@ -99,9 +103,24 @@ const AdminUsers = () => {
     deleteMutation.mutate(user.id);
   };
 
+  const filteredUsers = users.filter((u) =>
+    [u.username, u.role].some((field) => field.toLowerCase().includes(query.trim().toLowerCase()))
+  );
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
+  const pageUsers = filteredUsers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const handleQueryChange = (value: string) => {
+    setQuery(value);
+    setPage(1);
+  };
+
   return (
     <div>
-      <div className="flex justify-end mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input value={query} onChange={(e) => handleQueryChange(e.target.value)} placeholder="Buscar usuario o perfil..." className="pl-9" />
+        </div>
         <Button onClick={handleAdd} className="gap-2">
           <Plus className="w-4 h-4" /> Agregar usuario
         </Button>
@@ -166,7 +185,7 @@ const AdminUsers = () => {
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
+              {pageUsers.map((user) => (
                 <tr key={user.id} className="border-b border-border last:border-0 hover:bg-muted/10 transition-colors">
                   <td className="py-3 px-4 font-medium">
                     {user.username}
@@ -204,15 +223,19 @@ const AdminUsers = () => {
                   <td colSpan={3} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
                 </tr>
               )}
-              {!isLoading && !isError && users.length === 0 && (
+              {!isLoading && !isError && filteredUsers.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="py-12 text-center text-muted-foreground">No hay usuarios.</td>
+                  <td colSpan={3} className="py-12 text-center text-muted-foreground">
+                    {users.length === 0 ? "No hay usuarios." : "Ningún usuario coincide con la búsqueda."}
+                  </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
     </div>
   );
 };

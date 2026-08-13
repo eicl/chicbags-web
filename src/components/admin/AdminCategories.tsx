@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, X, Save } from "lucide-react";
+import { Plus, Pencil, Search, Trash2, X, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { fetchCategories, createCategory, updateCategory, deleteCategory, Category } from "@/lib/api";
 import { errorLabelClass, errorInputClass } from "@/lib/utils";
+import Pagination from "@/components/admin/Pagination";
+
+const PAGE_SIZE = 20;
 
 const AdminCategories = () => {
   const queryClient = useQueryClient();
@@ -14,6 +17,8 @@ const AdminCategories = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [name, setName] = useState("");
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const nameError = attemptedSubmit && !name.trim();
 
@@ -94,9 +99,22 @@ const AdminCategories = () => {
     deleteMutation.mutate(category.id);
   };
 
+  const filteredCategories = categories.filter((c) => c.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const totalPages = Math.max(1, Math.ceil(filteredCategories.length / PAGE_SIZE));
+  const pageCategories = filteredCategories.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const handleQueryChange = (value: string) => {
+    setQuery(value);
+    setPage(1);
+  };
+
   return (
     <div>
-      <div className="flex justify-end mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input value={query} onChange={(e) => handleQueryChange(e.target.value)} placeholder="Buscar categoría..." className="pl-9" />
+        </div>
         <Button onClick={handleAdd} className="gap-2">
           <Plus className="w-4 h-4" /> Agregar categoría
         </Button>
@@ -134,7 +152,7 @@ const AdminCategories = () => {
               </tr>
             </thead>
             <tbody>
-              {categories.map((category) => (
+              {pageCategories.map((category) => (
                 <tr key={category.id} className="border-b border-border last:border-0 hover:bg-muted/10 transition-colors">
                   <td className="py-3 px-4 font-medium">{category.name}</td>
                   <td className="py-3 px-4">
@@ -159,15 +177,19 @@ const AdminCategories = () => {
                   <td colSpan={2} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
                 </tr>
               )}
-              {!isLoading && !isError && categories.length === 0 && (
+              {!isLoading && !isError && filteredCategories.length === 0 && (
                 <tr>
-                  <td colSpan={2} className="py-12 text-center text-muted-foreground">No hay categorías. Agrega una nueva.</td>
+                  <td colSpan={2} className="py-12 text-center text-muted-foreground">
+                    {categories.length === 0 ? "No hay categorías. Agrega una nueva." : "Ninguna categoría coincide con la búsqueda."}
+                  </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
     </div>
   );
 };

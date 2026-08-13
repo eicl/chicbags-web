@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, X, Save, Info } from "lucide-react";
+import { Plus, Pencil, Search, Trash2, X, Save, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -11,6 +11,18 @@ import {
 import { PERU_DEPARTMENTS, PERU_LOCATIONS } from "@/lib/peru-locations";
 import { errorLabelClass, errorInputClass, cn } from "@/lib/utils";
 import AgencyPicker from "@/components/AgencyPicker";
+import Pagination from "@/components/admin/Pagination";
+
+const PAGE_SIZE = 20;
+
+const matchesCustomer = (customer: Customer, query: string) => {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return [
+    String(customer.id), customer.documentNumber, customer.firstName, customer.paternalSurname,
+    customer.maternalSurname, customer.mobile, customer.district, customer.province, customer.department,
+  ].some((field) => (field ?? "").toLowerCase().includes(q));
+};
 
 const DOCUMENT_TYPES = ["DNI", "Carné de Extranjería", "Pasaporte", "RUC"];
 const DELIVERY_TYPES: DeliveryType[] = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Olva", "Marvisur"];
@@ -45,6 +57,8 @@ const AdminCustomers = () => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<CustomerInput>(emptyForm);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["customers"] });
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : "Algo salió mal");
@@ -210,9 +224,27 @@ const AdminCustomers = () => {
     if (n) addDistrictMutation.mutate(n);
   };
 
+  const filteredCustomers = customers.filter((c) => matchesCustomer(c, query));
+  const totalPages = Math.max(1, Math.ceil(filteredCustomers.length / PAGE_SIZE));
+  const pageCustomers = filteredCustomers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const handleQueryChange = (value: string) => {
+    setQuery(value);
+    setPage(1);
+  };
+
   return (
     <div>
-      <div className="flex justify-end mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => handleQueryChange(e.target.value)}
+            placeholder="Buscar por código, documento, nombre, celular..."
+            className="pl-9"
+          />
+        </div>
         <Button onClick={handleAdd} className="gap-2">
           <Plus className="w-4 h-4" /> Agregar cliente
         </Button>
@@ -451,7 +483,7 @@ const AdminCustomers = () => {
               </tr>
             </thead>
             <tbody>
-              {customers.map((customer) => (
+              {pageCustomers.map((customer) => (
                 <tr key={customer.id} className="border-b border-border last:border-0 hover:bg-muted/10 transition-colors">
                   <td className="py-3 px-4 text-sm font-medium text-primary">#{customer.id}</td>
                   <td className="py-3 px-4 text-sm">
@@ -491,15 +523,19 @@ const AdminCustomers = () => {
                   <td colSpan={7} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
                 </tr>
               )}
-              {!isLoading && !isError && customers.length === 0 && (
+              {!isLoading && !isError && filteredCustomers.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-muted-foreground">No hay clientes registrados.</td>
+                  <td colSpan={7} className="py-12 text-center text-muted-foreground">
+                    {customers.length === 0 ? "No hay clientes registrados." : "Ningún cliente coincide con la búsqueda."}
+                  </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
     </div>
   );
 };

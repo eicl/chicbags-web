@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Plus, Printer, Settings, Trash2, Upload, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Plus, Printer, Search, Settings, Trash2, Upload, X } from "lucide-react";
 import {
   AdminOrder, DiscountSettings, OrderItem, OrderStatus, PaymentInput,
   deleteOrder, fetchOrders, fetchSettings, registerPayment, updateOrderItemColor, updateSettings, uploadImage,
@@ -12,6 +12,7 @@ import { useProducts } from "@/context/ProductContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import Pagination from "@/components/admin/Pagination";
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
@@ -19,6 +20,14 @@ const formatDate = (iso: string) =>
 const todayDate = () => new Date().toISOString().slice(0, 10);
 
 const PAYMENT_SOURCES = ["Yape", "Plin", "Otro"];
+const PAGE_SIZE = 20;
+
+const matchesOrder = (order: AdminOrder, query: string) => {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return [String(order.id), order.customerName, order.customerDocument, order.sellerName, order.status, order.type]
+    .some((field) => (field ?? "").toLowerCase().includes(q));
+};
 
 const STATUS_BADGE_CLASS: Record<OrderStatus, string> = {
   "Registrado": "bg-muted text-muted-foreground",
@@ -409,6 +418,17 @@ const AdminOrders = () => {
   const queryClient = useQueryClient();
   const { data: orders = [], isLoading, isError } = useQuery({ queryKey: ["orders"], queryFn: fetchOrders });
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+
+  const filteredOrders = orders.filter((o) => matchesOrder(o, query));
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
+  const pageOrders = filteredOrders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const handleQueryChange = (value: string) => {
+    setQuery(value);
+    setPage(1);
+  };
 
   const deleteMutation = useMutation({
     mutationFn: deleteOrder,
@@ -431,7 +451,16 @@ const AdminOrders = () => {
     <div>
       <DiscountSettingsPanel />
 
-      <div className="flex justify-end mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => handleQueryChange(e.target.value)}
+            placeholder="Buscar por pedido, cliente, vendedor, estado..."
+            className="pl-9"
+          />
+        </div>
         <Link to="/registro-pedido" target="_blank" rel="noopener noreferrer">
           <Button className="gap-2">
             <Plus className="w-4 h-4" /> Registrar pedido
@@ -457,7 +486,7 @@ const AdminOrders = () => {
               </tr>
             </thead>
             <tbody>
-              {orders.map((order) => {
+              {pageOrders.map((order) => {
                 const isExpanded = expandedId === order.id;
                 const paid = order.payments.reduce((sum, p) => sum + p.amount, 0);
                 return (
@@ -629,15 +658,19 @@ const AdminOrders = () => {
                   <td colSpan={10} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
                 </tr>
               )}
-              {!isLoading && !isError && orders.length === 0 && (
+              {!isLoading && !isError && filteredOrders.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-muted-foreground">No hay pedidos registrados.</td>
+                  <td colSpan={10} className="py-12 text-center text-muted-foreground">
+                    {orders.length === 0 ? "No hay pedidos registrados." : "Ningún pedido coincide con la búsqueda."}
+                  </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
     </div>
   );
 };
