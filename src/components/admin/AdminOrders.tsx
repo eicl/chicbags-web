@@ -17,6 +17,13 @@ import Pagination from "@/components/admin/Pagination";
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
 
+// A diferencia de formatDate (para momentos reales, como cuándo se creó el
+// pedido), esta es para fechas de calendario sin hora (fecha de pago, plazo
+// de separación) guardadas en UTC medianoche — se muestran también en UTC
+// para que no se corran un día según la zona horaria del navegador.
+const formatDateOnly = (iso: string) =>
+  new Date(iso).toLocaleDateString("es-PE", { dateStyle: "medium", timeZone: "UTC" });
+
 // OJO: no usar toISOString() acá — convierte a UTC, y Perú (UTC-5) ya está
 // "mañana" en UTC después de las 7pm, lo que adelantaba la fecha por defecto
 // un día en pagos registrados de noche.
@@ -569,7 +576,7 @@ const AdminOrders = () => {
                           {order.status === "Separación" && order.separationDeadline && (
                             <p className="text-sm text-amber-600">
                               Pago parcial (S/.{paid.toFixed(2)} de S/.{order.total.toFixed(2)}). Plazo para cancelar: {" "}
-                              <span className="font-medium">{formatDate(order.separationDeadline)}</span>.
+                              <span className="font-medium">{formatDateOnly(order.separationDeadline)}</span>.
                             </p>
                           )}
 
@@ -589,7 +596,7 @@ const AdminOrders = () => {
                                 <tbody>
                                   {order.payments.map((payment) => (
                                     <tr key={payment.id}>
-                                      <td className="py-1.5 text-muted-foreground">{formatDate(payment.createdAt)}</td>
+                                      <td className="py-1.5 text-muted-foreground">{formatDateOnly(payment.createdAt)}</td>
                                       <td className="py-1.5">{payment.source}</td>
                                       <td className="py-1.5 text-muted-foreground">{payment.registeredBy}</td>
                                       <td className="py-1.5">

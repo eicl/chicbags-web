@@ -1,7 +1,10 @@
 import { Order } from "@/lib/api";
 
+// El plazo es una fecha de calendario (no un momento con hora), y se guarda
+// en UTC medianoche — hay que mostrarla también en UTC para que no se corra
+// un día según la zona horaria del navegador que la mira (Perú es UTC-5).
 export const formatDeadlineDate = (iso: string) =>
-  new Date(iso).toLocaleDateString("es-PE", { dateStyle: "long" });
+  new Date(iso).toLocaleDateString("es-PE", { dateStyle: "long", timeZone: "UTC" });
 
 // Texto de estado que se agrega siempre que se le comparte al cliente el
 // número de su pedido (registro inicial o actualizaciones de pago). En

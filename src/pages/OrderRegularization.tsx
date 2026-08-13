@@ -67,6 +67,13 @@ interface RegLine {
 const formatDateTime = (iso: string) =>
   new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
 
+// A diferencia de formatDateTime (para momentos reales, como cuándo se creó
+// el pedido), esta es para fechas de calendario sin hora (fecha de pago,
+// plazo de separación) guardadas en UTC medianoche — se muestran también en
+// UTC para que no se corran un día según la zona horaria del navegador.
+const formatDateOnly = (iso: string) =>
+  new Date(iso).toLocaleDateString("es-PE", { dateStyle: "medium", timeZone: "UTC" });
+
 // OJO: no usar toISOString() acá — convierte a UTC, y Perú (UTC-5) ya está
 // "mañana" en UTC después de las 7pm, lo que adelantaba la fecha por defecto
 // un día en pagos registrados de noche.
@@ -382,7 +389,7 @@ const OrderRegularization = () => {
           {order.status === "Separación" && order.separationDeadline && (
             <p className="text-sm text-muted-foreground max-w-md">
               Tienes 15 días calendario para cancelar tu pedido. Fecha límite:{" "}
-              <span className="font-medium text-foreground">{formatDateTime(order.separationDeadline)}</span>.
+              <span className="font-medium text-foreground">{formatDateOnly(order.separationDeadline)}</span>.
             </p>
           )}
           <div className="w-full border border-border rounded-lg p-4 text-left space-y-2">
@@ -407,7 +414,7 @@ const OrderRegularization = () => {
               <h2 className="text-sm font-medium">Pagos registrados</h2>
               {order.payments.map((payment) => (
                 <div key={payment.id} className="flex justify-between text-sm text-muted-foreground">
-                  <span>{payment.source} · {formatDateTime(payment.createdAt)}</span>
+                  <span>{payment.source} · {formatDateOnly(payment.createdAt)}</span>
                   <span className="font-medium text-foreground">S/.{payment.amount.toFixed(2)}</span>
                 </div>
               ))}
