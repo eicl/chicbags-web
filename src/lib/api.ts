@@ -338,7 +338,7 @@ export const registerOrder = (data: {
   customerId: number;
   sellerId: number;
   items: OrderItemInput[];
-  payment?: PaymentInput;
+  payments?: PaymentInput[];
 }): Promise<Order> =>
   fetch(`${API_URL}/orders/register`, {
     method: "POST",

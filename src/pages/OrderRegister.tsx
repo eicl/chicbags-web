@@ -24,6 +24,15 @@ interface OrderLine {
   discount: number;
 }
 
+// Pago ya agregado a la lista (a diferencia del borrador que se está llenando).
+interface PaymentEntry {
+  key: string;
+  amount: number;
+  source: string;
+  date: string;
+  proofImage: string;
+}
+
 const lineKey = (productId: number, colorName: string) => `${productId}::${colorName}`;
 
 // El link de registro de pedidos es público, pero si en ese mismo navegador
@@ -72,6 +81,7 @@ const OrderRegister = () => {
   const [lines, setLines] = useState<OrderLine[]>([]);
   const [order, setOrder] = useState<Order | null>(null);
 
+  const [payments, setPayments] = useState<PaymentEntry[]>([]);
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentSource, setPaymentSource] = useState(PAYMENT_SOURCES[0]);
   const [paymentSourceOther, setPaymentSourceOther] = useState("");
@@ -105,6 +115,7 @@ const OrderRegister = () => {
     onSuccess: (created) => {
       setOrder(created);
       setLines([]);
+      setPayments([]);
       setPaymentAmount("");
       setPaymentSource(PAYMENT_SOURCES[0]);
       setPaymentSourceOther("");
@@ -185,13 +196,44 @@ const OrderRegister = () => {
 
   const total = lines.reduce((sum, l) => sum + l.product.price * l.quantity - l.discount, 0);
 
-  // El pago es opcional: si no se llenó ningún campo, el pedido se registra
-  // sin pago (queda en "Registrado"). Si se llenó alguno, todos los demás
-  // pasan a ser obligatorios — no tendría sentido un pago a medio llenar.
+  // El pago es opcional: si no se llenó ningún campo del borrador, no hay
+  // nada pendiente de agregar. Si se llenó alguno, todos los demás pasan a
+  // ser obligatorios para poder agregarlo a la lista — no tendría sentido
+  // un pago a medio llenar.
   const hasPaymentInput =
     paymentAmount.trim() !== "" ||
     paymentProofImage !== "" ||
     (paymentSource === "Otro" && paymentSourceOther.trim() !== "");
+
+  const handleAddPayment = () => {
+    const amountNumber = Number(paymentAmount);
+    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+      toast.error("Ingresa un monto de pago válido");
+      return;
+    }
+    const finalSource = paymentSource === "Otro" ? paymentSourceOther.trim() : paymentSource;
+    if (!finalSource) {
+      toast.error("Ingresa el medio de pago");
+      return;
+    }
+    if (!paymentProofImage) {
+      toast.error("Sube la captura del pago");
+      return;
+    }
+    setPayments((prev) => [
+      ...prev,
+      { key: `${Date.now()}-${prev.length}`, amount: amountNumber, source: finalSource, date: paymentDate, proofImage: paymentProofImage },
+    ]);
+    setPaymentAmount("");
+    setPaymentSource(PAYMENT_SOURCES[0]);
+    setPaymentSourceOther("");
+    setPaymentDate(todayDate());
+    setPaymentProofImage("");
+  };
+
+  const handleRemovePayment = (key: string) => {
+    setPayments((prev) => prev.filter((p) => p.key !== key));
+  };
 
   const handleSubmit = () => {
     if (!customer) {
@@ -206,31 +248,19 @@ const OrderRegister = () => {
       toast.error("Agrega al menos un producto al pedido");
       return;
     }
-
-    let payment: { amount: number; source: string; date: string; proofImage: string } | undefined;
     if (hasPaymentInput) {
-      const amountNumber = Number(paymentAmount);
-      if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
-        toast.error("Ingresa un monto de pago válido");
-        return;
-      }
-      const finalSource = paymentSource === "Otro" ? paymentSourceOther.trim() : paymentSource;
-      if (!finalSource) {
-        toast.error("Ingresa el medio de pago");
-        return;
-      }
-      if (!paymentProofImage) {
-        toast.error("Sube la captura del pago");
-        return;
-      }
-      payment = { amount: amountNumber, source: finalSource, date: paymentDate, proofImage: paymentProofImage };
+      toast.error('Tienes un pago sin agregar a la lista. Presiona "Agregar pago" o vacía esos campos.');
+      return;
     }
 
     orderMutation.mutate({
       customerId: customer.id,
       sellerId: Number(sellerId),
       items: lines.map((l) => ({ productId: l.product.id, colorName: l.color.name, quantity: l.quantity, discount: l.discount })),
-      payment,
+      payments:
+        payments.length > 0
+          ? payments.map((p) => ({ amount: p.amount, source: p.source, date: p.date, proofImage: p.proofImage }))
+          : undefined,
     });
   };
 
@@ -467,11 +497,43 @@ const OrderRegister = () => {
             </div>
 
             <div className="border border-border rounded-lg p-6 mb-6">
-              <h2 className="text-lg font-medium mb-1" style={{ fontFamily: "var(--font-display)" }}>Pago (opcional)</h2>
+              <h2 className="text-lg font-medium mb-1" style={{ fontFamily: "var(--font-display)" }}>Pagos (opcional)</h2>
               <p className="text-sm text-muted-foreground mb-4">
-                Si el cliente ya pagó, regístralo aquí — queda enlazado al pedido al registrarlo. Si no, deja esto vacío y
-                registra el pago después desde el panel admin.
+                Si el cliente ya pagó (uno o más pagos), agrégalos aquí — quedan enlazados al pedido al registrarlo. Si no, deja
+                esto vacío y registra el pago después desde el panel admin.
               </p>
+
+              {payments.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  {payments.map((p) => (
+                    <div key={p.key} className="flex items-center gap-3 p-3 rounded-md border border-border">
+                      <img
+                        src={productImageUrl(p.proofImage)}
+                        alt="Captura del pago"
+                        className="w-10 h-10 rounded object-cover border border-border shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{p.source}</p>
+                        <p className="text-xs text-muted-foreground">{p.date}</p>
+                      </div>
+                      <p className="text-sm font-medium shrink-0">S/.{p.amount.toFixed(2)}</p>
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePayment(p.key)}
+                        className="p-1.5 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                        aria-label="Quitar pago"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="flex justify-between items-center pt-2 border-t border-border text-sm">
+                    <span className="text-muted-foreground">Total pagado</span>
+                    <span className="font-medium">S/.{payments.reduce((sum, p) => sum + p.amount, 0).toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Monto</label>
@@ -528,6 +590,16 @@ const OrderRegister = () => {
               {paymentProofImage && (
                 <img src={productImageUrl(paymentProofImage)} alt="Captura del pago" className="w-16 h-16 mt-3 rounded object-cover border border-border" />
               )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAddPayment}
+                disabled={paymentUploading}
+                className="mt-3 gap-2"
+              >
+                <Plus className="w-4 h-4" /> Agregar pago
+              </Button>
             </div>
 
             <Button

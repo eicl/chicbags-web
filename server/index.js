@@ -927,6 +927,7 @@ const applyPayment = async (client, orderId, total, currentDeadline, { amount, s
   const separationDeadline =
     status === "Separación" ? currentDeadline ?? new Date(Date.now() + SEPARATION_DAYS * 24 * 60 * 60 * 1000) : currentDeadline;
   await client.query("UPDATE orders SET status = $1, separation_deadline = $2 WHERE id = $3", [status, separationDeadline, orderId]);
+  return { status, separationDeadline };
 };
 
 // Abre su propia transacción con FOR UPDATE sobre el pedido (para que dos
@@ -1161,7 +1162,7 @@ app.put("/api/orders/:orderId/items/:itemId", requireAuth, async (req, res) => {
 // (opcional) se carga al mismo tiempo que los productos y queda enlazado
 // al pedido dentro de la misma transacción, sin un paso aparte.
 app.post("/api/orders/register", async (req, res) => {
-  const { customerId, sellerId, items, payment } = req.body;
+  const { customerId, sellerId, items, payments } = req.body;
   if (!Number.isInteger(customerId)) {
     return res.status(400).json({ error: "Cliente inválido" });
   }
@@ -1170,6 +1171,14 @@ app.post("/api/orders/register", async (req, res) => {
   }
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "El pedido no tiene productos" });
+  }
+  if (payments !== undefined) {
+    if (!Array.isArray(payments)) {
+      return res.status(400).json({ error: "Los pagos son inválidos" });
+    }
+    for (const p of payments) {
+      validatePaymentInput(p);
+    }
   }
   const settings = await getSettings();
   const maxDiscount = isAuthenticated(req) ? settings.maxItemDiscountAdmin : settings.maxItemDiscountPublic;
@@ -1254,9 +1263,12 @@ app.post("/api/orders/register", async (req, res) => {
       insertedItems.push(rows[0]);
     }
 
-    if (payment !== undefined) {
-      validatePaymentInput(payment);
-      await applyPayment(client, order.id, total, null, { ...payment, registeredBy: seller.username });
+    if (Array.isArray(payments) && payments.length > 0) {
+      let deadline = null;
+      for (const p of payments) {
+        const result = await applyPayment(client, order.id, total, deadline, { ...p, registeredBy: seller.username });
+        deadline = result.separationDeadline;
+      }
     }
     const { rows: finalOrderRows } = await client.query("SELECT * FROM orders WHERE id = $1", [order.id]);
     const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [order.id]);
