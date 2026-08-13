@@ -67,7 +67,7 @@ const ProductDetail = () => {
         <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-8">
           <Link to="/catalogo" className="hover:text-foreground transition-colors">Catálogo</Link>
           <span>/</span>
-          <Link to="/catalogo" className="hover:text-foreground transition-colors">{product.category}</Link>
+          <Link to="/catalogo" className="hover:text-foreground transition-colors">{product.categories.join(", ")}</Link>
           <span>/</span>
           <span className="text-foreground">{product.name}</span>
         </nav>
@@ -150,7 +150,7 @@ const ProductDetail = () => {
           {/* Info */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs tracking-widest uppercase text-muted-foreground">{product.category}</p>
+              <p className="text-xs tracking-widest uppercase text-muted-foreground">{product.categories.join(", ")}</p>
               {product.code && <p className="text-xs text-muted-foreground">Código: {product.code}</p>}
             </div>
             {product.brand && <p className="text-sm text-primary font-medium mb-1">{product.brand}</p>}

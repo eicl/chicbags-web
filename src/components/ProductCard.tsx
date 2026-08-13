@@ -87,7 +87,7 @@ const ProductCard = ({ product, isNew = false }: { product: Product; isNew?: boo
         </div>
         <div className="p-4">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-xs tracking-widest uppercase text-muted-foreground">{product.category}</p>
+            <p className="text-xs tracking-widest uppercase text-muted-foreground">{product.categories.join(", ")}</p>
             {product.code && <p className="text-xs text-muted-foreground">{product.code}</p>}
           </div>
           {product.brand && <p className="text-xs text-primary font-medium mb-0.5">{product.brand}</p>}

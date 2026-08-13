@@ -15,8 +15,8 @@ if (rows[0].count > 0) {
 } else {
   for (const p of products) {
     await pool.query(
-      "INSERT INTO products (id, name, price, category, description, image, colors, code) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-      [p.id, p.name, p.price, p.category, p.description, p.image, JSON.stringify(p.colors), p.code]
+      "INSERT INTO products (id, name, price, categories, description, image, colors, code) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+      [p.id, p.name, p.price, JSON.stringify(p.categories), p.description, p.image, JSON.stringify(p.colors), p.code]
     );
   }
   console.log(`Seed insertado en la base de datos (${products.length} productos)`);

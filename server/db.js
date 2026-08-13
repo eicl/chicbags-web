@@ -26,7 +26,7 @@ export const initSchema = async () => {
       id INTEGER PRIMARY KEY,
       name TEXT NOT NULL,
       price NUMERIC NOT NULL,
-      category TEXT NOT NULL,
+      categories JSONB NOT NULL DEFAULT '[]',
       description TEXT NOT NULL DEFAULT '',
       image TEXT NOT NULL DEFAULT '',
       colors JSONB NOT NULL DEFAULT '[]',
@@ -49,6 +49,21 @@ export const initSchema = async () => {
   // Los productos que todavía no tienen un orden manual asignado se ordenan
   // por su id, para no romper el orden actual del catálogo.
   await pool.query(`UPDATE products SET sort_order = id WHERE sort_order IS NULL;`);
+  // Un producto puede tener varias categorías: la columna "category" (texto
+  // único) pasa a "categories" (arreglo). Se migra el valor existente a la
+  // nueva columna y recién ahí se borra la vieja — solo corre una vez,
+  // porque después "category" ya no existe.
+  await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS categories JSONB NOT NULL DEFAULT '[]';`);
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'category') THEN
+        UPDATE products SET categories = jsonb_build_array(category)
+        WHERE categories = '[]'::jsonb AND category IS NOT NULL AND category != '';
+        ALTER TABLE products DROP COLUMN category;
+      END IF;
+    END $$;
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
@@ -70,7 +85,7 @@ export const initSchema = async () => {
   // existentes, para no partir de una lista vacía.
   await pool.query(`
     INSERT INTO categories (name)
-    SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND category != ''
+    SELECT DISTINCT value FROM products, jsonb_array_elements_text(categories) AS value
     ON CONFLICT (name) DO NOTHING;
   `);
   await pool.query(`
@@ -261,8 +276,9 @@ export const getOrCreateBrandId = async (name) => {
 };
 
 // Asegura que una categoría exista en la tabla de mantenimiento (sin
-// distinguir mayúsculas/minúsculas). No devuelve nada: products.category
-// sigue guardando el texto tal cual, esto solo mantiene la lista al día.
+// distinguir mayúsculas/minúsculas). No devuelve nada: products.categories
+// sigue guardando el texto tal cual (un producto puede estar en varias),
+// esto solo mantiene la lista de sugerencias al día.
 export const ensureCategoryExists = async (name) => {
   const trimmed = (name ?? "").trim();
   if (!trimmed) return;

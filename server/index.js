@@ -162,7 +162,7 @@ const mapProduct = (row, includeCost) => ({
   id: row.id,
   name: row.name,
   price: Number(row.price),
-  category: row.category,
+  categories: row.categories,
   description: row.description,
   image: row.image,
   colors: row.colors,
@@ -216,7 +216,15 @@ app.put("/api/categories/:id", requireAuth, async (req, res) => {
   if (existing.length > 0) return res.status(409).json({ error: "Ya existe una categoría con ese nombre" });
   const { rows: current } = await pool.query("SELECT name FROM categories WHERE id = $1", [id]);
   if (current.length === 0) return res.status(404).json({ error: "Categoría no encontrada" });
-  await pool.query("UPDATE products SET category = $1 WHERE category = $2", [name, current[0].name]);
+  // Un array jsonb "contiene" un escalar cuando ese escalar es uno de sus
+  // elementos, así que @> con to_jsonb($2) alcanza para el filtro.
+  await pool.query(
+    `UPDATE products SET categories = (
+       SELECT jsonb_agg(CASE WHEN value = $2 THEN $1 ELSE value END)
+       FROM jsonb_array_elements_text(categories) AS value
+     ) WHERE categories @> to_jsonb($2::text)`,
+    [name, current[0].name]
+  );
   const { rows } = await pool.query("UPDATE categories SET name = $1 WHERE id = $2 RETURNING id, name", [name, id]);
   res.json(rows[0]);
 });
@@ -225,7 +233,10 @@ app.delete("/api/categories/:id", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   const { rows: current } = await pool.query("SELECT name FROM categories WHERE id = $1", [id]);
   if (current.length === 0) return res.status(404).json({ error: "Categoría no encontrada" });
-  const { rows: inUse } = await pool.query("SELECT COUNT(*)::int AS count FROM products WHERE category = $1", [current[0].name]);
+  const { rows: inUse } = await pool.query(
+    "SELECT COUNT(*)::int AS count FROM products WHERE categories @> to_jsonb($1::text)",
+    [current[0].name]
+  );
   if (inUse[0].count > 0) {
     return res.status(409).json({ error: "No puedes eliminar una categoría que está en uso por productos" });
   }
@@ -625,18 +636,21 @@ app.get("/api/products/:id", async (req, res) => {
 });
 
 app.post("/api/products", requireAuth, async (req, res) => {
-  const { name, price, category, description, image, colors, code, brand, photos, videos, extraDescription, sortOrder, cost } = req.body;
+  const { name, price, categories, description, image, colors, code, brand, photos, videos, extraDescription, sortOrder, cost } = req.body;
   const mediaError = validateMedia(photos, videos);
   if (mediaError) return res.status(400).json({ error: mediaError });
+  if (!Array.isArray(categories) || categories.length === 0 || categories.some((c) => !c?.trim())) {
+    return res.status(400).json({ error: "Elige al menos una categoría" });
+  }
   const { rows } = await pool.query("SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM products");
   const id = rows[0].next_id;
   const brandId = await getOrCreateBrandId(brand);
-  await ensureCategoryExists(category);
+  for (const c of categories) await ensureCategoryExists(c);
   const { rows: inserted } = await pool.query(
-    `INSERT INTO products (id, name, price, category, description, image, colors, code, brand_id, photos, videos, extra_description, sort_order, cost)
+    `INSERT INTO products (id, name, price, categories, description, image, colors, code, brand_id, photos, videos, extra_description, sort_order, cost)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
     [
-      id, name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null,
+      id, name, price, JSON.stringify(categories), description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null,
       brandId, JSON.stringify(photos ?? []), JSON.stringify(videos ?? []), extraDescription ?? "",
       Number.isFinite(sortOrder) ? sortOrder : id, Number.isFinite(cost) ? cost : null,
     ]
@@ -647,16 +661,19 @@ app.post("/api/products", requireAuth, async (req, res) => {
 
 app.put("/api/products/:id", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
-  const { name, price, category, description, image, colors, code, brand, photos, videos, extraDescription, sortOrder, cost } = req.body;
+  const { name, price, categories, description, image, colors, code, brand, photos, videos, extraDescription, sortOrder, cost } = req.body;
   const mediaError = validateMedia(photos, videos);
   if (mediaError) return res.status(400).json({ error: mediaError });
+  if (!Array.isArray(categories) || categories.length === 0 || categories.some((c) => !c?.trim())) {
+    return res.status(400).json({ error: "Elige al menos una categoría" });
+  }
   const brandId = await getOrCreateBrandId(brand);
-  await ensureCategoryExists(category);
+  for (const c of categories) await ensureCategoryExists(c);
   const { rows } = await pool.query(
-    `UPDATE products SET name = $1, price = $2, category = $3, description = $4, image = $5, colors = $6, code = $7, brand_id = $8, photos = $9, videos = $10, extra_description = $11, sort_order = $12, cost = $13
+    `UPDATE products SET name = $1, price = $2, categories = $3, description = $4, image = $5, colors = $6, code = $7, brand_id = $8, photos = $9, videos = $10, extra_description = $11, sort_order = $12, cost = $13
      WHERE id = $14 RETURNING id`,
     [
-      name, price, category, description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null,
+      name, price, JSON.stringify(categories), description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null,
       brandId, JSON.stringify(photos ?? []), JSON.stringify(videos ?? []), extraDescription ?? "",
       Number.isFinite(sortOrder) ? sortOrder : id, Number.isFinite(cost) ? cost : null, id,
     ]

@@ -11,7 +11,7 @@ import { productImageUrl } from "@/lib/images";
 import { errorLabelClass, errorInputClass, cn } from "@/lib/utils";
 import Pagination from "@/components/admin/Pagination";
 
-const emptyForm = { name: "", price: 0, cost: "", category: "", description: "", code: "", brand: "", extraDescription: "", sortOrder: "" };
+const emptyForm = { name: "", price: 0, cost: "", description: "", code: "", brand: "", extraDescription: "", sortOrder: "" };
 const emptyColor: ProductColor = { name: "", hex: "#161616", image: "", stock: 0 };
 const MAX_PHOTOS = 5;
 const MAX_VIDEOS = 2;
@@ -20,7 +20,7 @@ const PAGE_SIZE = 20;
 const matchesProduct = (product: Product, query: string) => {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return [product.name, product.code, product.brand, product.category]
+  return [product.name, product.code, product.brand, ...product.categories]
     .some((field) => (field ?? "").toLowerCase().includes(q));
 };
 
@@ -42,12 +42,14 @@ declare global {
 const AdminProducts = () => {
   const { products, addProduct, updateProduct, deleteProduct, isLoading, isError } = useProducts();
   const { data: brands = [] } = useQuery({ queryKey: ["brands"], queryFn: fetchBrands });
-  const { data: categories = [] } = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
+  const { data: categoryOptions = [] } = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
   const [editing, setEditing] = useState<Product | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [form, setForm] = useState(emptyForm);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [categoryInput, setCategoryInput] = useState("");
   const [colors, setColors] = useState<ProductColor[]>([]);
   const [photos, setPhotos] = useState<string[]>([]);
   const [videos, setVideos] = useState<string[]>([]);
@@ -60,7 +62,7 @@ const AdminProducts = () => {
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
 
   const nameError = attemptedSubmit && !form.name.trim();
-  const categoryError = attemptedSubmit && !form.category.trim();
+  const categoryError = attemptedSubmit && categories.length === 0;
   const priceError = attemptedSubmit && !(form.price > 0);
   const codeError = attemptedSubmit && !form.code.trim();
   const brandError = attemptedSubmit && !form.brand.trim();
@@ -73,13 +75,14 @@ const AdminProducts = () => {
       name: product.name,
       price: product.price,
       cost: product.cost == null ? "" : String(product.cost),
-      category: product.category,
       description: product.description,
       code: product.code ?? "",
       brand: product.brand ?? "",
       extraDescription: product.extraDescription ?? "",
       sortOrder: String(product.sortOrder ?? ""),
     });
+    setCategories(product.categories ?? []);
+    setCategoryInput("");
     setColors((product.colors ?? []).map((c, i) => ({ ...c, order: c.order ?? i })));
     setPhotos(product.photos ?? []);
     setVideos(product.videos ?? []);
@@ -91,11 +94,25 @@ const AdminProducts = () => {
     setIsAdding(true);
     setEditing(null);
     setForm(emptyForm);
+    setCategories([]);
+    setCategoryInput("");
     setColors([{ ...emptyColor, order: 0 }]);
     setPhotos([]);
     setVideos([]);
     setAttemptedSubmit(false);
   };
+
+  const handleAddCategory = () => {
+    const name = categoryInput.trim();
+    if (!name || categories.includes(name)) {
+      setCategoryInput("");
+      return;
+    }
+    setCategories((prev) => [...prev, name]);
+    setCategoryInput("");
+  };
+
+  const handleRemoveCategory = (name: string) => setCategories((prev) => prev.filter((c) => c !== name));
 
   const handleAddColorRow = () => setColors((prev) => [...prev, { ...emptyColor, order: prev.length }]);
 
@@ -171,7 +188,7 @@ const AdminProducts = () => {
   const handleSave = () => {
     const missing: string[] = [];
     if (!form.name.trim()) missing.push("Nombre");
-    if (!form.category.trim()) missing.push("Categoría");
+    if (categories.length === 0) missing.push("Categoría");
     if (!(form.price > 0)) missing.push("Precio");
     if (!form.code.trim()) missing.push("Código");
     if (!form.brand.trim()) missing.push("Marca");
@@ -198,6 +215,7 @@ const AdminProducts = () => {
     const payload = {
       ...form,
       image,
+      categories,
       colors: validColors,
       photos,
       videos,
@@ -215,6 +233,7 @@ const AdminProducts = () => {
     setEditing(null);
     setIsAdding(false);
     setForm(emptyForm);
+    setCategories([]);
     setColors([]);
   };
 
@@ -224,6 +243,7 @@ const AdminProducts = () => {
     if (editing?.id === id) {
       setEditing(null);
       setForm(emptyForm);
+      setCategories([]);
       setColors([]);
     }
   };
@@ -232,6 +252,7 @@ const AdminProducts = () => {
     setEditing(null);
     setIsAdding(false);
     setForm(emptyForm);
+    setCategories([]);
     setColors([]);
     setPhotos([]);
     setVideos([]);
@@ -284,17 +305,41 @@ const AdminProducts = () => {
                 placeholder="120"
               />
             </div>
-            <div>
-              <label className={errorLabelClass(categoryError)}>Categoría *</label>
-              <Input
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
-                placeholder="Carteras, Bolsos..."
-                list="category-options"
-                className={errorInputClass(categoryError)}
-              />
-              <datalist id="category-options">
+            <div className="md:col-span-2">
+              <label className={errorLabelClass(categoryError)}>Categorías *</label>
+              <div className="flex flex-wrap gap-2 mb-2">
                 {categories.map((c) => (
+                  <span key={c} className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-md bg-primary/10 text-primary text-sm">
+                    {c}
+                    <button type="button" onClick={() => handleRemoveCategory(c)} className="hover:text-destructive" aria-label={`Quitar ${c}`}>
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </span>
+                ))}
+                {categories.length === 0 && (
+                  <span className="text-sm text-muted-foreground">Sin categorías todavía</span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  value={categoryInput}
+                  onChange={(e) => setCategoryInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddCategory();
+                    }
+                  }}
+                  placeholder="Carteras, Bolsos..."
+                  list="category-options"
+                  className={cn("flex-1 min-w-[10rem]", errorInputClass(categoryError))}
+                />
+                <Button type="button" variant="outline" onClick={handleAddCategory} className="gap-2 shrink-0">
+                  <Plus className="w-4 h-4" /> Agregar
+                </Button>
+              </div>
+              <datalist id="category-options">
+                {categoryOptions.map((c) => (
                   <option key={c.id} value={c.name} />
                 ))}
               </datalist>
@@ -590,7 +635,7 @@ const AdminProducts = () => {
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Código</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Marca</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Nombre</th>
-                <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Categoría</th>
+                <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Categorías</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Precio</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Costo</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Stock total</th>
@@ -616,7 +661,7 @@ const AdminProducts = () => {
                       <td className="py-3 px-4 text-muted-foreground text-sm">{product.code || "—"}</td>
                       <td className="py-3 px-4 text-muted-foreground text-sm">{product.brand || "—"}</td>
                       <td className="py-3 px-4 font-medium">{product.name}</td>
-                      <td className="py-3 px-4 text-muted-foreground text-sm">{product.category}</td>
+                      <td className="py-3 px-4 text-muted-foreground text-sm">{product.categories.join(", ")}</td>
                       <td className="py-3 px-4">S/.{product.price.toFixed(2)}</td>
                       <td className="py-3 px-4 text-muted-foreground text-sm">
                         {product.cost == null ? "—" : `S/.${product.cost.toFixed(2)}`}

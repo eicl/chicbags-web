@@ -6,7 +6,7 @@ const ProductCatalog = () => {
   const { products, categories, isLoading, isError } = useProducts();
   const [activeCategory, setActiveCategory] = useState("Todos");
 
-  const filtered = activeCategory === "Todos" ? products : products.filter((p) => p.category === activeCategory);
+  const filtered = activeCategory === "Todos" ? products : products.filter((p) => p.categories.includes(activeCategory));
   const newestIds = new Set(
     products.slice().sort((a, b) => b.id - a.id).slice(0, 4).map((p) => p.id)
   );

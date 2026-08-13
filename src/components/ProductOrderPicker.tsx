@@ -15,7 +15,7 @@ interface ProductOrderPickerProps {
 const matches = (product: Product, query: string) => {
   const q = query.trim().toLowerCase();
   if (!q) return false;
-  return [product.name, product.code, product.brand, product.category]
+  return [product.name, product.code, product.brand, ...product.categories]
     .some((field) => (field ?? "").toLowerCase().includes(q));
 };
 

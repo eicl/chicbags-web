@@ -28,7 +28,7 @@ export const ProductProvider = ({ children }: { children: ReactNode }) => {
     queryFn: fetchProducts,
   });
 
-  const categories = ["Todos", ...Array.from(new Set(products.map((p) => p.category))).sort()];
+  const categories = ["Todos", ...Array.from(new Set(products.flatMap((p) => p.categories))).sort()];
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["products"] });
 
