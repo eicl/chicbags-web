@@ -86,13 +86,13 @@ const PRINT_BASE_STYLES = `
 
 // Reporte para pedidos "Pendiente de envío"/"Entregado a delivery" (ya
 // pagados): datos de entrega del cliente, listos para pegar en el paquete.
-// Orden fijo de filas: Delivery (tipo + agencia), Vía (si aplica),
-// Ubicación, Número de cliente, Documento, Nombre, Celular.
+// Orden fijo de filas: Vía (si aplica, Terrestre/Aéreo), Delivery (tipo +
+// agencia), Ubicación, Número de cliente, Documento, Nombre, Celular.
 const buildShippingLabelHtml = (order: AdminOrder) => {
   const showMode = DELIVERY_MODE_TYPES.includes(order.customerDeliveryType);
   const rows: [string, string][] = [
-    ["Delivery", order.customerAgency ? `${order.customerDeliveryType} - ${order.customerAgency}` : order.customerDeliveryType],
     ...(showMode && order.customerDeliveryMode ? ([["Vía", order.customerDeliveryMode]] as [string, string][]) : []),
+    ["Delivery", order.customerAgency ? `${order.customerDeliveryType} - ${order.customerAgency}` : order.customerDeliveryType],
     ["Ubicación", `${order.customerDepartment} - ${order.customerProvince} - ${order.customerDistrict}`],
     ["Número de cliente", `#${order.customerId}`],
     ["Documento", `${order.customerDocumentType} - ${order.customerDocumentNumber}`],
