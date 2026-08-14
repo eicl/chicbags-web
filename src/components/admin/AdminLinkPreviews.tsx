@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Save } from "lucide-react";
+import { Copy, ExternalLink, Save } from "lucide-react";
 import { fetchRouteMeta, updateRouteMeta, RouteMeta } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,16 @@ const RouteMetaCard = ({ route }: { route: RouteMeta }) => {
   const queryClient = useQueryClient();
   const [title, setTitle] = useState(route.title);
   const [description, setDescription] = useState(route.description);
+  const fullUrl = `${window.location.origin}${route.path}`;
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(fullUrl);
+      toast.success("Link copiado");
+    } catch {
+      toast.error("No se pudo copiar el link");
+    }
+  };
 
   const mutation = useMutation({
     mutationFn: (data: { title: string; description: string }) => updateRouteMeta(route.key, data),
@@ -32,7 +42,25 @@ const RouteMetaCard = ({ route }: { route: RouteMeta }) => {
     <div className="border border-border rounded-lg p-4 space-y-3">
       <div>
         <p className="font-medium">{route.label}</p>
-        <p className="text-xs text-muted-foreground">{route.path}</p>
+        <div className="flex items-center gap-2 mt-0.5">
+          <a
+            href={fullUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-primary hover:underline inline-flex items-center gap-1 break-all"
+          >
+            {fullUrl} <ExternalLink className="w-3 h-3 shrink-0" />
+          </a>
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="text-muted-foreground hover:text-foreground shrink-0"
+            aria-label="Copiar link"
+            title="Copiar link"
+          >
+            <Copy className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
       <div>
         <label className="text-sm text-muted-foreground mb-1 block">Título</label>
