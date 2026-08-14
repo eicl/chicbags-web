@@ -134,7 +134,7 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
           td { padding: 5px 4px; border-bottom: 1px solid #ddd; vertical-align: top; }
           td:first-child { font-weight: 700; width: 38%; color: #444; }
           .cobrar { font-size: 18px; font-weight: 800; text-align: center; margin-top: 12px; }
-          .yape-qr { position: absolute; left: 0; bottom: 0; width: 24mm; height: 24mm; object-fit: contain; }
+          .yape-qr { position: absolute; right: 0; bottom: 0; width: 24mm; height: 24mm; object-fit: contain; }
         </style>
       </head>
       <body>
