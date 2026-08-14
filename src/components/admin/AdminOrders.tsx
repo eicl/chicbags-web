@@ -653,6 +653,7 @@ const AdminOrders = () => {
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Cliente</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Celular</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Ubicación</th>
+                <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Tipo de delivery</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Vendedor</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Estado</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Total</th>
@@ -687,6 +688,7 @@ const AdminOrders = () => {
                       <td className="py-3 px-4 text-muted-foreground text-sm">
                         {order.customerDistrict}, {order.customerProvince}, {order.customerDepartment}
                       </td>
+                      <td className="py-3 px-4 text-muted-foreground text-sm">{order.customerDeliveryType}</td>
                       <td className="py-3 px-4 text-muted-foreground text-sm">{order.sellerName || "—"}</td>
                       <td className="py-3 px-4">
                         <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-semibold ${STATUS_BADGE_CLASS[order.status]}`}>
@@ -709,7 +711,7 @@ const AdminOrders = () => {
                     </tr>
                     {isExpanded && (
                       <tr key={`${order.id}-detail`} className="border-b border-border last:border-0 bg-muted/20">
-                        <td colSpan={11} className="px-4 py-3 space-y-4">
+                        <td colSpan={12} className="px-4 py-3 space-y-4">
                           <p className="text-sm">
                             <span className="text-muted-foreground">Documento:</span> <span className="font-medium">{order.customerDocument}</span>
                             {" · "}
@@ -874,17 +876,17 @@ const AdminOrders = () => {
               })}
               {isLoading && (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-muted-foreground">Cargando pedidos...</td>
+                  <td colSpan={12} className="py-12 text-center text-muted-foreground">Cargando pedidos...</td>
                 </tr>
               )}
               {isError && (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
+                  <td colSpan={12} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
                 </tr>
               )}
               {!isLoading && !isError && filteredOrders.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-muted-foreground">
+                  <td colSpan={12} className="py-12 text-center text-muted-foreground">
                     {orders.length === 0 ? "No hay pedidos registrados." : "Ningún pedido coincide con la búsqueda."}
                   </td>
                 </tr>
