@@ -326,7 +326,7 @@ export interface OrderItem {
   subtotal: number;
 }
 
-export type OrderStatus = "Registrado" | "Separación" | "Pendiente de envío" | "Entregado a delivery";
+export type OrderStatus = "Registrado" | "Separación" | "Separado en almacén" | "Pendiente de envío" | "Entregado a delivery";
 export type OrderType = "Pedido" | "Regularización";
 
 export interface Payment {
@@ -509,6 +509,13 @@ export const registerPayment = (orderId: number, data: PaymentInput): Promise<Or
 // "Pendiente de envío" como ya entregado al courier/delivery.
 export const markOrderDelivered = (orderId: number): Promise<Order> =>
   fetch(`${API_URL}/orders/${orderId}/deliver`, {
+    method: "PUT",
+    credentials: "include",
+  }).then((res) => handle<Order>(res));
+
+// Marca un pedido "Separación" como ya apartado físicamente en el almacén.
+export const markOrderWarehouseSeparated = (orderId: number): Promise<Order> =>
+  fetch(`${API_URL}/orders/${orderId}/warehouse`, {
     method: "PUT",
     credentials: "include",
   }).then((res) => handle<Order>(res));

@@ -1,11 +1,11 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Plus, Printer, Search, Settings, Trash2, Truck, Upload, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Plus, Printer, Search, Settings, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
 import {
   AdminOrder, ChargeType, DiscountSettings, OrderItem, OrderStatus, PaymentInput, Service,
-  addOrderItem, deleteOrder, fetchOrders, fetchServices, fetchSettings, markOrderDelivered, registerPayment,
-  updateOrderChargeType, updateOrderItemColor, updateSettings, uploadImage,
+  addOrderItem, deleteOrder, fetchOrders, fetchServices, fetchSettings, markOrderDelivered, markOrderWarehouseSeparated,
+  registerPayment, updateOrderChargeType, updateOrderItemColor, updateSettings, uploadImage,
 } from "@/lib/api";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import { productImageUrl } from "@/lib/images";
@@ -60,6 +60,7 @@ const matchesOrder = (order: AdminOrder, query: string) => {
 const STATUS_BADGE_CLASS: Record<OrderStatus, string> = {
   "Registrado": "bg-muted text-muted-foreground",
   "Separación": "bg-amber-500/10 text-amber-600",
+  "Separado en almacén": "bg-sky-500/10 text-sky-600",
   "Pendiente de envío": "bg-primary/10 text-primary",
   "Entregado a delivery": "bg-emerald-500/10 text-emerald-600",
 };
@@ -613,6 +614,15 @@ const AdminOrders = () => {
     onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo actualizar el pedido"),
   });
 
+  const warehouseMutation = useMutation({
+    mutationFn: markOrderWarehouseSeparated,
+    onSuccess: () => {
+      toast.success("Pedido marcado como separado en almacén");
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo actualizar el pedido"),
+  });
+
   return (
     <div>
       <DiscountSettingsPanel />
@@ -750,7 +760,7 @@ const AdminOrders = () => {
                             </tbody>
                           </table>
 
-                          {order.status === "Separación" && order.separationDeadline && (
+                          {(order.status === "Separación" || order.status === "Separado en almacén") && order.separationDeadline && (
                             <p className="text-sm text-amber-600">
                               Pago parcial (S/.{paid.toFixed(2)} de S/.{order.total.toFixed(2)}). Plazo para cancelar: {" "}
                               <span className="font-medium">{formatDateOnly(order.separationDeadline)}</span>.
@@ -824,6 +834,17 @@ const AdminOrders = () => {
                             >
                               <Printer className="w-3.5 h-3.5" /> Imprimir
                             </Button>
+                            {order.status === "Separación" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => warehouseMutation.mutate(order.id)}
+                                disabled={warehouseMutation.isPending}
+                                className="gap-2 text-sky-600 hover:text-sky-600"
+                              >
+                                <Warehouse className="w-3.5 h-3.5" /> Marcar como separado en almacén
+                              </Button>
+                            )}
                             {order.status === "Pendiente de envío" && (
                               <Button
                                 variant="outline"
