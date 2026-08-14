@@ -68,26 +68,29 @@ const ADDRESS_TYPES = ["Motorizado Express", "Motorizado Delivery"];
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-const PRINT_STYLES = `
-  @page { size: A5 portrait; margin: 14mm; }
+// Reglas comunes a los dos reportes; el tamaño de página va aparte porque
+// cada uno usa uno distinto (A6 horizontal para el de envío, A5 vertical
+// para el de separación).
+const PRINT_BASE_STYLES = `
   * { box-sizing: border-box; }
   body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 0; }
 `;
 
-// Reporte para pedidos "Pendiente de envío" (ya pagados): datos de entrega
-// del cliente, listos para pegar en el paquete.
+// Reporte para pedidos "Pendiente de envío"/"Entregado a delivery" (ya
+// pagados): datos de entrega del cliente, listos para pegar en el paquete.
+// Ubicación (departamento/provincia/distrito) y Documento (tipo/número) van
+// cada uno en una sola fila para ahorrar espacio en la página A6.
 const buildShippingLabelHtml = (order: AdminOrder) => {
   const showMode = DELIVERY_MODE_TYPES.includes(order.customerDeliveryType);
   const showAddress = ADDRESS_TYPES.includes(order.customerDeliveryType);
   const rows: [string, string][] = [
     ["Tipo de delivery", order.customerDeliveryType],
     ...(order.customerAgency ? ([["Agencia", order.customerAgency]] as [string, string][]) : []),
-    ["Departamento", order.customerDepartment],
-    ["Provincia", order.customerProvince],
-    ["Distrito", order.customerDistrict],
-    ["Tipo de documento", order.customerDocumentType],
-    ["Número de documento", order.customerDocumentNumber],
+    ["Documento", `${order.customerDocumentType} - ${order.customerDocumentNumber}`],
     ["Nombres y apellidos", order.customerName],
+    ["Número de cliente", `#${order.customerId}`],
+    ["Celular", order.customerMobile],
+    ["Ubicación", `${order.customerDepartment} - ${order.customerProvince} - ${order.customerDistrict}`],
     ...(showMode && order.customerDeliveryMode ? ([["Vía de envío", order.customerDeliveryMode]] as [string, string][]) : []),
     ...(showAddress && order.customerAddress ? ([["Dirección", order.customerAddress]] as [string, string][]) : []),
   ];
@@ -97,11 +100,12 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
         <meta charset="utf-8" />
         <title>Pedido #${order.id}</title>
         <style>
-          ${PRINT_STYLES}
-          h1 { font-size: 18px; margin: 0 0 14px; }
-          table { width: 100%; border-collapse: collapse; font-size: 13px; }
-          td { padding: 7px 4px; border-bottom: 1px solid #ddd; vertical-align: top; }
-          td:first-child { font-weight: 700; width: 42%; color: #444; }
+          @page { size: A6 landscape; margin: 8mm; }
+          ${PRINT_BASE_STYLES}
+          h1 { font-size: 18px; margin: 0 0 10px; }
+          table { width: 100%; border-collapse: collapse; font-size: 14px; }
+          td { padding: 5px 4px; border-bottom: 1px solid #ddd; vertical-align: top; }
+          td:first-child { font-weight: 700; width: 38%; color: #444; }
         </style>
       </head>
       <body>
@@ -125,7 +129,8 @@ const buildSeparationLabelHtml = (order: AdminOrder) => `
       <meta charset="utf-8" />
       <title>Pedido #${order.id}</title>
       <style>
-        ${PRINT_STYLES}
+        @page { size: A5 portrait; margin: 14mm; }
+        ${PRINT_BASE_STYLES}
         body { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: space-between; text-align: center; padding: 20mm 0; }
         .order-number { font-size: 220px; font-weight: 800; }
         .customer-name { font-size: 40px; font-weight: 600; margin-bottom: 10px; }
