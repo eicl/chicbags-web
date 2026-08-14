@@ -492,6 +492,9 @@ app.get("/api/sellers", async (req, res) => {
 });
 
 const DELIVERY_TYPES = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Olva", "Marvisur"];
+// Los que reparten por agencia/courier (no motorizado propio): antes de
+// marcarlos "Entregado a delivery" hace falta subir el recibo del envío.
+const COURIER_DELIVERY_TYPES = ["Shalom", "Olva", "Marvisur"];
 
 // Tope de descuento manual por ítem al registrar un pedido: más alto si
 // quien registra tiene sesión de admin abierta en el navegador (aunque el
@@ -946,6 +949,8 @@ const mapOrder = (order, items, payments = []) => ({
   type: order.type,
   status: order.status,
   chargeType: order.charge_type,
+  receiptImage: order.receipt_image,
+  trackingCode: order.tracking_code,
   separationDeadline: order.separation_deadline,
   total: Number(order.total),
   createdAt: order.created_at,
@@ -1049,7 +1054,8 @@ app.get("/api/orders", requireAuth, async (req, res) => {
   // unieran directamente, duplicando cada item y cada pago.
   const { rows } = await pool.query(`
     SELECT
-      o.id, o.customer_id, o.seller_id, o.type, o.status, o.charge_type, o.separation_deadline, o.total, o.created_at,
+      o.id, o.customer_id, o.seller_id, o.type, o.status, o.charge_type, o.receipt_image, o.tracking_code,
+      o.separation_deadline, o.total, o.created_at,
       c.first_name, c.paternal_surname, c.maternal_surname, c.document_type, c.document_number, c.mobile,
       c.department, c.province, c.district, c.delivery_type, c.delivery_mode, c.agency, c.address,
       u.username AS seller_username,
@@ -1101,6 +1107,8 @@ app.get("/api/orders", requireAuth, async (req, res) => {
       type: row.type,
       status: row.status,
       chargeType: row.charge_type,
+      receiptImage: row.receipt_image,
+      trackingCode: row.tracking_code,
       separationDeadline: row.separation_deadline,
       total: Number(row.total),
       createdAt: row.created_at,
@@ -1502,21 +1510,64 @@ app.post("/api/orders/:id/payments", requireAuth, async (req, res) => {
 // entregó al courier/delivery, deja de estar "Pendiente de envío" y pasa a
 // "Entregado a delivery". El resto del ciclo de vida (Registrado →
 // Separación/Pendiente de envío) sigue calculándose solo a partir de los
-// pagos, nunca a mano.
+// pagos, nunca a mano. Para Shalom/Olva/Marvisur, además exige que ya se
+// haya subido el recibo del envío (ver PUT /api/orders/:id/receipt).
 app.put("/api/orders/:id/deliver", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).json({ error: "Pedido inválido" });
   }
-  const { rows } = await pool.query(
-    "UPDATE orders SET status = 'Entregado a delivery' WHERE id = $1 AND status = 'Pendiente de envío' RETURNING *",
-    [id]
-  );
-  if (rows.length === 0) {
-    const { rows: existing } = await pool.query("SELECT id FROM orders WHERE id = $1", [id]);
-    if (existing.length === 0) return res.status(404).json({ error: "Pedido no encontrado" });
-    return res.status(400).json({ error: "Solo se puede marcar como entregado a delivery un pedido Pendiente de envío" });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: orderRows } = await client.query(
+      `SELECT o.id, o.status, o.receipt_image, c.delivery_type
+       FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.id = $1 FOR UPDATE OF o`,
+      [id]
+    );
+    if (orderRows.length === 0) {
+      throw Object.assign(new Error("Pedido no encontrado"), { status: 404 });
+    }
+    const order = orderRows[0];
+    if (order.status !== "Pendiente de envío") {
+      throw new Error("Solo se puede marcar como entregado a delivery un pedido Pendiente de envío");
+    }
+    if (COURIER_DELIVERY_TYPES.includes(order.delivery_type) && !order.receipt_image) {
+      throw new Error("Sube el recibo del envío antes de marcar el pedido como entregado a delivery");
+    }
+    const { rows } = await client.query(
+      "UPDATE orders SET status = 'Entregado a delivery' WHERE id = $1 RETURNING *",
+      [id]
+    );
+    const { rows: itemRows } = await client.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [id]);
+    const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [id]);
+    await client.query("COMMIT");
+    res.json(mapOrder(rows[0], itemRows, paymentRows));
+  } catch (err) {
+    await client.query("ROLLBACK");
+    res.status(err.status ?? 400).json({ error: err.message });
+  } finally {
+    client.release();
   }
+});
+
+// Guarda el recibo del envío (foto/captura) y una clave de rastreo opcional
+// — pensado para Shalom/Olva/Marvisur, aunque el endpoint no lo exige (la
+// restricción real está en /deliver, arriba).
+app.put("/api/orders/:id/receipt", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const { receiptImage, trackingCode } = req.body;
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  if (!receiptImage?.trim()) {
+    return res.status(400).json({ error: "Sube el recibo del envío" });
+  }
+  const { rows } = await pool.query(
+    "UPDATE orders SET receipt_image = $1, tracking_code = $2 WHERE id = $3 RETURNING *",
+    [receiptImage.trim(), (trackingCode ?? "").trim(), id]
+  );
+  if (rows.length === 0) return res.status(404).json({ error: "Pedido no encontrado" });
   const { rows: itemRows } = await pool.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [id]);
   const { rows: paymentRows } = await pool.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [id]);
   res.json(mapOrder(rows[0], itemRows, paymentRows));

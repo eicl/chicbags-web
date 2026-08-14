@@ -351,6 +351,11 @@ export interface Order {
   type: OrderType;
   status: OrderStatus;
   chargeType: ChargeType;
+  // Recibo del envío (Shalom/Olva/Marvisur) y clave de rastreo opcional;
+  // vacíos ("") si todavía no se subió. Sin recibo no se puede marcar el
+  // pedido como "Entregado a delivery" en esos tipos de delivery.
+  receiptImage: string;
+  trackingCode: string;
   // Fecha límite para cancelar (15 días calendario), fijada solo mientras el
   // pedido está en "Separación"; null en cualquier otro estado.
   separationDeadline: string | null;
@@ -536,6 +541,18 @@ export const updateOrderChargeType = (orderId: number, chargeType: ChargeType): 
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ chargeType }),
+  }).then((res) => handle<Order>(res));
+
+// Recibo del envío (Shalom/Olva/Marvisur) + clave de rastreo opcional.
+export const updateOrderReceipt = (
+  orderId: number,
+  data: { receiptImage: string; trackingCode?: string }
+): Promise<Order> =>
+  fetch(`${API_URL}/orders/${orderId}/receipt`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
   }).then((res) => handle<Order>(res));
 
 // Lista pública de vendedores (usuarios con perfil Vendedor), para el

@@ -224,6 +224,12 @@ export const initSchema = async () => {
   // el pedido pase a "Pendiente de envío" aunque tenga saldo pendiente,
   // porque el motorizado cobra el resto al entregar.
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS charge_type TEXT NOT NULL DEFAULT 'Normal';`);
+  // Recibo del envío (foto/captura del comprobante de la agencia) y clave de
+  // rastreo opcional — solo tienen sentido para delivery Shalom/Olva/
+  // Marvisur. Mientras no haya recibo, esos pedidos no pueden pasar a
+  // "Entregado a delivery" (ver PUT /api/orders/:id/deliver).
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS receipt_image TEXT NOT NULL DEFAULT '';`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_code TEXT NOT NULL DEFAULT '';`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS payments (
       id SERIAL PRIMARY KEY,

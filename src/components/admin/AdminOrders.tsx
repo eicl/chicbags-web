@@ -5,7 +5,7 @@ import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Plus, Pr
 import {
   AdminOrder, ChargeType, DiscountSettings, OrderItem, OrderStatus, PaymentInput, Service,
   addOrderItem, deleteOrder, fetchOrders, fetchServices, fetchSettings, markOrderDelivered, markOrderWarehouseSeparated,
-  registerPayment, updateOrderChargeType, updateOrderItemColor, updateSettings, uploadImage,
+  registerPayment, updateOrderChargeType, updateOrderItemColor, updateOrderReceipt, updateSettings, uploadImage,
 } from "@/lib/api";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import { productImageUrl } from "@/lib/images";
@@ -81,6 +81,11 @@ const DELIVERY_MODE_TYPES = ["Shalom", "Olva"];
 // distrito + dirección exacta en vez de la ubicación completa, y no
 // necesitan la fila de Documento.
 const ADDRESS_TYPES = ["Motorizado Express", "Motorizado Delivery"];
+// Los que reparten por agencia/courier: antes de marcarlos "Entregado a
+// delivery" hace falta subir el recibo del envío (mismo requisito del
+// servidor, repetido acá para deshabilitar el botón en vez de solo
+// mostrar el error después de intentarlo).
+const COURIER_DELIVERY_TYPES = ["Shalom", "Olva", "Marvisur"];
 
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -403,6 +408,81 @@ const PaymentForm = ({ orderId }: { orderId: number }) => {
       <Button size="sm" onClick={handleSubmit} disabled={paymentMutation.isPending || uploading} className="h-9">
         {paymentMutation.isPending ? "Registrando..." : "Registrar pago"}
       </Button>
+    </div>
+  );
+};
+
+// Solo para pedidos con delivery Shalom/Olva/Marvisur: deja subir el
+// recibo del envío (comprobante de la agencia) y una clave de rastreo
+// opcional. Sin recibo, el servidor no deja marcar el pedido como
+// "Entregado a delivery" (ver el botón más abajo).
+const ReceiptForm = ({ order }: { order: AdminOrder }) => {
+  const queryClient = useQueryClient();
+  const [trackingCode, setTrackingCode] = useState(order.trackingCode);
+  const [receiptImage, setReceiptImage] = useState(order.receiptImage);
+  const [uploading, setUploading] = useState(false);
+
+  const receiptMutation = useMutation({
+    mutationFn: (data: { receiptImage: string; trackingCode?: string }) => updateOrderReceipt(order.id, data),
+    onSuccess: () => {
+      toast.success("Recibo guardado");
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo guardar el recibo"),
+  });
+
+  const handleUpload = async (file: File) => {
+    setUploading(true);
+    try {
+      const { filename } = await uploadImage(file);
+      setReceiptImage(filename);
+    } catch {
+      toast.error("No se pudo subir el recibo");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleSubmit = () => {
+    if (!receiptImage) {
+      toast.error("Sube el recibo del envío");
+      return;
+    }
+    receiptMutation.mutate({ receiptImage, trackingCode });
+  };
+
+  return (
+    <div>
+      <h4 className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Recibo del envío</h4>
+      <div className="flex flex-wrap items-end gap-3 p-3 rounded-md border border-dashed border-border">
+        <div>
+          <label className="block text-xs text-muted-foreground mb-1">Recibo</label>
+          <label className="flex items-center gap-2 h-9 px-3 rounded-md border border-input text-sm cursor-pointer hover:bg-muted/50">
+            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            {receiptImage ? "Cambiar" : "Subir"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleUpload(file);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+        {receiptImage && (
+          <img src={productImageUrl(receiptImage)} alt="Recibo del envío" className="w-9 h-9 rounded object-cover border border-border" />
+        )}
+        <div>
+          <label className="block text-xs text-muted-foreground mb-1">Clave (opcional)</label>
+          <Input value={trackingCode} onChange={(e) => setTrackingCode(e.target.value)} placeholder="Clave de rastreo" className="h-9 w-40" />
+        </div>
+        <Button size="sm" onClick={handleSubmit} disabled={receiptMutation.isPending || uploading} className="h-9">
+          {receiptMutation.isPending ? "Guardando..." : "Guardar"}
+        </Button>
+      </div>
     </div>
   );
 };
@@ -815,6 +895,8 @@ const AdminOrders = () => {
 
                           {order.customerDeliveryType === "Motorizado Delivery" && <MotorizadoDeliveryExtras order={order} />}
 
+                          {COURIER_DELIVERY_TYPES.includes(order.customerDeliveryType) && <ReceiptForm order={order} />}
+
                           <div className="flex flex-wrap items-center gap-3">
                             <a
                               href={buildStatusWhatsAppLink(order)}
@@ -847,17 +929,21 @@ const AdminOrders = () => {
                                 <Warehouse className="w-3.5 h-3.5" /> Marcar como separado en almacén
                               </Button>
                             )}
-                            {order.status === "Pendiente de envío" && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => deliverMutation.mutate(order.id)}
-                                disabled={deliverMutation.isPending}
-                                className="gap-2 text-emerald-600 hover:text-emerald-600"
-                              >
-                                <Truck className="w-3.5 h-3.5" /> Marcar como entregado a delivery
-                              </Button>
-                            )}
+                            {order.status === "Pendiente de envío" && (() => {
+                              const needsReceipt = COURIER_DELIVERY_TYPES.includes(order.customerDeliveryType) && !order.receiptImage;
+                              return (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => deliverMutation.mutate(order.id)}
+                                  disabled={deliverMutation.isPending || needsReceipt}
+                                  title={needsReceipt ? "Sube el recibo del envío primero" : undefined}
+                                  className="gap-2 text-emerald-600 hover:text-emerald-600"
+                                >
+                                  <Truck className="w-3.5 h-3.5" /> Marcar como entregado a delivery
+                                </Button>
+                              );
+                            })()}
                             <Button
                               variant="outline"
                               size="sm"
