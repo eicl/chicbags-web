@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Search, Trash2, X, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { fetchUsers, createUser, updateUser, deleteUser, UserAccount, UserRole } from "@/lib/api";
@@ -146,8 +147,7 @@ const AdminUsers = () => {
               <label className={errorLabelClass(passwordError)}>
                 Contraseña {editingId !== null ? "(dejar vacío para no cambiarla)" : "*"}
               </label>
-              <Input
-                type="password"
+              <PasswordInput
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
                 placeholder="••••••••"

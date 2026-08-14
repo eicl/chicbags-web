@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { LogIn } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import Header from "@/components/Header";
@@ -50,7 +51,7 @@ const CustomerLogin = () => {
           </div>
           <div>
             <label className="text-sm text-muted-foreground mb-1 block">Contraseña</label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
+            <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
           </div>
           <Button type="submit" disabled={isSubmitting} className="w-full py-6 text-sm tracking-widest uppercase gap-2">
             <LogIn className="w-4 h-4" /> {isSubmitting ? "Ingresando..." : "Ingresar"}

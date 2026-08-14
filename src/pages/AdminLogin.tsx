@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 
 const AdminLogin = () => {
   const { login, loginError, isLoggingIn } = useAuth();
@@ -33,8 +34,7 @@ const AdminLogin = () => {
           </div>
           <div>
             <label className="text-sm text-muted-foreground mb-1 block">Contraseña</label>
-            <Input
-              type="password"
+            <PasswordInput
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"

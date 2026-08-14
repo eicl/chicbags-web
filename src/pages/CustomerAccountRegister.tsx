@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate, Link } from "react-router-dom";
 import { CheckCircle2, Info, Save } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import Header from "@/components/Header";
@@ -363,8 +364,7 @@ const CustomerAccountRegister = () => {
             )}
             <div>
               <label className={errorLabelClass(hasError("password"))}>Contraseña *</label>
-              <Input
-                type="password"
+              <PasswordInput
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Mínimo 6 caracteres"
@@ -373,8 +373,7 @@ const CustomerAccountRegister = () => {
             </div>
             <div>
               <label className={errorLabelClass(hasError("confirmPassword"))}>Confirmar contraseña *</label>
-              <Input
-                type="password"
+              <PasswordInput
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Repite la contraseña"
