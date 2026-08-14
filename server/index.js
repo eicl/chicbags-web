@@ -1140,66 +1140,139 @@ const formatPeruDate = (date) => {
   return `${get("day").padStart(2, "0")}/${get("month").padStart(2, "0")}/${get("year")}`;
 };
 
-// Reporte para el motorizado Pitaya: un Excel con los pedidos listos para
-// repartir (Motorizado Delivery, Pendiente de envío), en el formato que ya
-// usa el negocio para coordinar las entregas del día.
-app.get("/api/orders/pitaya-report", requireAuth, async (req, res) => {
-  const { rows } = await pool.query(`
-    SELECT
-      o.id, o.total, o.charge_type, o.created_at,
-      c.first_name, c.paternal_surname, c.maternal_surname, c.mobile, c.address, c.district,
-      c.location_lat, c.location_lng,
-      COALESCE(payments.payments, '[]') AS payments
-    FROM orders o
-    JOIN customers c ON c.id = o.customer_id
-    LEFT JOIN LATERAL (
-      SELECT json_agg(json_build_object('amount', p.amount, 'source', p.source) ORDER BY p.id) AS payments
-      FROM payments p WHERE p.order_id = o.id
-    ) payments ON true
-    WHERE o.status = 'Pendiente de envío' AND c.delivery_type = 'Motorizado Delivery'
-    ORDER BY o.id
-  `);
+const PITAYA_HEADER_ROW = [
+  "FECHA DE COMPRA", "ESTADO", "CODIGO", "Monto", "SITUACIÓN DE PAGO", "NOMBRE", "CELULAR",
+  "PRODUCTO", "FECHA DE ENTREGA", "DIRECCIÓN", "DISTRITO ", "MAPS",
+];
 
+// Arma el Excel a partir de filas ya guardadas en shipments — tanto para una
+// generación nueva como para volver a descargar una vieja, siempre el mismo
+// contenido (el código sale del id de shipments, no se recalcula).
+const buildPitayaWorkbook = async (shipmentRows) => {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Pitaya");
-  sheet.addRow([
-    "FECHA DE COMPRA", "ESTADO", "CODIGO", "Monto", "SITUACIÓN DE PAGO", "NOMBRE", "CELULAR",
-    "PRODUCTO", "FECHA DE ENTREGA", "DIRECCIÓN", "DISTRITO ", "MAPS",
-  ]);
-
-  const today = new Date();
-  const todayStr = formatPeruDate(today);
-
-  for (const row of rows) {
-    const paid = row.payments.reduce((sum, p) => sum + Number(p.amount), 0);
-    const remaining = Number(row.total) - paid;
-    const pendingCod = row.charge_type === "Contraentrega" && remaining > 0;
-    const monto = pendingCod ? remaining : Number(row.total);
-    const nombre = [row.first_name, row.paternal_surname, row.maternal_surname].filter(Boolean).join(" ");
-    const maps =
-      row.location_lat != null && row.location_lng != null
-        ? `https://www.google.com/maps?q=${row.location_lat},${row.location_lng}`
-        : "";
+  sheet.addRow(PITAYA_HEADER_ROW);
+  for (const s of shipmentRows) {
     sheet.addRow([
-      formatPeruDate(row.created_at),
+      s.fecha_compra,
       "Nuevo",
-      `E${String(row.id).padStart(7, "0")}`,
-      monto,
-      "YAPE",
-      nombre,
-      row.mobile,
-      "CARTERA",
-      todayStr,
-      row.address,
-      row.district,
-      maps,
+      `E${String(s.id).padStart(7, "0")}`,
+      Number(s.monto),
+      s.situacion_pago,
+      s.nombre,
+      s.celular,
+      s.producto,
+      s.fecha_entrega,
+      s.direccion,
+      s.distrito,
+      s.maps,
     ]);
   }
+  return workbook.xlsx.writeBuffer();
+};
 
-  const buffer = await workbook.xlsx.writeBuffer();
-  const filename = `Reporte Chic Bags_${todayStr.replaceAll("/", "")}.xlsx`;
+// Genera un reporte NUEVO para el motorizado Pitaya: toma los pedidos
+// Motorizado Delivery en Pendiente de envío que todavía no salieron en
+// ningún reporte anterior (shipments), los deja asentados (report_generations
+// + shipments, con su código secuencial) y devuelve el Excel. Si se vuelve a
+// generar después, esos mismos pedidos ya no van a aparecer de nuevo.
+app.post("/api/pitaya-reports", requireAuth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query(`
+      SELECT
+        o.id, o.total, o.charge_type, o.created_at,
+        c.first_name, c.paternal_surname, c.maternal_surname, c.mobile, c.address, c.district,
+        c.location_lat, c.location_lng,
+        COALESCE(payments.payments, '[]') AS payments
+      FROM orders o
+      JOIN customers c ON c.id = o.customer_id
+      LEFT JOIN LATERAL (
+        SELECT json_agg(json_build_object('amount', p.amount, 'source', p.source) ORDER BY p.id) AS payments
+        FROM payments p WHERE p.order_id = o.id
+      ) payments ON true
+      WHERE o.status = 'Pendiente de envío' AND c.delivery_type = 'Motorizado Delivery'
+        AND o.id NOT IN (SELECT order_id FROM shipments)
+      ORDER BY o.id
+    `);
+
+    const todayStr = formatPeruDate(new Date());
+    const fileName = `Reporte Chic Bags_${todayStr.replaceAll("/", "")}.xlsx`;
+
+    const { rows: reportRows } = await client.query(
+      "INSERT INTO report_generations (report_name, file_name) VALUES ($1, $2) RETURNING *",
+      ["Pitaya", fileName]
+    );
+    const report = reportRows[0];
+
+    const shipmentRows = [];
+    for (const row of rows) {
+      const paid = row.payments.reduce((sum, p) => sum + Number(p.amount), 0);
+      const remaining = Number(row.total) - paid;
+      const pendingCod = row.charge_type === "Contraentrega" && remaining > 0;
+      const monto = pendingCod ? remaining : Number(row.total);
+      const nombre = [row.first_name, row.paternal_surname, row.maternal_surname].filter(Boolean).join(" ");
+      const maps =
+        row.location_lat != null && row.location_lng != null
+          ? `https://www.google.com/maps?q=${row.location_lat},${row.location_lng}`
+          : "";
+      const { rows: inserted } = await client.query(
+        `INSERT INTO shipments (order_id, report_id, fecha_compra, monto, situacion_pago, nombre, celular, producto, fecha_entrega, direccion, distrito, maps)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+        [row.id, report.id, formatPeruDate(row.created_at), monto, "YAPE", nombre, row.mobile, "CARTERA", todayStr, row.address, row.district, maps]
+      );
+      shipmentRows.push(inserted[0]);
+    }
+
+    await client.query("COMMIT");
+
+    const buffer = await buildPitayaWorkbook(shipmentRows);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) {
+    await client.query("ROLLBACK");
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// Historial de generaciones del reporte Pitaya (sin el archivo, solo la
+// lista) — para poder volver a descargar una de más atrás.
+app.get("/api/pitaya-reports", requireAuth, async (req, res) => {
+  const { rows } = await pool.query(`
+    SELECT r.id, r.report_name, r.file_name, r.created_at, COUNT(s.id)::int AS row_count
+    FROM report_generations r
+    LEFT JOIN shipments s ON s.report_id = r.id
+    GROUP BY r.id
+    ORDER BY r.id DESC
+  `);
+  res.json(
+    rows.map((r) => ({
+      id: r.id,
+      reportName: r.report_name,
+      fileName: r.file_name,
+      createdAt: r.created_at,
+      rowCount: r.row_count,
+    }))
+  );
+});
+
+// Vuelve a armar el Excel de una generación ya hecha antes, a partir de las
+// filas guardadas en ese momento (no vuelve a consultar los pedidos).
+app.get("/api/pitaya-reports/:id/download", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: "Reporte inválido" });
+  }
+  const { rows: reportRows } = await pool.query("SELECT * FROM report_generations WHERE id = $1", [id]);
+  if (reportRows.length === 0) return res.status(404).json({ error: "Reporte no encontrado" });
+  const { rows: shipmentRows } = await pool.query("SELECT * FROM shipments WHERE report_id = $1 ORDER BY id", [id]);
+  const buffer = await buildPitayaWorkbook(shipmentRows);
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${reportRows[0].file_name}"`);
   res.send(Buffer.from(buffer));
 });
 

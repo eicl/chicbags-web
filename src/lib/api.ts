@@ -628,18 +628,16 @@ export const logout = (): Promise<void> =>
 export const fetchMe = (): Promise<AuthUser> =>
   fetch(`${API_URL}/auth/me`, { credentials: "include" }).then((res) => handle<AuthUser>(res));
 
-// Descarga el Excel de Pitaya (pedidos Motorizado Delivery en Pendiente de
-// envío) y dispara la descarga en el navegador — no pasa por handle() porque
-// la respuesta es un archivo binario, no JSON.
-export const downloadPitayaReport = async (): Promise<void> => {
-  const res = await fetch(`${API_URL}/orders/pitaya-report`, { credentials: "include" });
+// Dispara la descarga de un archivo devuelto por un fetch (no pasa por
+// handle() porque la respuesta es binaria, no JSON).
+const downloadFile = async (res: Response, fallbackName: string): Promise<void> => {
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     throw new Error(body?.error ?? `Error ${res.status}`);
   }
   const blob = await res.blob();
   const disposition = res.headers.get("Content-Disposition") ?? "";
-  const filename = disposition.match(/filename="?([^"]+)"?/)?.[1] ?? "Reporte Chic Bags.xlsx";
+  const filename = disposition.match(/filename="?([^"]+)"?/)?.[1] ?? fallbackName;
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -649,3 +647,29 @@ export const downloadPitayaReport = async (): Promise<void> => {
   a.remove();
   URL.revokeObjectURL(url);
 };
+
+// Genera un reporte NUEVO de Pitaya (pedidos Motorizado Delivery en
+// Pendiente de envío que todavía no salieron en uno anterior) y lo
+// descarga. Queda guardado — vuelve a aparecer en fetchPitayaReports().
+export const generatePitayaReport = (): Promise<void> =>
+  fetch(`${API_URL}/pitaya-reports`, { method: "POST", credentials: "include" }).then((res) =>
+    downloadFile(res, "Reporte Chic Bags.xlsx")
+  );
+
+export interface PitayaReportSummary {
+  id: number;
+  reportName: string;
+  fileName: string;
+  createdAt: string;
+  rowCount: number;
+}
+
+export const fetchPitayaReports = (): Promise<PitayaReportSummary[]> =>
+  fetch(`${API_URL}/pitaya-reports`, { credentials: "include" }).then((res) => handle<PitayaReportSummary[]>(res));
+
+// Vuelve a descargar una generación ya hecha antes, con las mismas filas
+// que tenía en ese momento (no vuelve a consultar los pedidos).
+export const downloadPitayaReportById = (id: number): Promise<void> =>
+  fetch(`${API_URL}/pitaya-reports/${id}/download`, { credentials: "include" }).then((res) =>
+    downloadFile(res, "Reporte Chic Bags.xlsx")
+  );

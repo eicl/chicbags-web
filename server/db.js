@@ -271,6 +271,54 @@ export const initSchema = async () => {
   // queda vacío.
   await pool.query(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS service_id INTEGER REFERENCES services(id);`);
 
+  // Cada vez que se genera el Excel de Pitaya queda una fila acá — nombre
+  // del reporte, nombre del archivo generado y cuándo. Sirve para volver a
+  // descargar un reporte ya generado sin tener que rearmarlo desde cero.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS report_generations (
+      id SERIAL PRIMARY KEY,
+      report_name TEXT NOT NULL,
+      file_name TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  // Una fila por pedido ya incluido en algún reporte de envíos (por ahora
+  // solo Pitaya) — guarda una foto de los datos tal como salieron en ese
+  // momento (igual que product_name/unit_price en order_items), para que
+  // volver a descargar un reporte viejo muestre lo mismo que se generó esa
+  // vez, aunque el pedido o el cliente hayan cambiado después. También
+  // evita que un mismo pedido salga dos veces en generaciones distintas.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS shipments (
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL REFERENCES orders(id),
+      report_id INTEGER NOT NULL REFERENCES report_generations(id) ON DELETE CASCADE,
+      fecha_compra TEXT NOT NULL,
+      monto NUMERIC NOT NULL,
+      situacion_pago TEXT NOT NULL,
+      nombre TEXT NOT NULL,
+      celular TEXT NOT NULL,
+      producto TEXT NOT NULL,
+      fecha_entrega TEXT NOT NULL,
+      direccion TEXT NOT NULL,
+      distrito TEXT NOT NULL,
+      maps TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  // El código (E0000021, E0000022...) sale del id de shipments — arranca en
+  // 21 para seguir la numeración manual que ya llevaban (el último a mano
+  // fue E0000020). Solo se toca mientras la tabla esté vacía, así que en
+  // cuanto se genere el primer envío esto deja de aplicar.
+  await pool.query(`
+    DO $do$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM shipments) THEN
+        PERFORM setval('shipments_id_seq', 20, true);
+      END IF;
+    END $do$;
+  `);
+
   // Fila única de configuración general. Por ahora solo el tope de
   // descuento manual por ítem al registrar un pedido: uno para el link
   // público (sin sesión) y otro, más alto, para cuando se registra con
