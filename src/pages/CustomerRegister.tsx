@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { CheckCircle2, Info, MapPin, MessageCircle, Save } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -69,6 +69,16 @@ const CustomerRegister = () => {
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [registered, setRegistered] = useState<Customer | null>(null);
   const [locating, setLocating] = useState(false);
+  const autoOpenedRef = useRef(false);
+
+  // En cuanto se registra, abre solo el chat de WhatsApp — el botón sigue
+  // visible por si el navegador bloquea la ventana emergente.
+  useEffect(() => {
+    if (registered && !autoOpenedRef.current) {
+      autoOpenedRef.current = true;
+      window.open(buildRegistrationWhatsAppLink(registered), "_blank", "noopener,noreferrer");
+    }
+  }, [registered]);
 
   // Los tipos de delivery "motorizado" reparten a domicilio, así que además
   // de la dirección piden la ubicación GPS actual del cliente.
