@@ -69,10 +69,9 @@ const buildStatusWhatsAppLink = (order: AdminOrder) => {
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 };
 
-// Solo estos tipos de delivery piden vía de envío (terrestre/aéreo) o
-// dirección exacta — mismas reglas que en el registro de cliente/pedido.
+// Solo estos tipos de delivery piden vía de envío (terrestre/aéreo) — misma
+// regla que en el registro de cliente/pedido.
 const DELIVERY_MODE_TYPES = ["Shalom", "Olva"];
-const ADDRESS_TYPES = ["Motorizado Express", "Motorizado Delivery"];
 
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -87,21 +86,18 @@ const PRINT_BASE_STYLES = `
 
 // Reporte para pedidos "Pendiente de envío"/"Entregado a delivery" (ya
 // pagados): datos de entrega del cliente, listos para pegar en el paquete.
-// Ubicación (departamento/provincia/distrito) y Documento (tipo/número) van
-// cada uno en una sola fila para ahorrar espacio en la página A6.
+// Orden fijo de filas: Delivery (tipo + agencia), Vía (si aplica),
+// Ubicación, Número de cliente, Documento, Nombre, Celular.
 const buildShippingLabelHtml = (order: AdminOrder) => {
   const showMode = DELIVERY_MODE_TYPES.includes(order.customerDeliveryType);
-  const showAddress = ADDRESS_TYPES.includes(order.customerDeliveryType);
   const rows: [string, string][] = [
-    ["Tipo de delivery", order.customerDeliveryType],
-    ...(order.customerAgency ? ([["Agencia", order.customerAgency]] as [string, string][]) : []),
-    ["Documento", `${order.customerDocumentType} - ${order.customerDocumentNumber}`],
-    ["Nombres y apellidos", order.customerName],
-    ["Número de cliente", `#${order.customerId}`],
-    ["Celular", order.customerMobile],
+    ["Delivery", order.customerAgency ? `${order.customerDeliveryType} - ${order.customerAgency}` : order.customerDeliveryType],
+    ...(showMode && order.customerDeliveryMode ? ([["Vía", order.customerDeliveryMode]] as [string, string][]) : []),
     ["Ubicación", `${order.customerDepartment} - ${order.customerProvince} - ${order.customerDistrict}`],
-    ...(showMode && order.customerDeliveryMode ? ([["Vía de envío", order.customerDeliveryMode]] as [string, string][]) : []),
-    ...(showAddress && order.customerAddress ? ([["Dirección", order.customerAddress]] as [string, string][]) : []),
+    ["Número de cliente", `#${order.customerId}`],
+    ["Documento", `${order.customerDocumentType} - ${order.customerDocumentNumber}`],
+    ["Nombre", order.customerName],
+    ["Celular", order.customerMobile],
   ];
   return `
     <html>
@@ -111,13 +107,15 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
         <style>
           @page { size: A6 landscape; margin: 8mm; }
           ${PRINT_BASE_STYLES}
-          h1 { font-size: 18px; margin: 0 0 10px; }
-          table { width: 100%; border-collapse: collapse; font-size: 14px; }
+          .logo { display: block; margin: 0 auto 6px; width: 36px; height: 36px; border-radius: 9999px; object-fit: cover; }
+          h1 { font-size: 18px; margin: 0 0 10px; text-align: center; }
+          table { width: 100%; border-collapse: collapse; font-size: 15px; }
           td { padding: 5px 4px; border-bottom: 1px solid #ddd; vertical-align: top; }
           td:first-child { font-weight: 700; width: 38%; color: #444; }
         </style>
       </head>
       <body>
+        <img class="logo" src="${window.location.origin}/chicBags.jpeg" alt="ChicBags" />
         <h1>Pedido #${order.id}</h1>
         <table>
           ${rows.map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(value)}</td></tr>`).join("")}
