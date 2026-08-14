@@ -126,12 +126,14 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
         <style>
           @page { size: A6 landscape; margin: 8mm; }
           ${PRINT_BASE_STYLES}
+          body { position: relative; min-height: 89mm; }
           .logo { display: block; margin: 0 auto 6px; width: 47px; height: 47px; border-radius: 9999px; object-fit: cover; }
           h1 { font-size: 18px; margin: 0 0 10px; text-align: center; }
           table { width: 100%; border-collapse: collapse; font-size: 15px; }
           td { padding: 5px 4px; border-bottom: 1px solid #ddd; vertical-align: top; }
           td:first-child { font-weight: 700; width: 38%; color: #444; }
           .cobrar { font-size: 18px; font-weight: 800; text-align: center; margin-top: 12px; }
+          .yape-qr { position: absolute; left: 0; bottom: 0; width: 24mm; height: 24mm; object-fit: contain; }
         </style>
       </head>
       <body>
@@ -141,6 +143,7 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
           ${rows.map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(value)}</td></tr>`).join("")}
         </table>
         ${showCobrar ? `<div class="cobrar">Cobrar: S/.${remaining.toFixed(2)}</div>` : ""}
+        ${showCobrar ? `<img class="yape-qr" src="${window.location.origin}/yapeChicBags.jpg" alt="QR Yape ChicBags" />` : ""}
       </body>
     </html>
   `;
