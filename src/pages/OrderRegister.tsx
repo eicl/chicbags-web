@@ -9,16 +9,24 @@ import Header from "@/components/Header";
 import { useProducts } from "@/context/ProductContext";
 import { useAuth } from "@/context/AuthContext";
 import { Product, ProductColor } from "@/context/CartContext";
-import { lookupCustomer, registerOrder, uploadPaymentProof, fetchSellers, fetchSettings, Customer, Order } from "@/lib/api";
+import { lookupCustomer, registerOrder, uploadPaymentProof, fetchSellers, fetchSettings, fetchServices, Customer, Order, Service } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import ProductOrderPicker from "@/components/ProductOrderPicker";
+import ServiceOrderPicker from "@/components/ServiceOrderPicker";
 
 const PAYMENT_SOURCES = ["Yape", "Plin", "Otro"];
 
 interface OrderLine {
   product: Product;
   color: ProductColor;
+  quantity: number;
+  // Descuento manual en soles para este ítem (tope validado también en el servidor).
+  discount: number;
+}
+
+interface ServiceLine {
+  service: Service;
   quantity: number;
   // Descuento manual en soles para este ítem (tope validado también en el servidor).
   discount: number;
@@ -69,8 +77,9 @@ const buildOrderWhatsAppLink = (order: Order, customer: Customer) => {
   const itemsText = order.items
     .map((item) => {
       const code = item.productCode ? ` [${item.productCode}]` : "";
+      const color = item.colorName ? ` (${item.colorName})` : "";
       const discount = item.discount > 0 ? ` (dcto. S/.${item.discount.toFixed(2)})` : "";
-      return `- ${item.productName}${code} (${item.colorName}) x${item.quantity}${discount}: S/.${item.subtotal.toFixed(2)}`;
+      return `- ${item.productName}${code}${color} x${item.quantity}${discount}: S/.${item.subtotal.toFixed(2)}`;
     })
     .join("\n");
   const message = `Hola ${customer.firstName}, tu pedido #${order.id} fue registrado el ${formatDateTime(order.createdAt)}:\n\n${itemsText}\n\nTotal: S/.${order.total.toFixed(2)}\n\n${buildOrderStatusText(order)}`;
@@ -92,7 +101,9 @@ const OrderRegister = () => {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [sellerId, setSellerId] = useState("");
   const [lines, setLines] = useState<OrderLine[]>([]);
+  const [serviceLines, setServiceLines] = useState<ServiceLine[]>([]);
   const [order, setOrder] = useState<Order | null>(null);
+  const { data: services = [] } = useQuery({ queryKey: ["services"], queryFn: fetchServices });
 
   const [payments, setPayments] = useState<PaymentEntry[]>([]);
   const [paymentAmount, setPaymentAmount] = useState("");
@@ -128,6 +139,7 @@ const OrderRegister = () => {
     onSuccess: (created) => {
       setOrder(created);
       setLines([]);
+      setServiceLines([]);
       setPayments([]);
       setPaymentAmount("");
       setPaymentSource(PAYMENT_SOURCES[0]);
@@ -162,6 +174,7 @@ const OrderRegister = () => {
   const handleChangeCustomer = () => {
     setCustomer(null);
     setLines([]);
+    setServiceLines([]);
     setCode("");
     setDocumentNumber("");
   };
@@ -207,7 +220,34 @@ const OrderRegister = () => {
     setLines((prev) => prev.filter((l) => !(l.product.id === line.product.id && l.color.name === line.color.name)));
   };
 
-  const total = lines.reduce((sum, l) => sum + l.product.price * l.quantity - l.discount, 0);
+  const handleAddService = (service: Service) => {
+    setServiceLines((prev) => {
+      const existing = prev.find((l) => l.service.id === service.id);
+      if (existing) {
+        return prev.map((l) => (l === existing ? { ...l, quantity: l.quantity + 1 } : l));
+      }
+      return [...prev, { service, quantity: 1, discount: 0 }];
+    });
+  };
+
+  const handleServiceDiscount = (line: ServiceLine, value: number) => {
+    const discount = clampDiscount(Number.isFinite(value) ? value : 0, maxItemDiscount);
+    setServiceLines((prev) => prev.map((l) => (l.service.id === line.service.id ? { ...l, discount } : l)));
+  };
+
+  const handleServiceQuantity = (line: ServiceLine, delta: number) => {
+    setServiceLines((prev) =>
+      prev.map((l) => (l.service.id === line.service.id ? { ...l, quantity: l.quantity + delta } : l)).filter((l) => l.quantity > 0)
+    );
+  };
+
+  const handleRemoveService = (line: ServiceLine) => {
+    setServiceLines((prev) => prev.filter((l) => l.service.id !== line.service.id));
+  };
+
+  const total =
+    lines.reduce((sum, l) => sum + l.product.price * l.quantity - l.discount, 0) +
+    serviceLines.reduce((sum, l) => sum + l.service.price * l.quantity - l.discount, 0);
 
   // El pago es opcional: si no se llenó ningún campo del borrador, no hay
   // nada pendiente de agregar. Si se llenó alguno, todos los demás pasan a
@@ -257,8 +297,8 @@ const OrderRegister = () => {
       toast.error("Selecciona el vendedor");
       return;
     }
-    if (lines.length === 0) {
-      toast.error("Agrega al menos un producto al pedido");
+    if (lines.length === 0 && serviceLines.length === 0) {
+      toast.error("Agrega al menos un producto o servicio al pedido");
       return;
     }
     if (hasPaymentInput) {
@@ -269,7 +309,10 @@ const OrderRegister = () => {
     orderMutation.mutate({
       customerId: customer.id,
       sellerId: Number(sellerId),
-      items: lines.map((l) => ({ productId: l.product.id, colorName: l.color.name, quantity: l.quantity, discount: l.discount })),
+      items: [
+        ...lines.map((l) => ({ productId: l.product.id, colorName: l.color.name, quantity: l.quantity, discount: l.discount })),
+        ...serviceLines.map((l) => ({ serviceId: l.service.id, quantity: l.quantity, discount: l.discount })),
+      ],
       payments:
         payments.length > 0
           ? payments.map((p) => ({ amount: p.amount, source: p.source, date: p.date, proofImage: p.proofImage }))
@@ -310,7 +353,7 @@ const OrderRegister = () => {
                 <span>
                   {item.productName}
                   {item.productCode && <span className="text-muted-foreground"> [{item.productCode}]</span>}
-                  {" "}({item.colorName}) x{item.quantity}
+                  {item.colorName && <> ({item.colorName})</>} x{item.quantity}
                   {item.discount > 0 && (
                     <span className="text-muted-foreground"> (dcto. S/.{item.discount.toFixed(2)})</span>
                   )}
@@ -447,9 +490,14 @@ const OrderRegister = () => {
             </div>
 
             <div className="border border-border rounded-lg p-6 mb-6">
+              <h2 className="text-lg font-medium mb-4" style={{ fontFamily: "var(--font-display)" }}>Agregar servicios</h2>
+              <ServiceOrderPicker services={services} onAdd={handleAddService} />
+            </div>
+
+            <div className="border border-border rounded-lg p-6 mb-6">
               <h2 className="text-lg font-medium mb-4" style={{ fontFamily: "var(--font-display)" }}>Pedido</h2>
-              {lines.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-6">Todavía no agregaste productos.</p>
+              {lines.length === 0 && serviceLines.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-6">Todavía no agregaste productos ni servicios.</p>
               ) : (
                 <div className="space-y-3">
                   {lines.map((line) => (
@@ -494,6 +542,51 @@ const OrderRegister = () => {
                       <button
                         type="button"
                         onClick={() => handleRemove(line)}
+                        className="p-1.5 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                        aria-label="Quitar"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  {serviceLines.map((line) => (
+                    <div key={line.service.id} className="flex items-center gap-3 p-3 rounded-md border border-border">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">
+                          {line.service.name}
+                          {line.service.code && <span className="text-muted-foreground"> [{line.service.code}]</span>}
+                          <span className="ml-1.5 text-[10px] uppercase tracking-wide text-primary font-semibold">Servicio</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground">S/.{line.service.price.toFixed(2)} c/u</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Button variant="outline" size="icon" className="w-7 h-7" onClick={() => handleServiceQuantity(line, -1)}>
+                          <Minus className="w-3.5 h-3.5" />
+                        </Button>
+                        <span className="w-8 text-center text-sm">{line.quantity}</span>
+                        <Button variant="outline" size="icon" className="w-7 h-7" onClick={() => handleServiceQuantity(line, 1)}>
+                          <Plus className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                      <div className="shrink-0 text-center">
+                        <label className="block text-[10px] text-muted-foreground leading-tight">Dcto. (máx S/.{maxItemDiscount})</label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={maxItemDiscount}
+                          step={0.5}
+                          value={line.discount || ""}
+                          onChange={(e) => handleServiceDiscount(line, e.target.valueAsNumber)}
+                          placeholder="0"
+                          className="h-7 w-16 text-sm text-right px-2"
+                        />
+                      </div>
+                      <p className="w-20 text-right text-sm font-medium shrink-0">
+                        S/.{(line.service.price * line.quantity - line.discount).toFixed(2)}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveService(line)}
                         className="p-1.5 text-muted-foreground hover:text-destructive transition-colors shrink-0"
                         aria-label="Quitar"
                       >
@@ -617,7 +710,7 @@ const OrderRegister = () => {
 
             <Button
               onClick={handleSubmit}
-              disabled={orderMutation.isPending || lines.length === 0 || !sellerId || paymentUploading}
+              disabled={orderMutation.isPending || (lines.length === 0 && serviceLines.length === 0) || !sellerId || paymentUploading}
               className="w-full py-6 text-sm tracking-widest uppercase gap-2"
             >
               {orderMutation.isPending ? "Registrando..." : "Registrar pedido"}

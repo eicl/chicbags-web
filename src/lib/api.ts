@@ -312,8 +312,11 @@ export const submitReview = (data: { rating: number; comment: string }): Promise
 export interface OrderItem {
   id: number;
   // null en ítems de un pedido de Regularización que no corresponden a
-  // ningún producto del catálogo.
+  // ningún producto del catálogo, o en ítems que son un servicio.
   productId: number | null;
+  // No-null cuando el ítem es un servicio (en vez de un producto) — sin
+  // color ni descuento de stock.
+  serviceId: number | null;
   productName: string;
   productCode: string;
   colorName: string;
@@ -351,13 +354,11 @@ export interface Order {
   payments: Payment[];
 }
 
-export interface OrderItemInput {
-  productId: number;
-  colorName: string;
-  quantity: number;
-  // Descuento manual en soles aplicado a este ítem (tope de S/.4, validado en el servidor).
-  discount?: number;
-}
+// Un ítem es un producto (productId + colorName) o un servicio (serviceId,
+// sin color) — nunca los dos a la vez.
+export type OrderItemInput =
+  | { productId: number; serviceId?: undefined; colorName: string; quantity: number; discount?: number }
+  | { productId?: undefined; serviceId: number; colorName?: undefined; quantity: number; discount?: number };
 
 export interface PaymentInput {
   amount: number;
@@ -385,11 +386,13 @@ export const registerOrder = (data: {
   }).then((res) => handle<Order>(res));
 
 export interface RegularizationItemInput {
-  // null cuando el producto no existe en el catálogo (se ingresa a mano).
+  // null cuando el producto no existe en el catálogo (se ingresa a mano) o
+  // cuando el ítem es un servicio.
   productId: number | null;
   productName: string;
   productCode?: string;
-  colorName: string;
+  // Vacío o ausente en ítems de servicio (no tienen color).
+  colorName?: string;
   unitPrice: number;
   quantity: number;
 }

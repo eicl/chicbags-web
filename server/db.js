@@ -255,6 +255,10 @@ export const initSchema = async () => {
   // el flujo normal) permite ítems que no corresponden a ningún producto
   // del catálogo, así que product_id queda opcional para esos casos.
   await pool.query(`ALTER TABLE order_items ALTER COLUMN product_id DROP NOT NULL;`);
+  // Un ítem de pedido es un producto (product_id) o un servicio (service_id)
+  // — nunca los dos. Los servicios no tienen color, así que ahí color_name
+  // queda vacío.
+  await pool.query(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS service_id INTEGER REFERENCES services(id);`);
 
   // Fila única de configuración general. Por ahora solo el tope de
   // descuento manual por ítem al registrar un pedido: uno para el link

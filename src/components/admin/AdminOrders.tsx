@@ -170,7 +170,9 @@ const buildSeparationLabelHtml = (order: AdminOrder) => {
           ${order.items
             .map(
               (item) =>
-                `<div>${escapeHtml(item.productCode || "—")} · ${escapeHtml(item.productName)} · ${escapeHtml(item.colorName)} · x${item.quantity}</div>`
+                `<div>${escapeHtml(item.productCode || "—")} · ${escapeHtml(item.productName)}${
+                  item.colorName ? ` · ${escapeHtml(item.colorName)}` : ""
+                } · x${item.quantity}</div>`
             )
             .join("")}
         </div>
@@ -634,9 +636,14 @@ const AdminOrders = () => {
                               {order.items.map((item) => (
                                 <tr key={item.id}>
                                   <td className="py-1.5 text-muted-foreground">{item.productCode || "—"}</td>
-                                  <td className="py-1.5">{item.productName}</td>
+                                  <td className="py-1.5">
+                                    {item.productName}
+                                    {item.serviceId !== null && (
+                                      <span className="ml-1.5 text-[10px] uppercase tracking-wide text-primary font-semibold">Servicio</span>
+                                    )}
+                                  </td>
                                   <td className="py-1.5 text-muted-foreground">
-                                    <ItemColorEditor orderId={order.id} item={item} />
+                                    {item.serviceId === null ? <ItemColorEditor orderId={order.id} item={item} /> : "—"}
                                   </td>
                                   <td className="py-1.5 text-right">S/.{item.unitPrice.toFixed(2)}</td>
                                   <td className="py-1.5 text-right">{item.quantity}</td>

@@ -951,6 +951,7 @@ const mapOrder = (order, items, payments = []) => ({
   items: items.map((i) => ({
     id: i.id,
     productId: i.product_id,
+    serviceId: i.service_id,
     productName: i.product_name,
     productCode: i.product_code,
     colorName: i.color_name,
@@ -1059,9 +1060,9 @@ app.get("/api/orders", requireAuth, async (req, res) => {
     LEFT JOIN LATERAL (
       SELECT json_agg(
         json_build_object(
-          'id', oi.id, 'productId', oi.product_id, 'productName', oi.product_name, 'productCode', oi.product_code,
-          'colorName', oi.color_name, 'unitPrice', oi.unit_price, 'quantity', oi.quantity, 'discount', oi.discount,
-          'subtotal', oi.subtotal
+          'id', oi.id, 'productId', oi.product_id, 'serviceId', oi.service_id, 'productName', oi.product_name,
+          'productCode', oi.product_code, 'colorName', oi.color_name, 'unitPrice', oi.unit_price,
+          'quantity', oi.quantity, 'discount', oi.discount, 'subtotal', oi.subtotal
         ) ORDER BY oi.id
       ) AS items
       FROM order_items oi WHERE oi.order_id = o.id
@@ -1248,7 +1249,7 @@ app.post("/api/orders/register", async (req, res) => {
     return res.status(400).json({ error: "Selecciona el vendedor" });
   }
   if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: "El pedido no tiene productos" });
+    return res.status(400).json({ error: "El pedido no tiene ítems" });
   }
   if (payments !== undefined) {
     if (!Array.isArray(payments)) {
@@ -1261,7 +1262,15 @@ app.post("/api/orders/register", async (req, res) => {
   const settings = await getSettings();
   const maxDiscount = isAuthenticated(req) ? settings.maxItemDiscountAdmin : settings.maxItemDiscountPublic;
   for (const item of items) {
-    if (!Number.isInteger(item?.productId) || !item?.colorName || !Number.isInteger(item?.quantity) || item.quantity <= 0) {
+    const isProduct = Number.isInteger(item?.productId);
+    const isService = Number.isInteger(item?.serviceId);
+    if (isProduct === isService) {
+      return res.status(400).json({ error: "Hay un ítem inválido en el pedido" });
+    }
+    if (!Number.isInteger(item?.quantity) || item.quantity <= 0) {
+      return res.status(400).json({ error: "Hay un ítem inválido en el pedido" });
+    }
+    if (isProduct && !item?.colorName) {
       return res.status(400).json({ error: "Hay un producto inválido en el pedido" });
     }
     const discount = item.discount ?? 0;
@@ -1289,6 +1298,33 @@ app.post("/api/orders/register", async (req, res) => {
     let total = 0;
 
     for (const item of items) {
+      if (Number.isInteger(item.serviceId)) {
+        const { rows: serviceRows } = await client.query(
+          "SELECT id, name, code, price FROM services WHERE id = $1",
+          [item.serviceId]
+        );
+        if (serviceRows.length === 0) {
+          throw new Error(`El servicio #${item.serviceId} ya no existe`);
+        }
+        const service = serviceRows[0];
+        const unitPrice = Number(service.price);
+        const discount = Math.min(item.discount ?? 0, unitPrice * item.quantity);
+        const subtotal = unitPrice * item.quantity - discount;
+        total += subtotal;
+        lineItems.push({
+          productId: null,
+          serviceId: service.id,
+          productName: service.name,
+          productCode: service.code ?? "",
+          colorName: "",
+          unitPrice,
+          quantity: item.quantity,
+          discount,
+          subtotal,
+        });
+        continue;
+      }
+
       const { rows: productRows } = await client.query(
         "SELECT id, name, code, price, colors FROM products WHERE id = $1 FOR UPDATE",
         [item.productId]
@@ -1315,6 +1351,7 @@ app.post("/api/orders/register", async (req, res) => {
       total += subtotal;
       lineItems.push({
         productId: product.id,
+        serviceId: null,
         productName: product.name,
         productCode: product.code ?? "",
         colorName: item.colorName,
@@ -1334,9 +1371,9 @@ app.post("/api/orders/register", async (req, res) => {
     const insertedItems = [];
     for (const li of lineItems) {
       const { rows } = await client.query(
-        `INSERT INTO order_items (order_id, product_id, product_name, product_code, color_name, unit_price, quantity, discount, subtotal)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-        [order.id, li.productId, li.productName, li.productCode, li.colorName, li.unitPrice, li.quantity, li.discount, li.subtotal]
+        `INSERT INTO order_items (order_id, product_id, service_id, product_name, product_code, color_name, unit_price, quantity, discount, subtotal)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+        [order.id, li.productId, li.serviceId, li.productName, li.productCode, li.colorName, li.unitPrice, li.quantity, li.discount, li.subtotal]
       );
       insertedItems.push(rows[0]);
     }
@@ -1382,8 +1419,8 @@ app.post("/api/orders/regularize", async (req, res) => {
     if (item?.productId !== null && !Number.isInteger(item?.productId)) {
       return res.status(400).json({ error: "Hay un producto inválido en el pedido" });
     }
-    if (!item?.productName?.trim() || !item?.colorName?.trim()) {
-      return res.status(400).json({ error: "Falta el nombre o el color de un producto" });
+    if (!item?.productName?.trim()) {
+      return res.status(400).json({ error: "Falta el nombre de un ítem" });
     }
     if (typeof item?.unitPrice !== "number" || !Number.isFinite(item.unitPrice) || item.unitPrice < 0) {
       return res.status(400).json({ error: `El precio de "${item.productName}" es inválido` });
@@ -1422,7 +1459,7 @@ app.post("/api/orders/regularize", async (req, res) => {
       const { rows } = await client.query(
         `INSERT INTO order_items (order_id, product_id, product_name, product_code, color_name, unit_price, quantity, subtotal)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-        [order.id, item.productId ?? null, item.productName.trim(), (item.productCode ?? "").trim(), item.colorName.trim(), item.unitPrice, item.quantity, subtotal]
+        [order.id, item.productId ?? null, item.productName.trim(), (item.productCode ?? "").trim(), (item.colorName ?? "").trim(), item.unitPrice, item.quantity, subtotal]
       );
       insertedItems.push(rows[0]);
     }

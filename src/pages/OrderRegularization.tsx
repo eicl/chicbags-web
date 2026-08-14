@@ -10,7 +10,7 @@ import { useProducts } from "@/context/ProductContext";
 import { Product, ProductColor } from "@/context/CartContext";
 import {
   lookupCustomer, registerCustomerMinimal, fetchDistricts, fetchAgencies, registerRegularizedOrder, uploadPaymentProof,
-  fetchSellers, Customer, CustomerInput, DeliveryType, DeliveryMode, Order,
+  fetchSellers, fetchServices, Customer, CustomerInput, DeliveryType, DeliveryMode, Order, Service,
 } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
 import { buildOrderStatusText } from "@/lib/orderMessages";
@@ -18,6 +18,7 @@ import { PERU_DEPARTMENTS, PERU_LOCATIONS } from "@/lib/peru-locations";
 import { errorLabelClass, errorInputClass, cn } from "@/lib/utils";
 import AgencyPicker from "@/components/AgencyPicker";
 import ProductOrderPicker from "@/components/ProductOrderPicker";
+import ServiceOrderPicker from "@/components/ServiceOrderPicker";
 
 const PAYMENT_SOURCES = ["Yape", "Plin", "Otro"];
 
@@ -54,14 +55,17 @@ const REQUIRED_CUSTOMER_FIELD_LABELS: Record<string, string> = {
 
 interface RegLine {
   key: string;
-  // null cuando el producto no existe en el catálogo (se llenó a mano).
+  // null cuando el producto no existe en el catálogo (se llenó a mano) o
+  // cuando el ítem es un servicio.
   productId: number | null;
   productName: string;
   productCode: string;
+  // Vacío en ítems de servicio (no tienen color).
   colorName: string;
   price: number;
   quantity: number;
   image: string;
+  isService?: boolean;
 }
 
 const formatDateTime = (iso: string) =>
@@ -88,7 +92,8 @@ const buildOrderWhatsAppLink = (order: Order, customer: Customer) => {
   const itemsText = order.items
     .map((item) => {
       const code = item.productCode ? ` [${item.productCode}]` : "";
-      return `- ${item.productName}${code} (${item.colorName}) x${item.quantity}: S/.${item.subtotal.toFixed(2)}`;
+      const color = item.colorName ? ` (${item.colorName})` : "";
+      return `- ${item.productName}${code}${color} x${item.quantity}: S/.${item.subtotal.toFixed(2)}`;
     })
     .join("\n");
   const message = `Hola ${customer.firstName}, tu pedido #${order.id} (regularización) quedó registrado el ${formatDateTime(order.createdAt)}:\n\n${itemsText}\n\nTotal: S/.${order.total.toFixed(2)}\n\n${buildOrderStatusText(order)}`;
@@ -217,6 +222,25 @@ const OrderRegularization = () => {
     ]);
   };
 
+  const { data: services = [] } = useQuery({ queryKey: ["services"], queryFn: fetchServices });
+
+  const handleAddService = (service: Service) => {
+    setLines((prev) => [
+      ...prev,
+      {
+        key: crypto.randomUUID(),
+        productId: null,
+        productName: service.name,
+        productCode: service.code,
+        colorName: "",
+        price: service.price,
+        quantity: 1,
+        image: "",
+        isService: true,
+      },
+    ]);
+  };
+
   const handleAddManual = () => {
     if (!manualName.trim()) {
       toast.error("Ingresa el nombre del producto");
@@ -327,7 +351,7 @@ const OrderRegularization = () => {
       return;
     }
     if (lines.length === 0) {
-      toast.error("Agrega al menos un producto");
+      toast.error("Agrega al menos un producto o servicio");
       return;
     }
 
@@ -398,7 +422,7 @@ const OrderRegularization = () => {
                 <span>
                   {item.productName}
                   {item.productCode && <span className="text-muted-foreground"> [{item.productCode}]</span>}
-                  {" "}({item.colorName}) x{item.quantity}
+                  {item.colorName && <> ({item.colorName})</>} x{item.quantity}
                 </span>
                 <span className="font-medium">S/.{item.subtotal.toFixed(2)}</span>
               </div>
@@ -759,9 +783,14 @@ const OrderRegularization = () => {
             </div>
 
             <div className="border border-border rounded-lg p-6 mb-6">
+              <h2 className="text-lg font-medium mb-4" style={{ fontFamily: "var(--font-display)" }}>Agregar servicios</h2>
+              <ServiceOrderPicker services={services} onAdd={handleAddService} />
+            </div>
+
+            <div className="border border-border rounded-lg p-6 mb-6">
               <h2 className="text-lg font-medium mb-4" style={{ fontFamily: "var(--font-display)" }}>Pedido</h2>
               {lines.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-6">Todavía no agregaste productos.</p>
+                <p className="text-sm text-muted-foreground text-center py-6">Todavía no agregaste productos ni servicios.</p>
               ) : (
                 <div className="space-y-3">
                   {lines.map((line) => (
@@ -775,9 +804,13 @@ const OrderRegularization = () => {
                         <p className="text-sm font-medium truncate">
                           {line.productName}
                           {line.productCode && <span className="text-muted-foreground"> [{line.productCode}]</span>}
-                          {line.productId === null && <span className="text-muted-foreground"> (fuera de catálogo)</span>}
+                          {line.isService ? (
+                            <span className="ml-1.5 text-[10px] uppercase tracking-wide text-primary font-semibold">Servicio</span>
+                          ) : (
+                            line.productId === null && <span className="text-muted-foreground"> (fuera de catálogo)</span>
+                          )}
                         </p>
-                        <p className="text-xs text-muted-foreground">{line.colorName}</p>
+                        {line.colorName && <p className="text-xs text-muted-foreground">{line.colorName}</p>}
                       </div>
                       <div className="shrink-0 text-center">
                         <label className="block text-[10px] text-muted-foreground leading-tight">Precio</label>
