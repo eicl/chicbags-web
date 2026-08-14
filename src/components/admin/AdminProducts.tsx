@@ -263,6 +263,21 @@ const AdminProducts = () => {
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
   const pageProducts = filteredProducts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
+  // Suma el stock de todos los colores de los productos filtrados (respeta
+  // la búsqueda) y su costo — el costo solo cuenta los productos que sí
+  // tienen costo cargado, ya que sin ese dato no hay con qué calcularlo.
+  const inventoryTotals = filteredProducts.reduce(
+    (acc, p) => {
+      for (const color of p.colors ?? []) {
+        acc.quantity += color.stock;
+        if (p.cost != null) acc.cost += color.stock * p.cost;
+        else acc.missingCost = true;
+      }
+      return acc;
+    },
+    { quantity: 0, cost: 0, missingCost: false }
+  );
+
   const handleQueryChange = (value: string) => {
     setQuery(value);
     setPage(1);
@@ -621,6 +636,16 @@ const AdminProducts = () => {
         <Button onClick={handleAdd} className="gap-2">
           <Plus className="w-4 h-4" /> Agregar
         </Button>
+      </div>
+
+      <div className="flex flex-wrap gap-4 mb-6 text-sm">
+        <span className="text-muted-foreground">
+          Ítems en stock: <span className="font-semibold text-foreground">{inventoryTotals.quantity}</span>
+        </span>
+        <span className="text-muted-foreground">
+          Costo total del inventario: <span className="font-semibold text-foreground">S/.{inventoryTotals.cost.toFixed(2)}</span>
+          {inventoryTotals.missingCost && " (algunos productos no tienen costo cargado)"}
+        </span>
       </div>
 
       {isAdding && <div className="mb-8">{renderForm()}</div>}
