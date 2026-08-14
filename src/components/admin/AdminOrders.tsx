@@ -72,6 +72,10 @@ const buildStatusWhatsAppLink = (order: AdminOrder) => {
 // Solo estos tipos de delivery piden vía de envío (terrestre/aéreo) — misma
 // regla que en el registro de cliente/pedido.
 const DELIVERY_MODE_TYPES = ["Shalom", "Olva"];
+// Los "motorizado" reparten a domicilio: en el reporte de envío muestran
+// distrito + dirección exacta en vez de la ubicación completa, y no
+// necesitan la fila de Documento.
+const ADDRESS_TYPES = ["Motorizado Express", "Motorizado Delivery"];
 
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -87,15 +91,23 @@ const PRINT_BASE_STYLES = `
 // Reporte para pedidos "Pendiente de envío"/"Entregado a delivery" (ya
 // pagados): datos de entrega del cliente, listos para pegar en el paquete.
 // Orden fijo de filas: Vía (si aplica, Terrestre/Aéreo), Delivery (tipo +
-// agencia), Ubicación, Número de cliente, Documento, Nombre, Celular.
+// agencia), Ubicación/Documento (o, si es "motorizado", Distrito +
+// Dirección en su lugar y sin Documento), Número de cliente, Nombre,
+// Celular.
 const buildShippingLabelHtml = (order: AdminOrder) => {
   const showMode = DELIVERY_MODE_TYPES.includes(order.customerDeliveryType);
+  const isMotorized = ADDRESS_TYPES.includes(order.customerDeliveryType);
   const rows: [string, string][] = [
     ...(showMode && order.customerDeliveryMode ? ([["Vía", order.customerDeliveryMode]] as [string, string][]) : []),
     ["Delivery", order.customerAgency ? `${order.customerDeliveryType} - ${order.customerAgency}` : order.customerDeliveryType],
-    ["Ubicación", `${order.customerDepartment} - ${order.customerProvince} - ${order.customerDistrict}`],
+    ...(isMotorized
+      ? ([
+          ["Distrito", order.customerDistrict],
+          ["Dirección", order.customerAddress],
+        ] as [string, string][])
+      : ([["Ubicación", `${order.customerDepartment} - ${order.customerProvince} - ${order.customerDistrict}`]] as [string, string][])),
     ["Número de cliente", `#${order.customerId}`],
-    ["Documento", `${order.customerDocumentType} - ${order.customerDocumentNumber}`],
+    ...(isMotorized ? [] : ([["Documento", `${order.customerDocumentType} - ${order.customerDocumentNumber}`]] as [string, string][])),
     ["Nombre", order.customerName],
     ["Celular", order.customerMobile],
   ];
@@ -107,7 +119,7 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
         <style>
           @page { size: A6 landscape; margin: 8mm; }
           ${PRINT_BASE_STYLES}
-          .logo { display: block; margin: 0 auto 6px; width: 36px; height: 36px; border-radius: 9999px; object-fit: cover; }
+          .logo { display: block; margin: 0 auto 6px; width: 47px; height: 47px; border-radius: 9999px; object-fit: cover; }
           h1 { font-size: 18px; margin: 0 0 10px; text-align: center; }
           table { width: 100%; border-collapse: collapse; font-size: 15px; }
           td { padding: 5px 4px; border-bottom: 1px solid #ddd; vertical-align: top; }
