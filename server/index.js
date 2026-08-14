@@ -1149,14 +1149,9 @@ app.get("/api/orders/pitaya-report", requireAuth, async (req, res) => {
       o.id, o.total, o.charge_type, o.created_at,
       c.first_name, c.paternal_surname, c.maternal_surname, c.mobile, c.address, c.district,
       c.location_lat, c.location_lng,
-      COALESCE(items.items, '[]') AS items,
       COALESCE(payments.payments, '[]') AS payments
     FROM orders o
     JOIN customers c ON c.id = o.customer_id
-    LEFT JOIN LATERAL (
-      SELECT json_agg(oi.product_name ORDER BY oi.id) AS items
-      FROM order_items oi WHERE oi.order_id = o.id AND oi.product_id IS NOT NULL
-    ) items ON true
     LEFT JOIN LATERAL (
       SELECT json_agg(json_build_object('amount', p.amount, 'source', p.source) ORDER BY p.id) AS payments
       FROM payments p WHERE p.order_id = o.id
@@ -1180,11 +1175,7 @@ app.get("/api/orders/pitaya-report", requireAuth, async (req, res) => {
     const remaining = Number(row.total) - paid;
     const pendingCod = row.charge_type === "Contraentrega" && remaining > 0;
     const monto = pendingCod ? remaining : Number(row.total);
-    const situacion = pendingCod
-      ? "PENDIENTE"
-      : [...new Set(row.payments.map((p) => p.source.toUpperCase()))].join("/") || "PENDIENTE";
     const nombre = [row.first_name, row.paternal_surname, row.maternal_surname].filter(Boolean).join(" ");
-    const producto = (row.items ?? []).join(", ").toUpperCase();
     const maps =
       row.location_lat != null && row.location_lng != null
         ? `https://www.google.com/maps?q=${row.location_lat},${row.location_lng}`
@@ -1194,10 +1185,10 @@ app.get("/api/orders/pitaya-report", requireAuth, async (req, res) => {
       "Nuevo",
       `E${String(row.id).padStart(7, "0")}`,
       monto,
-      situacion,
+      "YAPE",
       nombre,
       row.mobile,
-      producto,
+      "CARTERA",
       todayStr,
       row.address,
       row.district,
