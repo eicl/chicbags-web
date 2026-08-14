@@ -627,3 +627,25 @@ export const logout = (): Promise<void> =>
 
 export const fetchMe = (): Promise<AuthUser> =>
   fetch(`${API_URL}/auth/me`, { credentials: "include" }).then((res) => handle<AuthUser>(res));
+
+// Descarga el Excel de Pitaya (pedidos Motorizado Delivery en Pendiente de
+// envío) y dispara la descarga en el navegador — no pasa por handle() porque
+// la respuesta es un archivo binario, no JSON.
+export const downloadPitayaReport = async (): Promise<void> => {
+  const res = await fetch(`${API_URL}/orders/pitaya-report`, { credentials: "include" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error ?? `Error ${res.status}`);
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const filename = disposition.match(/filename="?([^"]+)"?/)?.[1] ?? "Reporte Chic Bags.xlsx";
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};

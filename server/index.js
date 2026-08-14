@@ -5,6 +5,7 @@ import multer from "multer";
 import cookieParser from "cookie-parser";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import ExcelJS from "exceljs";
 import { mkdir, readFile } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
@@ -1121,6 +1122,94 @@ app.get("/api/orders", requireAuth, async (req, res) => {
       payments: row.payments.map((p) => ({ ...p, amount: Number(p.amount) })),
     }))
   );
+});
+
+// dd/mm/yyyy en hora de Perú (UTC-5), sin importar en qué huso horario
+// corra el servidor (Render suele correr en UTC) — arma la fecha a mano
+// con los "parts" de Intl en vez de confiar en su padding de 2 dígitos,
+// que no siempre está disponible según qué tan completos sean los datos
+// de localización instalados.
+const formatPeruDate = (date) => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Lima",
+    day: "numeric",
+    month: "numeric",
+    year: "numeric",
+  }).formatToParts(date);
+  const get = (type) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("day").padStart(2, "0")}/${get("month").padStart(2, "0")}/${get("year")}`;
+};
+
+// Reporte para el motorizado Pitaya: un Excel con los pedidos listos para
+// repartir (Motorizado Delivery, Pendiente de envío), en el formato que ya
+// usa el negocio para coordinar las entregas del día.
+app.get("/api/orders/pitaya-report", requireAuth, async (req, res) => {
+  const { rows } = await pool.query(`
+    SELECT
+      o.id, o.total, o.charge_type, o.created_at,
+      c.first_name, c.paternal_surname, c.maternal_surname, c.mobile, c.address, c.district,
+      c.location_lat, c.location_lng,
+      COALESCE(items.items, '[]') AS items,
+      COALESCE(payments.payments, '[]') AS payments
+    FROM orders o
+    JOIN customers c ON c.id = o.customer_id
+    LEFT JOIN LATERAL (
+      SELECT json_agg(oi.product_name ORDER BY oi.id) AS items
+      FROM order_items oi WHERE oi.order_id = o.id AND oi.product_id IS NOT NULL
+    ) items ON true
+    LEFT JOIN LATERAL (
+      SELECT json_agg(json_build_object('amount', p.amount, 'source', p.source) ORDER BY p.id) AS payments
+      FROM payments p WHERE p.order_id = o.id
+    ) payments ON true
+    WHERE o.status = 'Pendiente de envío' AND c.delivery_type = 'Motorizado Delivery'
+    ORDER BY o.id
+  `);
+
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Pitaya");
+  sheet.addRow([
+    "FECHA DE COMPRA", "ESTADO", "CODIGO", "Monto", "SITUACIÓN DE PAGO", "NOMBRE", "CELULAR",
+    "PRODUCTO", "FECHA DE ENTREGA", "DIRECCIÓN", "DISTRITO ", "MAPS",
+  ]);
+
+  const today = new Date();
+  const todayStr = formatPeruDate(today);
+
+  for (const row of rows) {
+    const paid = row.payments.reduce((sum, p) => sum + Number(p.amount), 0);
+    const remaining = Number(row.total) - paid;
+    const pendingCod = row.charge_type === "Contraentrega" && remaining > 0;
+    const monto = pendingCod ? remaining : Number(row.total);
+    const situacion = pendingCod
+      ? "PENDIENTE"
+      : [...new Set(row.payments.map((p) => p.source.toUpperCase()))].join("/") || "PENDIENTE";
+    const nombre = [row.first_name, row.paternal_surname, row.maternal_surname].filter(Boolean).join(" ");
+    const producto = (row.items ?? []).join(", ").toUpperCase();
+    const maps =
+      row.location_lat != null && row.location_lng != null
+        ? `https://www.google.com/maps?q=${row.location_lat},${row.location_lng}`
+        : "";
+    sheet.addRow([
+      formatPeruDate(row.created_at),
+      "Nuevo",
+      `E${String(row.id).padStart(7, "0")}`,
+      monto,
+      situacion,
+      nombre,
+      row.mobile,
+      producto,
+      todayStr,
+      row.address,
+      row.district,
+      maps,
+    ]);
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const filename = `Reporte Chic Bags_${todayStr.replaceAll("/", "")}.xlsx`;
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(Buffer.from(buffer));
 });
 
 // Elimina un pedido desde el panel admin. Si es un pedido normal (no una
