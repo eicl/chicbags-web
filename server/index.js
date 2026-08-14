@@ -945,6 +945,7 @@ const mapOrder = (order, items, payments = []) => ({
   sellerId: order.seller_id,
   type: order.type,
   status: order.status,
+  chargeType: order.charge_type,
   separationDeadline: order.separation_deadline,
   total: Number(order.total),
   createdAt: order.created_at,
@@ -1048,7 +1049,7 @@ app.get("/api/orders", requireAuth, async (req, res) => {
   // unieran directamente, duplicando cada item y cada pago.
   const { rows } = await pool.query(`
     SELECT
-      o.id, o.customer_id, o.seller_id, o.type, o.status, o.separation_deadline, o.total, o.created_at,
+      o.id, o.customer_id, o.seller_id, o.type, o.status, o.charge_type, o.separation_deadline, o.total, o.created_at,
       c.first_name, c.paternal_surname, c.maternal_surname, c.document_type, c.document_number, c.mobile,
       c.department, c.province, c.district, c.delivery_type, c.delivery_mode, c.agency, c.address,
       u.username AS seller_username,
@@ -1099,6 +1100,7 @@ app.get("/api/orders", requireAuth, async (req, res) => {
       sellerName: row.seller_username ?? "",
       type: row.type,
       status: row.status,
+      chargeType: row.charge_type,
       separationDeadline: row.separation_deadline,
       total: Number(row.total),
       createdAt: row.created_at,
@@ -1518,6 +1520,165 @@ app.put("/api/orders/:id/deliver", requireAuth, async (req, res) => {
   const { rows: itemRows } = await pool.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [id]);
   const { rows: paymentRows } = await pool.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [id]);
   res.json(mapOrder(rows[0], itemRows, paymentRows));
+});
+
+// Agrega un producto o servicio a un pedido que ya existe, desde el panel
+// admin — solo tiene sentido para delivery "Motorizado Delivery" (el
+// motorizado puede volver a pasar por más mercadería antes de entregar).
+// Recalcula el total y, si el pedido ya tenía algún pago (Separación o
+// Pendiente de envío), también el estado — igual que applyPayment, pero
+// disparado por un cambio de total en vez de un pago nuevo.
+app.post("/api/orders/:id/items", requireAuth, async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!Number.isInteger(orderId)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  const { productId, serviceId, colorName, quantity, discount } = req.body;
+  const isProduct = Number.isInteger(productId);
+  const isService = Number.isInteger(serviceId);
+  if (isProduct === isService) {
+    return res.status(400).json({ error: "Hay un ítem inválido" });
+  }
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    return res.status(400).json({ error: "Hay un ítem inválido" });
+  }
+  if (isProduct && !colorName) {
+    return res.status(400).json({ error: "Selecciona un color" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: orderRows } = await client.query(
+      `SELECT o.id, o.total, o.status, o.charge_type, o.separation_deadline, c.delivery_type
+       FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.id = $1 FOR UPDATE OF o`,
+      [orderId]
+    );
+    if (orderRows.length === 0) {
+      throw new Error("El pedido no existe");
+    }
+    const order = orderRows[0];
+    if (order.delivery_type !== "Motorizado Delivery") {
+      throw new Error('Solo se pueden agregar ítems a pedidos con delivery "Motorizado Delivery"');
+    }
+
+    const settings = await getSettings();
+    const maxDiscount = settings.maxItemDiscountAdmin;
+    const requestedDiscount = discount ?? 0;
+    if (typeof requestedDiscount !== "number" || !Number.isFinite(requestedDiscount) || requestedDiscount < 0 || requestedDiscount > maxDiscount) {
+      return res.status(400).json({ error: `El descuento por ítem no puede superar S/.${maxDiscount}` });
+    }
+
+    let li;
+    if (isService) {
+      const { rows: serviceRows } = await client.query("SELECT id, name, code, price FROM services WHERE id = $1", [serviceId]);
+      if (serviceRows.length === 0) {
+        throw new Error(`El servicio #${serviceId} ya no existe`);
+      }
+      const service = serviceRows[0];
+      const unitPrice = Number(service.price);
+      const itemDiscount = Math.min(requestedDiscount, unitPrice * quantity);
+      const subtotal = unitPrice * quantity - itemDiscount;
+      li = { productId: null, serviceId: service.id, productName: service.name, productCode: service.code ?? "", colorName: "", unitPrice, quantity, discount: itemDiscount, subtotal };
+    } else {
+      const { rows: productRows } = await client.query("SELECT id, name, code, price, colors FROM products WHERE id = $1 FOR UPDATE", [productId]);
+      if (productRows.length === 0) {
+        throw new Error(`El producto #${productId} ya no existe`);
+      }
+      const product = productRows[0];
+      const colors = product.colors ?? [];
+      const colorIndex = colors.findIndex((c) => c.name === colorName);
+      if (colorIndex === -1) {
+        throw new Error(`"${product.name}" ya no tiene el color "${colorName}"`);
+      }
+      const color = colors[colorIndex];
+      if (color.stock < quantity) {
+        throw new Error(`No hay suficiente stock de "${product.name}" (${colorName}): quedan ${color.stock}`);
+      }
+      colors[colorIndex] = { ...color, stock: color.stock - quantity };
+      await client.query("UPDATE products SET colors = $1 WHERE id = $2", [JSON.stringify(colors), product.id]);
+      const unitPrice = Number(product.price);
+      const itemDiscount = Math.min(requestedDiscount, unitPrice * quantity);
+      const subtotal = unitPrice * quantity - itemDiscount;
+      li = { productId: product.id, serviceId: null, productName: product.name, productCode: product.code ?? "", colorName, unitPrice, quantity, discount: itemDiscount, subtotal };
+    }
+
+    const newTotal = Number(order.total) + li.subtotal;
+    await client.query(
+      `INSERT INTO order_items (order_id, product_id, service_id, product_name, product_code, color_name, unit_price, quantity, discount, subtotal)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [orderId, li.productId, li.serviceId, li.productName, li.productCode, li.colorName, li.unitPrice, li.quantity, li.discount, li.subtotal]
+    );
+
+    let newStatus = order.status;
+    let newDeadline = order.separation_deadline;
+    if (order.status === "Separación" || order.status === "Pendiente de envío") {
+      const { rows: paidRows } = await client.query("SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE order_id = $1", [orderId]);
+      const paid = Number(paidRows[0].paid);
+      // Si ya eligieron Contraentrega, el saldo pendiente no lo devuelve a
+      // Separación — el motorizado sigue cobrando el resto al entregar.
+      const isContraentrega = order.charge_type === "Contraentrega";
+      newStatus = paid >= newTotal || isContraentrega ? "Pendiente de envío" : "Separación";
+      newDeadline = newStatus === "Separación" ? order.separation_deadline ?? new Date(Date.now() + SEPARATION_DAYS * 24 * 60 * 60 * 1000) : order.separation_deadline;
+    }
+    await client.query("UPDATE orders SET total = $1, status = $2, separation_deadline = $3 WHERE id = $4", [newTotal, newStatus, newDeadline, orderId]);
+
+    const { rows: finalOrderRows } = await client.query("SELECT * FROM orders WHERE id = $1", [orderId]);
+    const { rows: itemRows } = await client.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [orderId]);
+    const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [orderId]);
+    await client.query("COMMIT");
+    res.status(201).json(mapOrder(finalOrderRows[0], itemRows, paymentRows));
+  } catch (err) {
+    await client.query("ROLLBACK");
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// Tipo de cobro del pedido (Normal/Contraentrega). Elegir "Contraentrega" en
+// un pedido "Motorizado Delivery" que todavía tiene saldo pendiente lo pasa
+// a "Pendiente de envío" sin exigir que esté pagado del todo — el
+// motorizado cobra el resto al entregar.
+app.put("/api/orders/:id/charge-type", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const { chargeType } = req.body;
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  if (!["Normal", "Contraentrega"].includes(chargeType)) {
+    return res.status(400).json({ error: "Tipo de cobro inválido" });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: orderRows } = await client.query(
+      `SELECT o.id, o.status, c.delivery_type
+       FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.id = $1 FOR UPDATE OF o`,
+      [id]
+    );
+    if (orderRows.length === 0) {
+      throw new Error("Pedido no encontrado");
+    }
+    const order = orderRows[0];
+    const newStatus =
+      chargeType === "Contraentrega" && order.delivery_type === "Motorizado Delivery" && order.status === "Separación"
+        ? "Pendiente de envío"
+        : order.status;
+    const { rows } = await client.query(
+      "UPDATE orders SET charge_type = $1, status = $2 WHERE id = $3 RETURNING *",
+      [chargeType, newStatus, id]
+    );
+    const { rows: itemRows } = await client.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [id]);
+    const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [id]);
+    await client.query("COMMIT");
+    res.json(mapOrder(rows[0], itemRows, paymentRows));
+  } catch (err) {
+    await client.query("ROLLBACK");
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
 });
 
 // Metadatos Open Graph/Twitter por ruta: así, cuando se comparte por

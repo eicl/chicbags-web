@@ -339,12 +339,18 @@ export interface Payment {
   createdAt: string;
 }
 
+// "Contraentrega" solo tiene sentido con delivery "Motorizado Delivery":
+// deja pasar el pedido a "Pendiente de envío" con saldo pendiente, porque
+// el motorizado cobra el resto al entregar.
+export type ChargeType = "Normal" | "Contraentrega";
+
 export interface Order {
   id: number;
   customerId: number;
   sellerId: number;
   type: OrderType;
   status: OrderStatus;
+  chargeType: ChargeType;
   // Fecha límite para cancelar (15 días calendario), fijada solo mientras el
   // pedido está en "Separación"; null en cualquier otro estado.
   separationDeadline: string | null;
@@ -505,6 +511,24 @@ export const markOrderDelivered = (orderId: number): Promise<Order> =>
   fetch(`${API_URL}/orders/${orderId}/deliver`, {
     method: "PUT",
     credentials: "include",
+  }).then((res) => handle<Order>(res));
+
+// Agrega un producto o servicio a un pedido ya existente (panel admin) —
+// solo funciona con delivery "Motorizado Delivery".
+export const addOrderItem = (orderId: number, data: OrderItemInput): Promise<Order> =>
+  fetch(`${API_URL}/orders/${orderId}/items`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<Order>(res));
+
+export const updateOrderChargeType = (orderId: number, chargeType: ChargeType): Promise<Order> =>
+  fetch(`${API_URL}/orders/${orderId}/charge-type`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chargeType }),
   }).then((res) => handle<Order>(res));
 
 // Lista pública de vendedores (usuarios con perfil Vendedor), para el

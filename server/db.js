@@ -219,6 +219,11 @@ export const initSchema = async () => {
   // posteriores.
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'Registrado';`);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS separation_deadline TIMESTAMPTZ;`);
+  // Tipo de cobro: "Normal" (por defecto) o "Contraentrega" — este último
+  // solo tiene sentido para delivery "Motorizado Delivery", y permite que
+  // el pedido pase a "Pendiente de envío" aunque tenga saldo pendiente,
+  // porque el motorizado cobra el resto al entregar.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS charge_type TEXT NOT NULL DEFAULT 'Normal';`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS payments (
       id SERIAL PRIMARY KEY,

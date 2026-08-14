@@ -3,16 +3,20 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Plus, Printer, Search, Settings, Trash2, Truck, Upload, X } from "lucide-react";
 import {
-  AdminOrder, DiscountSettings, OrderItem, OrderStatus, PaymentInput,
-  deleteOrder, fetchOrders, fetchSettings, markOrderDelivered, registerPayment, updateOrderItemColor, updateSettings, uploadImage,
+  AdminOrder, ChargeType, DiscountSettings, OrderItem, OrderStatus, PaymentInput, Service,
+  addOrderItem, deleteOrder, fetchOrders, fetchServices, fetchSettings, markOrderDelivered, registerPayment,
+  updateOrderChargeType, updateOrderItemColor, updateSettings, uploadImage,
 } from "@/lib/api";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import { productImageUrl } from "@/lib/images";
 import { useProducts } from "@/context/ProductContext";
+import { Product, ProductColor } from "@/context/CartContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import Pagination from "@/components/admin/Pagination";
+import ProductOrderPicker from "@/components/ProductOrderPicker";
+import ServiceOrderPicker from "@/components/ServiceOrderPicker";
 
 // Fecha de creación del pedido en el listado: solo día/mes, para no ocupar
 // tanto espacio en la tabla.
@@ -97,6 +101,9 @@ const PRINT_BASE_STYLES = `
 const buildShippingLabelHtml = (order: AdminOrder) => {
   const showMode = DELIVERY_MODE_TYPES.includes(order.customerDeliveryType);
   const isMotorized = ADDRESS_TYPES.includes(order.customerDeliveryType);
+  const paid = order.payments.reduce((sum, p) => sum + p.amount, 0);
+  const remaining = order.total - paid;
+  const showCobrar = order.chargeType === "Contraentrega" && remaining > 0;
   const rows: [string, string][] = [
     ...(showMode && order.customerDeliveryMode ? ([["Vía", order.customerDeliveryMode]] as [string, string][]) : []),
     ["Delivery", order.customerAgency ? `${order.customerDeliveryType} - ${order.customerAgency}` : order.customerDeliveryType],
@@ -124,6 +131,7 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
           table { width: 100%; border-collapse: collapse; font-size: 15px; }
           td { padding: 5px 4px; border-bottom: 1px solid #ddd; vertical-align: top; }
           td:first-child { font-weight: 700; width: 38%; color: #444; }
+          .cobrar { font-size: 18px; font-weight: 800; text-align: center; margin-top: 12px; }
         </style>
       </head>
       <body>
@@ -132,6 +140,7 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
         <table>
           ${rows.map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(value)}</td></tr>`).join("")}
         </table>
+        ${showCobrar ? `<div class="cobrar">Cobrar: S/.${remaining.toFixed(2)}</div>` : ""}
       </body>
     </html>
   `;
@@ -390,6 +399,88 @@ const PaymentForm = ({ orderId }: { orderId: number }) => {
       <Button size="sm" onClick={handleSubmit} disabled={paymentMutation.isPending || uploading} className="h-9">
         {paymentMutation.isPending ? "Registrando..." : "Registrar pago"}
       </Button>
+    </div>
+  );
+};
+
+const CHARGE_TYPES: ChargeType[] = ["Normal", "Contraentrega"];
+
+// Solo para pedidos con delivery "Motorizado Delivery": deja elegir el tipo
+// de cobro (Normal/Contraentrega — este último pasa el pedido a "Pendiente
+// de envío" aunque tenga saldo pendiente) y agregar productos/servicios al
+// pedido ya creado, por si el motorizado suma algo más antes de entregar.
+const MotorizadoDeliveryExtras = ({ order }: { order: AdminOrder }) => {
+  const queryClient = useQueryClient();
+  const { products } = useProducts();
+  const { data: services = [] } = useQuery({ queryKey: ["services"], queryFn: fetchServices });
+  const [chargeType, setChargeType] = useState<ChargeType>(order.chargeType);
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["orders"] });
+  const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : "Algo salió mal");
+
+  const chargeTypeMutation = useMutation({
+    mutationFn: (value: ChargeType) => updateOrderChargeType(order.id, value),
+    onSuccess: () => {
+      toast.success("Tipo de cobro guardado");
+      invalidate();
+    },
+    onError,
+  });
+
+  const addItemMutation = useMutation({
+    mutationFn: (data: Parameters<typeof addOrderItem>[1]) => addOrderItem(order.id, data),
+    onSuccess: () => {
+      toast.success("Ítem agregado al pedido");
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+    onError,
+  });
+
+  const handleAddProduct = (product: Product, color: ProductColor) => {
+    addItemMutation.mutate({ productId: product.id, colorName: color.name, quantity: 1 });
+  };
+
+  const handleAddService = (service: Service) => {
+    addItemMutation.mutate({ serviceId: service.id, quantity: 1 });
+  };
+
+  return (
+    <div className="space-y-4 p-3 rounded-md border border-dashed border-border">
+      <div>
+        <h4 className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Tipo de cobro</h4>
+        <div className="flex flex-wrap items-center gap-3">
+          <select
+            value={chargeType}
+            onChange={(e) => setChargeType(e.target.value as ChargeType)}
+            className="flex h-9 rounded-md border border-input bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            {CHARGE_TYPES.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+          <Button
+            size="sm"
+            onClick={() => chargeTypeMutation.mutate(chargeType)}
+            disabled={chargeTypeMutation.isPending || chargeType === order.chargeType}
+          >
+            {chargeTypeMutation.isPending ? "Guardando..." : "Guardar"}
+          </Button>
+          {chargeType === "Contraentrega" && (
+            <p className="text-xs text-muted-foreground">
+              Si el pedido tiene saldo pendiente, al guardar pasa a "Pendiente de envío" — el motorizado cobra el resto al entregar.
+            </p>
+          )}
+        </div>
+      </div>
+      <div>
+        <h4 className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Agregar productos</h4>
+        <ProductOrderPicker products={products} onAdd={handleAddProduct} />
+      </div>
+      <div>
+        <h4 className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Agregar servicios</h4>
+        <ServiceOrderPicker services={services} onAdd={handleAddService} />
+      </div>
     </div>
   );
 };
@@ -706,6 +797,8 @@ const AdminOrders = () => {
                             <h4 className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Registrar pago</h4>
                             <PaymentForm orderId={order.id} />
                           </div>
+
+                          {order.customerDeliveryType === "Motorizado Delivery" && <MotorizadoDeliveryExtras order={order} />}
 
                           <div className="flex flex-wrap items-center gap-3">
                             <a
