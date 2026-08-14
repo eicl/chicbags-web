@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, LogOut, Package, Tag, Layers, Users, IdCard, MapPin, ShoppingBag, Share2 } from "lucide-react";
+import { ArrowLeft, LogOut, Package, Tag, Layers, Users, IdCard, MapPin, ShoppingBag, Share2, Wrench } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import AdminProducts from "@/components/admin/AdminProducts";
+import AdminServices from "@/components/admin/AdminServices";
 import AdminBrands from "@/components/admin/AdminBrands";
 import AdminCategories from "@/components/admin/AdminCategories";
 import AdminCustomers from "@/components/admin/AdminCustomers";
@@ -12,10 +13,11 @@ import AdminUsers from "@/components/admin/AdminUsers";
 import AdminOrders from "@/components/admin/AdminOrders";
 import AdminLinkPreviews from "@/components/admin/AdminLinkPreviews";
 
-type Tab = "products" | "brands" | "categories" | "customers" | "districts" | "orders" | "users" | "linkPreviews";
+type Tab = "products" | "services" | "brands" | "categories" | "customers" | "districts" | "orders" | "users" | "linkPreviews";
 
 const TABS: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "products", label: "Productos", icon: Package },
+  { id: "services", label: "Servicios", icon: Wrench },
   { id: "brands", label: "Marcas", icon: Tag },
   { id: "categories", label: "Categorías", icon: Layers },
   { id: "customers", label: "Clientes", icon: IdCard },
@@ -71,6 +73,7 @@ const Admin = () => {
 
       <div className="container mx-auto px-4 md:px-8 py-8">
         {tab === "products" && <AdminProducts />}
+        {tab === "services" && <AdminServices />}
         {tab === "brands" && <AdminBrands />}
         {tab === "categories" && <AdminCategories />}
         {tab === "customers" && <AdminCustomers />}

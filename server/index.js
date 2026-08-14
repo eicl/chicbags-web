@@ -377,6 +377,58 @@ app.delete("/api/brands/:id", requireAuth, async (req, res) => {
   res.status(204).end();
 });
 
+// Servicios: mantenimiento aparte de productos, solo código, nombre,
+// descripción y precio (sin colores, categorías, marca, stock ni fotos).
+const mapService = (row) => ({
+  id: row.id,
+  code: row.code ?? "",
+  name: row.name,
+  description: row.description,
+  price: Number(row.price),
+});
+
+const validateService = ({ name, price }) => {
+  if (!name?.trim()) return "El nombre es obligatorio";
+  if (typeof price !== "number" || !Number.isFinite(price) || price < 0) return "El precio es inválido";
+  return null;
+};
+
+app.get("/api/services", async (req, res) => {
+  const { rows } = await pool.query("SELECT * FROM services ORDER BY name");
+  res.json(rows.map(mapService));
+});
+
+app.post("/api/services", requireAuth, async (req, res) => {
+  const { code, name, description, price } = req.body;
+  const error = validateService({ name, price });
+  if (error) return res.status(400).json({ error });
+  const { rows } = await pool.query(
+    "INSERT INTO services (code, name, description, price) VALUES ($1, $2, $3, $4) RETURNING *",
+    [(code ?? "").trim(), name.trim(), (description ?? "").trim(), price]
+  );
+  res.status(201).json(mapService(rows[0]));
+});
+
+app.put("/api/services/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const { code, name, description, price } = req.body;
+  const error = validateService({ name, price });
+  if (error) return res.status(400).json({ error });
+  const { rows } = await pool.query(
+    "UPDATE services SET code = $1, name = $2, description = $3, price = $4 WHERE id = $5 RETURNING *",
+    [(code ?? "").trim(), name.trim(), (description ?? "").trim(), price, id]
+  );
+  if (rows.length === 0) return res.status(404).json({ error: "Servicio no encontrado" });
+  res.json(mapService(rows[0]));
+});
+
+app.delete("/api/services/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const { rowCount } = await pool.query("DELETE FROM services WHERE id = $1", [id]);
+  if (rowCount === 0) return res.status(404).json({ error: "Servicio no encontrado" });
+  res.status(204).end();
+});
+
 // El perfil es solo informativo por ahora: no restringe qué puede ver o
 // hacer cada usuario dentro del panel admin.
 const USER_ROLES = ["Administrador", "Vendedor"];

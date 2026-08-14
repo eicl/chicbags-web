@@ -43,6 +43,38 @@ export const updateBrand = (brand: Brand): Promise<Brand> =>
 export const deleteBrand = (id: number): Promise<void> =>
   fetch(`${API_URL}/brands/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
 
+// Servicios: mantenimiento aparte de productos, mucho más simple (sin
+// colores, categorías, marca, stock ni fotos).
+export interface Service {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+  price: number;
+}
+
+export const fetchServices = (): Promise<Service[]> =>
+  fetch(`${API_URL}/services`).then((res) => handle<Service[]>(res));
+
+export const createService = (data: Omit<Service, "id">): Promise<Service> =>
+  fetch(`${API_URL}/services`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<Service>(res));
+
+export const updateService = (service: Service): Promise<Service> =>
+  fetch(`${API_URL}/services/${service.id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(service),
+  }).then((res) => handle<Service>(res));
+
+export const deleteService = (id: number): Promise<void> =>
+  fetch(`${API_URL}/services/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
+
 export type UserRole = "Administrador" | "Vendedor";
 
 export interface UserAccount {

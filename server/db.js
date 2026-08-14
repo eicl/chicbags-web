@@ -21,6 +21,18 @@ export const initSchema = async () => {
       name TEXT UNIQUE NOT NULL
     );
   `);
+  // Servicios: mantenimiento aparte, mucho más simple que productos (sin
+  // colores, categorías, marca, stock ni fotos).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS services (
+      id SERIAL PRIMARY KEY,
+      code TEXT,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      price NUMERIC NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY,
