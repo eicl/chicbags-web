@@ -26,6 +26,15 @@ const formatDate = (iso: string) =>
 const formatDateOnly = (iso: string) =>
   new Date(iso).toLocaleDateString("es-PE", { dateStyle: "medium", timeZone: "UTC" });
 
+// Igual que formatDateOnly pero corto (dd/MM), para el reporte impreso de
+// Separación. Se arma a mano (no con Intl) para garantizar el cero a la
+// izquierda siempre, sin depender de qué tan completos estén los datos de
+// localización del navegador.
+const formatDayMonth = (iso: string) => {
+  const d = new Date(iso);
+  return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+};
+
 // OJO: no usar toISOString() acá — convierte a UTC, y Perú (UTC-5) ya está
 // "mañana" en UTC después de las 7pm, lo que adelantaba la fecha por defecto
 // un día en pagos registrados de noche.
@@ -120,10 +129,12 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
 
 // Reporte para pedidos en "Separación" (pago parcial): el número de pedido
 // bien grande (lo más notorio, para ubicarlo rápido entre los demás), y
-// abajo, más chico, el nombre del cliente y el detalle de cada ítem
-// (código, color y cantidad) para identificar el paquete mientras espera
-// el resto del pago.
-const buildSeparationLabelHtml = (order: AdminOrder) => `
+// abajo, más chico, el nombre del cliente, la fecha del primer pago y el
+// detalle de cada ítem (código, modelo, color y cantidad) para identificar
+// el paquete mientras espera el resto del pago.
+const buildSeparationLabelHtml = (order: AdminOrder) => {
+  const firstPaymentDate = order.payments.length > 0 ? order.payments[0].createdAt : null;
+  return `
   <html>
     <head>
       <meta charset="utf-8" />
@@ -134,6 +145,7 @@ const buildSeparationLabelHtml = (order: AdminOrder) => `
         body { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: space-between; text-align: center; padding: 20mm 0; }
         .order-number { font-size: 220px; font-weight: 800; }
         .customer-name { font-size: 40px; font-weight: 600; margin-bottom: 10px; }
+        .payment-date { font-size: 24px; color: #333; margin-bottom: 10px; }
         .items { font-size: 28px; color: #333; }
         .items div { margin: 2px 0; }
       </style>
@@ -143,15 +155,20 @@ const buildSeparationLabelHtml = (order: AdminOrder) => `
       <div class="order-number">${order.id}</div>
       <div>
         <div class="customer-name">${escapeHtml(order.customerName)}</div>
+        ${firstPaymentDate ? `<div class="payment-date">Primer pago: ${formatDayMonth(firstPaymentDate)}</div>` : ""}
         <div class="items">
           ${order.items
-            .map((item) => `<div>${escapeHtml(item.productCode || "—")} · ${escapeHtml(item.colorName)} · x${item.quantity}</div>`)
+            .map(
+              (item) =>
+                `<div>${escapeHtml(item.productCode || "—")} · ${escapeHtml(item.productName)} · ${escapeHtml(item.colorName)} · x${item.quantity}</div>`
+            )
             .join("")}
         </div>
       </div>
     </body>
   </html>
 `;
+};
 
 const printOrder = (order: AdminOrder) => {
   const html =
