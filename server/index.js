@@ -496,6 +496,10 @@ const DELIVERY_TYPES = ["Shalom", "Motorizado Express", "Motorizado Delivery", "
 // Los que reparten por agencia/courier (no motorizado propio): antes de
 // marcarlos "Entregado a delivery" hace falta subir el recibo del envío.
 const COURIER_DELIVERY_TYPES = ["Shalom", "Olva", "Marvisur"];
+// Tipos de delivery donde tiene sentido "Contraentrega": el motorizado
+// propio, o las agencias/courier de arriba. Motorizado Express queda
+// afuera — no lo pidieron.
+const CHARGE_TYPE_DELIVERY_TYPES = ["Motorizado Delivery", ...COURIER_DELIVERY_TYPES];
 
 // Tope de descuento manual por ítem al registrar un pedido: más alto si
 // quien registra tiene sesión de admin abierta en el navegador (aunque el
@@ -1863,9 +1867,10 @@ app.post("/api/orders/:id/items", requireAuth, async (req, res) => {
 });
 
 // Tipo de cobro del pedido (Normal/Contraentrega). Elegir "Contraentrega" en
-// un pedido "Motorizado Delivery" que todavía tiene saldo pendiente lo pasa
-// a "Pendiente de envío" sin exigir que esté pagado del todo — el
-// motorizado cobra el resto al entregar.
+// un pedido Motorizado Delivery/Shalom/Olva/Marvisur que todavía tiene
+// saldo pendiente lo pasa a "Pendiente de envío" sin exigir que esté pagado
+// del todo — quien reparte cobra el resto al entregar, y desde ahí ya se
+// puede imprimir la etiqueta (con la línea "Cobrar" al final).
 app.put("/api/orders/:id/charge-type", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   const { chargeType } = req.body;
@@ -1888,7 +1893,7 @@ app.put("/api/orders/:id/charge-type", requireAuth, async (req, res) => {
     }
     const order = orderRows[0];
     const newStatus =
-      chargeType === "Contraentrega" && order.delivery_type === "Motorizado Delivery" && order.status === "Separación"
+      chargeType === "Contraentrega" && CHARGE_TYPE_DELIVERY_TYPES.includes(order.delivery_type) && order.status === "Separación"
         ? "Pendiente de envío"
         : order.status;
     const { rows } = await client.query(

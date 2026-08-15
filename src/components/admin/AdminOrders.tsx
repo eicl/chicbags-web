@@ -488,37 +488,74 @@ const ReceiptForm = ({ order }: { order: AdminOrder }) => {
 };
 
 const CHARGE_TYPES: ChargeType[] = ["Normal", "Contraentrega"];
+// Los tipos de delivery donde tiene sentido elegir Contraentrega: el
+// motorizado propio, o las agencias/courier — Motorizado Express queda
+// afuera, no lo pidieron.
+const CHARGE_TYPE_DELIVERY_TYPES = ["Motorizado Delivery", "Shalom", "Olva", "Marvisur"];
 
-// Solo para pedidos con delivery "Motorizado Delivery": deja elegir el tipo
-// de cobro (Normal/Contraentrega — este último pasa el pedido a "Pendiente
-// de envío" aunque tenga saldo pendiente) y agregar productos/servicios al
-// pedido ya creado, por si el motorizado suma algo más antes de entregar.
-const MotorizadoDeliveryExtras = ({ order }: { order: AdminOrder }) => {
+// Deja elegir el tipo de cobro (Normal/Contraentrega). Contraentrega pasa
+// el pedido a "Pendiente de envío" aunque tenga saldo pendiente — quien
+// reparte cobra el resto al entregar — y desde ahí ya se puede imprimir la
+// etiqueta como si estuviera pagado, con una línea "Cobrar" al final.
+const ChargeTypeSelector = ({ order }: { order: AdminOrder }) => {
   const queryClient = useQueryClient();
-  const { products } = useProducts();
-  const { data: services = [] } = useQuery({ queryKey: ["services"], queryFn: fetchServices });
   const [chargeType, setChargeType] = useState<ChargeType>(order.chargeType);
-
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["orders"] });
-  const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : "Algo salió mal");
 
   const chargeTypeMutation = useMutation({
     mutationFn: (value: ChargeType) => updateOrderChargeType(order.id, value),
     onSuccess: () => {
       toast.success("Tipo de cobro guardado");
-      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
     },
-    onError,
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo guardar el tipo de cobro"),
   });
+
+  return (
+    <div>
+      <h4 className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Tipo de cobro</h4>
+      <div className="flex flex-wrap items-center gap-3">
+        <select
+          value={chargeType}
+          onChange={(e) => setChargeType(e.target.value as ChargeType)}
+          className="flex h-9 rounded-md border border-input bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          {CHARGE_TYPES.map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
+        <Button
+          size="sm"
+          onClick={() => chargeTypeMutation.mutate(chargeType)}
+          disabled={chargeTypeMutation.isPending || chargeType === order.chargeType}
+        >
+          {chargeTypeMutation.isPending ? "Guardando..." : "Guardar"}
+        </Button>
+        {chargeType === "Contraentrega" && (
+          <p className="text-xs text-muted-foreground">
+            Si el pedido tiene saldo pendiente, al guardar pasa a "Pendiente de envío" y ya se puede imprimir con el saldo a cobrar.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Solo para pedidos con delivery "Motorizado Delivery": deja agregar
+// productos/servicios al pedido ya creado, por si el motorizado suma algo
+// más antes de entregar.
+const MotorizadoDeliveryExtras = ({ order }: { order: AdminOrder }) => {
+  const queryClient = useQueryClient();
+  const { products } = useProducts();
+  const { data: services = [] } = useQuery({ queryKey: ["services"], queryFn: fetchServices });
 
   const addItemMutation = useMutation({
     mutationFn: (data: Parameters<typeof addOrderItem>[1]) => addOrderItem(order.id, data),
     onSuccess: () => {
       toast.success("Ítem agregado al pedido");
-      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
     },
-    onError,
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "Algo salió mal"),
   });
 
   const handleAddProduct = (product: Product, color: ProductColor) => {
@@ -531,32 +568,6 @@ const MotorizadoDeliveryExtras = ({ order }: { order: AdminOrder }) => {
 
   return (
     <div className="space-y-4 p-3 rounded-md border border-dashed border-border">
-      <div>
-        <h4 className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Tipo de cobro</h4>
-        <div className="flex flex-wrap items-center gap-3">
-          <select
-            value={chargeType}
-            onChange={(e) => setChargeType(e.target.value as ChargeType)}
-            className="flex h-9 rounded-md border border-input bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          >
-            {CHARGE_TYPES.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-          <Button
-            size="sm"
-            onClick={() => chargeTypeMutation.mutate(chargeType)}
-            disabled={chargeTypeMutation.isPending || chargeType === order.chargeType}
-          >
-            {chargeTypeMutation.isPending ? "Guardando..." : "Guardar"}
-          </Button>
-          {chargeType === "Contraentrega" && (
-            <p className="text-xs text-muted-foreground">
-              Si el pedido tiene saldo pendiente, al guardar pasa a "Pendiente de envío" — el motorizado cobra el resto al entregar.
-            </p>
-          )}
-        </div>
-      </div>
       <div>
         <h4 className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Agregar productos</h4>
         <ProductOrderPicker products={products} onAdd={handleAddProduct} />
@@ -892,6 +903,8 @@ const AdminOrders = () => {
                             <h4 className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Registrar pago</h4>
                             <PaymentForm orderId={order.id} />
                           </div>
+
+                          {CHARGE_TYPE_DELIVERY_TYPES.includes(order.customerDeliveryType) && <ChargeTypeSelector order={order} />}
 
                           {order.customerDeliveryType === "Motorizado Delivery" && <MotorizadoDeliveryExtras order={order} />}
 
