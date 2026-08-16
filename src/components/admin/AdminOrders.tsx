@@ -43,10 +43,10 @@ const formatDayMonth = (iso: string) => {
 // OJO: no usar toISOString() acá — convierte a UTC, y Perú (UTC-5) ya está
 // "mañana" en UTC después de las 7pm, lo que adelantaba la fecha por defecto
 // un día en pagos registrados de noche.
-const todayDate = () => {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-};
+const toLocalDateStr = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+const todayDate = () => toLocalDateStr(new Date());
 
 const PAYMENT_SOURCES = ["Yape", "Plin", "Otro"];
 const PAGE_SIZE = 20;
@@ -857,13 +857,40 @@ const DiscountSettingsPanel = () => {
 const AdminOrders = () => {
   const queryClient = useQueryClient();
   const { data: orders = [], isLoading, isError } = useQuery({ queryKey: ["orders"], queryFn: fetchOrders });
+  const { products } = useProducts();
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [salesFrom, setSalesFrom] = useState(todayDate);
+  const [salesTo, setSalesTo] = useState(todayDate);
 
   const filteredOrders = orders.filter((o) => matchesOrder(o, query));
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
   const pageOrders = filteredOrders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  // Resumen de ventas del rango de fechas elegido (por defecto, hoy): monto
+  // vendido, carteras (ítems de producto, sin contar servicios) y ganancia
+  // = vendido - costo de esas carteras. El costo se busca en el catálogo
+  // actual por producto (no hay una "foto" del costo al momento del pedido),
+  // así que si el producto ya no existe o no tiene costo cargado, esa parte
+  // queda fuera y se avisa con missingCost.
+  const salesSummary = orders.reduce(
+    (acc, order) => {
+      const day = toLocalDateStr(new Date(order.createdAt));
+      if (day < salesFrom || day > salesTo) return acc;
+      acc.total += order.total;
+      for (const item of order.items) {
+        if (item.serviceId !== null) continue;
+        acc.bags += item.quantity;
+        const product = item.productId !== null ? products.find((p) => p.id === item.productId) : undefined;
+        if (product && product.cost != null) acc.cost += product.cost * item.quantity;
+        else acc.missingCost = true;
+      }
+      return acc;
+    },
+    { total: 0, bags: 0, cost: 0, missingCost: false }
+  );
+  const salesProfit = salesSummary.total - salesSummary.cost;
 
   const handleQueryChange = (value: string) => {
     setQuery(value);
@@ -907,6 +934,42 @@ const AdminOrders = () => {
 
   return (
     <div>
+      <div className="mb-6 p-4 rounded-md border border-border bg-muted/20">
+        <div className="flex flex-wrap items-end gap-3 mb-3">
+          <div>
+            <label className="block text-xs text-muted-foreground mb-1">Desde</label>
+            <Input type="date" value={salesFrom} onChange={(e) => setSalesFrom(e.target.value)} className="h-9" />
+          </div>
+          <div>
+            <label className="block text-xs text-muted-foreground mb-1">Hasta</label>
+            <Input type="date" value={salesTo} onChange={(e) => setSalesTo(e.target.value)} className="h-9" />
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setSalesFrom(todayDate());
+              setSalesTo(todayDate());
+            }}
+            className="h-9"
+          >
+            Hoy
+          </Button>
+        </div>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <span className="text-muted-foreground">
+            Total vendido: <span className="font-semibold text-foreground">S/.{salesSummary.total.toFixed(2)}</span>
+          </span>
+          <span className="text-muted-foreground">
+            Carteras vendidas: <span className="font-semibold text-foreground">{salesSummary.bags}</span>
+          </span>
+          <span className="text-muted-foreground">
+            Ganancia total: <span className="font-semibold text-foreground">S/.{salesProfit.toFixed(2)}</span>
+            {salesSummary.missingCost && " (algunos productos no tienen costo cargado)"}
+          </span>
+        </div>
+      </div>
+
       <DiscountSettingsPanel />
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
