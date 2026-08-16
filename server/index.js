@@ -1401,6 +1401,71 @@ app.put("/api/orders/:orderId/items/:itemId", requireAuth, async (req, res) => {
   }
 });
 
+// Edita el descuento de un producto ya agregado a un pedido (no aplica a
+// servicios, ahí lo editable es la cantidad, con /service más abajo).
+// Recalcula el total y, si corresponde, el estado.
+app.put("/api/orders/:orderId/items/:itemId/discount", requireAuth, async (req, res) => {
+  const orderId = Number(req.params.orderId);
+  const itemId = Number(req.params.itemId);
+  const { discount } = req.body;
+  if (!Number.isInteger(orderId) || !Number.isInteger(itemId)) {
+    return res.status(400).json({ error: "Pedido o ítem inválido" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: orderRows } = await client.query(
+      "SELECT id, total, status, charge_type, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
+      [orderId]
+    );
+    if (orderRows.length === 0) {
+      throw new Error("El pedido no existe");
+    }
+    const order = orderRows[0];
+
+    const { rows: itemRows } = await client.query(
+      "SELECT id, product_id, unit_price, quantity, subtotal FROM order_items WHERE id = $1 AND order_id = $2",
+      [itemId, orderId]
+    );
+    if (itemRows.length === 0) {
+      throw new Error("El ítem no existe en este pedido");
+    }
+    const item = itemRows[0];
+    if (item.product_id === null) {
+      throw new Error("Solo se puede editar el descuento de un producto");
+    }
+
+    const settings = await getSettings();
+    const maxDiscount = settings.maxItemDiscountAdmin;
+    const requestedDiscount = discount ?? 0;
+    if (typeof requestedDiscount !== "number" || !Number.isFinite(requestedDiscount) || requestedDiscount < 0 || requestedDiscount > maxDiscount) {
+      throw new Error(`El descuento por ítem no puede superar S/.${maxDiscount}`);
+    }
+
+    const unitPrice = Number(item.unit_price);
+    const newDiscount = Math.min(requestedDiscount, unitPrice * item.quantity);
+    const newSubtotal = unitPrice * item.quantity - newDiscount;
+    const newTotal = Number(order.total) - Number(item.subtotal) + newSubtotal;
+
+    await client.query("UPDATE order_items SET discount = $1, subtotal = $2 WHERE id = $3", [newDiscount, newSubtotal, itemId]);
+
+    const { status: newStatus, separationDeadline: newDeadline } = await recomputeOrderStatusForTotal(client, orderId, newTotal, order);
+    await client.query("UPDATE orders SET total = $1, status = $2, separation_deadline = $3 WHERE id = $4", [newTotal, newStatus, newDeadline, orderId]);
+
+    const { rows: finalOrderRows } = await client.query("SELECT * FROM orders WHERE id = $1", [orderId]);
+    const { rows: finalItemRows } = await client.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [orderId]);
+    const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [orderId]);
+    await client.query("COMMIT");
+    res.json(mapOrder(finalOrderRows[0], finalItemRows, paymentRows));
+  } catch (err) {
+    await client.query("ROLLBACK");
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 // Registro público de pedidos: fuera del panel admin. Valida el stock de
 // cada producto/color dentro de una transacción (con FOR UPDATE para
 // evitar que dos pedidos a la vez vendan el mismo stock), lo descuenta y
@@ -1944,8 +2009,12 @@ app.put("/api/orders/:orderId/items/:itemId/service", requireAuth, async (req, r
   }
 });
 
-// Quita un servicio de un pedido (no aplica a productos). No deja vaciar el
-// pedido del todo — para eso hay que eliminarlo entero.
+// Quita un producto o servicio de un pedido. Si es un producto de un
+// pedido normal ("Pedido", no Regularización, que nunca descontó stock),
+// le devuelve el stock al color correspondiente — si el producto o el
+// color ya no existen, simplemente no hay a quién devolvérselo y se sigue
+// de largo (mismo criterio que al eliminar el pedido entero). No deja
+// vaciar el pedido del todo — para eso hay que eliminarlo entero.
 app.delete("/api/orders/:orderId/items/:itemId", requireAuth, async (req, res) => {
   const orderId = Number(req.params.orderId);
   const itemId = Number(req.params.itemId);
@@ -1957,7 +2026,7 @@ app.delete("/api/orders/:orderId/items/:itemId", requireAuth, async (req, res) =
   try {
     await client.query("BEGIN");
     const { rows: orderRows } = await client.query(
-      "SELECT id, total, status, charge_type, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
+      "SELECT id, type, total, status, charge_type, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
       [orderId]
     );
     if (orderRows.length === 0) {
@@ -1966,20 +2035,29 @@ app.delete("/api/orders/:orderId/items/:itemId", requireAuth, async (req, res) =
     const order = orderRows[0];
 
     const { rows: itemRows } = await client.query(
-      "SELECT id, service_id, subtotal FROM order_items WHERE id = $1 AND order_id = $2",
+      "SELECT id, product_id, service_id, color_name, quantity, subtotal FROM order_items WHERE id = $1 AND order_id = $2",
       [itemId, orderId]
     );
     if (itemRows.length === 0) {
       throw new Error("El ítem no existe en este pedido");
     }
     const item = itemRows[0];
-    if (item.service_id === null) {
-      throw new Error("Solo se pueden quitar servicios");
-    }
 
     const { rows: countRows } = await client.query("SELECT COUNT(*)::int AS count FROM order_items WHERE order_id = $1", [orderId]);
     if (countRows[0].count <= 1) {
       throw new Error("El pedido no puede quedar sin ítems");
+    }
+
+    if (order.type === "Pedido" && item.product_id !== null) {
+      const { rows: productRows } = await client.query("SELECT colors FROM products WHERE id = $1 FOR UPDATE", [item.product_id]);
+      if (productRows.length > 0) {
+        const colors = productRows[0].colors ?? [];
+        const colorIndex = colors.findIndex((c) => c.name === item.color_name);
+        if (colorIndex !== -1) {
+          colors[colorIndex] = { ...colors[colorIndex], stock: colors[colorIndex].stock + item.quantity };
+          await client.query("UPDATE products SET colors = $1 WHERE id = $2", [JSON.stringify(colors), item.product_id]);
+        }
+      }
     }
 
     await client.query("DELETE FROM order_items WHERE id = $1", [itemId]);

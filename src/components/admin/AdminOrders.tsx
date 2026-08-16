@@ -5,8 +5,8 @@ import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Plus, Pr
 import {
   AdminOrder, ChargeType, DiscountSettings, OrderItem, OrderStatus, PaymentInput, Service,
   addOrderItem, deleteOrder, deleteOrderItem, fetchOrders, fetchServices, fetchSettings, markOrderDelivered,
-  markOrderWarehouseSeparated, registerPayment, updateOrderChargeType, updateOrderItemColor, updateOrderReceipt,
-  updateOrderServiceItem, updateSettings, uploadImage,
+  markOrderWarehouseSeparated, registerPayment, updateOrderChargeType, updateOrderItemColor, updateOrderItemDiscount,
+  updateOrderReceipt, updateOrderServiceItem, updateSettings, uploadImage,
 } from "@/lib/api";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import { productImageUrl } from "@/lib/images";
@@ -292,6 +292,102 @@ const ItemColorEditor = ({ orderId, item }: { orderId: number; item: OrderItem }
         aria-label="Cancelar"
       >
         <X className="w-3.5 h-3.5" />
+      </button>
+    </span>
+  );
+};
+
+// Deja editar el descuento de un producto ya agregado a un pedido, o
+// quitarlo del todo (devuelve el stock) — los servicios no se editan acá
+// (ahí lo editable es la cantidad, con ServiceItemEditor).
+const ProductDiscountEditor = ({ orderId, item }: { orderId: number; item: OrderItem }) => {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [discount, setDiscount] = useState(item.discount);
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["orders"] });
+    queryClient.invalidateQueries({ queryKey: ["products"] });
+  };
+
+  const updateMutation = useMutation({
+    mutationFn: (d: number) => updateOrderItemDiscount(orderId, item.id, d),
+    onSuccess: () => {
+      toast.success("Descuento actualizado");
+      invalidate();
+      setEditing(false);
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo actualizar el descuento"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteOrderItem(orderId, item.id),
+    onSuccess: () => {
+      toast.success("Producto quitado del pedido");
+      invalidate();
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo quitar el producto"),
+  });
+
+  const handleRemove = () => {
+    if (!confirm(`¿Quitar "${item.productName}" del pedido? Se devolverá el stock.`)) return;
+    deleteMutation.mutate();
+  };
+
+  if (editing) {
+    return (
+      <span className="inline-flex items-center gap-1.5 justify-end">
+        <Input
+          type="number"
+          min={0}
+          step={0.5}
+          value={discount}
+          onChange={(e) => setDiscount(e.target.valueAsNumber)}
+          className="h-7 w-16 text-xs px-1 text-right"
+        />
+        <button
+          type="button"
+          onClick={() => updateMutation.mutate(Number.isFinite(discount) ? discount : 0)}
+          disabled={updateMutation.isPending}
+          className="text-primary hover:text-primary/80 disabled:opacity-50"
+          aria-label="Guardar descuento"
+        >
+          <Check className="w-3.5 h-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setEditing(false)}
+          className="text-muted-foreground hover:text-destructive"
+          aria-label="Cancelar"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5 justify-end">
+      {item.discount > 0 ? `S/.${item.discount.toFixed(2)}` : "—"}
+      <button
+        type="button"
+        onClick={() => {
+          setDiscount(item.discount);
+          setEditing(true);
+        }}
+        className="text-muted-foreground hover:text-primary"
+        aria-label="Editar descuento"
+      >
+        <Pencil className="w-3 h-3" />
+      </button>
+      <button
+        type="button"
+        onClick={handleRemove}
+        disabled={deleteMutation.isPending}
+        className="text-muted-foreground hover:text-destructive"
+        aria-label="Quitar producto"
+      >
+        <Trash2 className="w-3 h-3" />
       </button>
     </span>
   );
@@ -942,7 +1038,13 @@ const AdminOrders = () => {
                                     {item.serviceId !== null ? <ServiceItemEditor orderId={order.id} item={item} /> : item.quantity}
                                   </td>
                                   <td className="py-1.5 text-right text-muted-foreground">
-                                    {item.discount > 0 ? `S/.${item.discount.toFixed(2)}` : "—"}
+                                    {item.serviceId === null ? (
+                                      <ProductDiscountEditor orderId={order.id} item={item} />
+                                    ) : item.discount > 0 ? (
+                                      `S/.${item.discount.toFixed(2)}`
+                                    ) : (
+                                      "—"
+                                    )}
                                   </td>
                                   <td className="py-1.5 text-right font-medium">S/.{item.subtotal.toFixed(2)}</td>
                                 </tr>

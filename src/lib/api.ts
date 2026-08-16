@@ -460,7 +460,8 @@ export const updateOrderItemColor = (orderId: number, itemId: number, colorName:
   }).then((res) => handle<Order>(res));
 
 // Edita la cantidad/descuento de un servicio ya agregado a un pedido (no
-// aplica a productos, ahí lo editable es el color, ver arriba).
+// aplica a productos, ahí lo editable es el color y el descuento, ver
+// arriba y abajo).
 export const updateOrderServiceItem = (
   orderId: number,
   itemId: number,
@@ -473,7 +474,18 @@ export const updateOrderServiceItem = (
     body: JSON.stringify(data),
   }).then((res) => handle<Order>(res));
 
-// Quita un servicio de un pedido (no aplica a productos).
+// Edita el descuento de un producto ya agregado a un pedido (no aplica a
+// servicios, ahí lo editable es la cantidad, ver arriba).
+export const updateOrderItemDiscount = (orderId: number, itemId: number, discount: number): Promise<Order> =>
+  fetch(`${API_URL}/orders/${orderId}/items/${itemId}/discount`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ discount }),
+  }).then((res) => handle<Order>(res));
+
+// Quita un producto o servicio de un pedido. Si es un producto de un
+// pedido normal, el servidor le devuelve el stock al color correspondiente.
 export const deleteOrderItem = (orderId: number, itemId: number): Promise<Order> =>
   fetch(`${API_URL}/orders/${orderId}/items/${itemId}`, {
     method: "DELETE",
