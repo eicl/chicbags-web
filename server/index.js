@@ -1772,11 +1772,12 @@ const recomputeOrderStatusForTotal = async (client, orderId, newTotal, order) =>
 };
 
 // Agrega un producto o servicio a un pedido que ya existe, desde el panel
-// admin — solo tiene sentido para delivery "Motorizado Delivery" (el
-// motorizado puede volver a pasar por más mercadería antes de entregar).
-// Recalcula el total y, si el pedido ya tenía algún pago (Separación o
-// Pendiente de envío), también el estado — igual que applyPayment, pero
-// disparado por un cambio de total en vez de un pago nuevo.
+// admin. Productos se pueden agregar sin importar el tipo de delivery;
+// servicios siguen solo para "Motorizado Delivery" (el motorizado puede
+// volver a pasar por más mercadería antes de entregar). Recalcula el total
+// y, si el pedido ya tenía algún pago (Separación o Pendiente de envío),
+// también el estado — igual que applyPayment, pero disparado por un cambio
+// de total en vez de un pago nuevo.
 app.post("/api/orders/:id/items", requireAuth, async (req, res) => {
   const orderId = Number(req.params.id);
   if (!Number.isInteger(orderId)) {
@@ -1807,8 +1808,8 @@ app.post("/api/orders/:id/items", requireAuth, async (req, res) => {
       throw new Error("El pedido no existe");
     }
     const order = orderRows[0];
-    if (order.delivery_type !== "Motorizado Delivery") {
-      throw new Error('Solo se pueden agregar ítems a pedidos con delivery "Motorizado Delivery"');
+    if (isService && order.delivery_type !== "Motorizado Delivery") {
+      throw new Error('Solo se pueden agregar servicios a pedidos con delivery "Motorizado Delivery"');
     }
 
     const settings = await getSettings();

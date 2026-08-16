@@ -633,10 +633,10 @@ const ChargeTypeSelector = ({ order }: { order: AdminOrder }) => {
   );
 };
 
-// Solo para pedidos con delivery "Motorizado Delivery": deja agregar
-// productos/servicios al pedido ya creado, por si el motorizado suma algo
-// más antes de entregar.
-const MotorizadoDeliveryExtras = ({ order }: { order: AdminOrder }) => {
+// Deja agregar productos a un pedido que ya existe, sin importar el tipo de
+// delivery. Agregar servicios sigue solo para "Motorizado Delivery" (el
+// motorizado puede volver a pasar por más mercadería antes de entregar).
+const AddOrderItemsExtras = ({ order }: { order: AdminOrder }) => {
   const queryClient = useQueryClient();
   const { products } = useProducts();
   const { data: services = [] } = useQuery({ queryKey: ["services"], queryFn: fetchServices });
@@ -665,10 +665,12 @@ const MotorizadoDeliveryExtras = ({ order }: { order: AdminOrder }) => {
         <h4 className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Agregar productos</h4>
         <ProductOrderPicker products={products} onAdd={handleAddProduct} />
       </div>
-      <div>
-        <h4 className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Agregar servicios</h4>
-        <ServiceOrderPicker services={services} onAdd={handleAddService} />
-      </div>
+      {order.customerDeliveryType === "Motorizado Delivery" && (
+        <div>
+          <h4 className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Agregar servicios</h4>
+          <ServiceOrderPicker services={services} onAdd={handleAddService} />
+        </div>
+      )}
     </div>
   );
 };
@@ -1001,7 +1003,7 @@ const AdminOrders = () => {
 
                           {CHARGE_TYPE_DELIVERY_TYPES.includes(order.customerDeliveryType) && <ChargeTypeSelector order={order} />}
 
-                          {order.customerDeliveryType === "Motorizado Delivery" && <MotorizadoDeliveryExtras order={order} />}
+                          <AddOrderItemsExtras order={order} />
 
                           {COURIER_DELIVERY_TYPES.includes(order.customerDeliveryType) && <ReceiptForm order={order} />}
 
