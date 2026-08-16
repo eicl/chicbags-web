@@ -459,6 +459,27 @@ export const updateOrderItemColor = (orderId: number, itemId: number, colorName:
     body: JSON.stringify({ colorName }),
   }).then((res) => handle<Order>(res));
 
+// Edita la cantidad/descuento de un servicio ya agregado a un pedido (no
+// aplica a productos, ahí lo editable es el color, ver arriba).
+export const updateOrderServiceItem = (
+  orderId: number,
+  itemId: number,
+  data: { quantity: number; discount?: number }
+): Promise<Order> =>
+  fetch(`${API_URL}/orders/${orderId}/items/${itemId}/service`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<Order>(res));
+
+// Quita un servicio de un pedido (no aplica a productos).
+export const deleteOrderItem = (orderId: number, itemId: number): Promise<Order> =>
+  fetch(`${API_URL}/orders/${orderId}/items/${itemId}`, {
+    method: "DELETE",
+    credentials: "include",
+  }).then((res) => handle<Order>(res));
+
 // Tope de descuento manual por ítem al registrar un pedido: uno para el
 // link público (sin sesión) y otro, más alto, para cuando se registra con
 // sesión de admin abierta. Editable desde el panel.

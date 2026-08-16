@@ -1752,6 +1752,25 @@ app.put("/api/orders/:id/warehouse", requireAuth, async (req, res) => {
   res.json(mapOrder(rows[0], itemRows, paymentRows));
 });
 
+// Recalcula estado/plazo de un pedido después de que cambió su total (por
+// agregar, editar o quitar un ítem) — misma regla que applyPayment: solo
+// toca el estado si el pedido ya estaba en Separación/Pendiente de envío
+// (es decir, si ya había al menos un pago); antes de eso no hay nada que
+// recalcular. Si ya eligieron Contraentrega, el saldo pendiente no lo
+// devuelve a Separación — quien reparte sigue cobrando el resto al entregar.
+const recomputeOrderStatusForTotal = async (client, orderId, newTotal, order) => {
+  if (order.status !== "Separación" && order.status !== "Pendiente de envío") {
+    return { status: order.status, separationDeadline: order.separation_deadline };
+  }
+  const { rows: paidRows } = await client.query("SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE order_id = $1", [orderId]);
+  const paid = Number(paidRows[0].paid);
+  const isContraentrega = order.charge_type === "Contraentrega";
+  const status = paid >= newTotal || isContraentrega ? "Pendiente de envío" : "Separación";
+  const separationDeadline =
+    status === "Separación" ? order.separation_deadline ?? new Date(Date.now() + SEPARATION_DAYS * 24 * 60 * 60 * 1000) : order.separation_deadline;
+  return { status, separationDeadline };
+};
+
 // Agrega un producto o servicio a un pedido que ya existe, desde el panel
 // admin — solo tiene sentido para delivery "Motorizado Delivery" (el
 // motorizado puede volver a pasar por más mercadería antes de entregar).
@@ -1840,17 +1859,7 @@ app.post("/api/orders/:id/items", requireAuth, async (req, res) => {
       [orderId, li.productId, li.serviceId, li.productName, li.productCode, li.colorName, li.unitPrice, li.quantity, li.discount, li.subtotal]
     );
 
-    let newStatus = order.status;
-    let newDeadline = order.separation_deadline;
-    if (order.status === "Separación" || order.status === "Pendiente de envío") {
-      const { rows: paidRows } = await client.query("SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE order_id = $1", [orderId]);
-      const paid = Number(paidRows[0].paid);
-      // Si ya eligieron Contraentrega, el saldo pendiente no lo devuelve a
-      // Separación — el motorizado sigue cobrando el resto al entregar.
-      const isContraentrega = order.charge_type === "Contraentrega";
-      newStatus = paid >= newTotal || isContraentrega ? "Pendiente de envío" : "Separación";
-      newDeadline = newStatus === "Separación" ? order.separation_deadline ?? new Date(Date.now() + SEPARATION_DAYS * 24 * 60 * 60 * 1000) : order.separation_deadline;
-    }
+    const { status: newStatus, separationDeadline: newDeadline } = await recomputeOrderStatusForTotal(client, orderId, newTotal, order);
     await client.query("UPDATE orders SET total = $1, status = $2, separation_deadline = $3 WHERE id = $4", [newTotal, newStatus, newDeadline, orderId]);
 
     const { rows: finalOrderRows } = await client.query("SELECT * FROM orders WHERE id = $1", [orderId]);
@@ -1858,6 +1867,131 @@ app.post("/api/orders/:id/items", requireAuth, async (req, res) => {
     const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [orderId]);
     await client.query("COMMIT");
     res.status(201).json(mapOrder(finalOrderRows[0], itemRows, paymentRows));
+  } catch (err) {
+    await client.query("ROLLBACK");
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// Edita la cantidad (y el descuento) de un servicio ya agregado a un
+// pedido — no aplica a productos, ahí lo editable es el color (ver el
+// endpoint de arriba). Recalcula el total y, si corresponde, el estado.
+app.put("/api/orders/:orderId/items/:itemId/service", requireAuth, async (req, res) => {
+  const orderId = Number(req.params.orderId);
+  const itemId = Number(req.params.itemId);
+  const { quantity, discount } = req.body;
+  if (!Number.isInteger(orderId) || !Number.isInteger(itemId)) {
+    return res.status(400).json({ error: "Pedido o ítem inválido" });
+  }
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    return res.status(400).json({ error: "Cantidad inválida" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: orderRows } = await client.query(
+      "SELECT id, total, status, charge_type, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
+      [orderId]
+    );
+    if (orderRows.length === 0) {
+      throw new Error("El pedido no existe");
+    }
+    const order = orderRows[0];
+
+    const { rows: itemRows } = await client.query(
+      "SELECT id, service_id, unit_price, subtotal FROM order_items WHERE id = $1 AND order_id = $2",
+      [itemId, orderId]
+    );
+    if (itemRows.length === 0) {
+      throw new Error("El ítem no existe en este pedido");
+    }
+    const item = itemRows[0];
+    if (item.service_id === null) {
+      throw new Error("Solo se puede editar la cantidad de un servicio");
+    }
+
+    const settings = await getSettings();
+    const maxDiscount = settings.maxItemDiscountAdmin;
+    const requestedDiscount = discount ?? 0;
+    if (typeof requestedDiscount !== "number" || !Number.isFinite(requestedDiscount) || requestedDiscount < 0 || requestedDiscount > maxDiscount) {
+      throw new Error(`El descuento por ítem no puede superar S/.${maxDiscount}`);
+    }
+
+    const unitPrice = Number(item.unit_price);
+    const newDiscount = Math.min(requestedDiscount, unitPrice * quantity);
+    const newSubtotal = unitPrice * quantity - newDiscount;
+    const newTotal = Number(order.total) - Number(item.subtotal) + newSubtotal;
+
+    await client.query("UPDATE order_items SET quantity = $1, discount = $2, subtotal = $3 WHERE id = $4", [quantity, newDiscount, newSubtotal, itemId]);
+
+    const { status: newStatus, separationDeadline: newDeadline } = await recomputeOrderStatusForTotal(client, orderId, newTotal, order);
+    await client.query("UPDATE orders SET total = $1, status = $2, separation_deadline = $3 WHERE id = $4", [newTotal, newStatus, newDeadline, orderId]);
+
+    const { rows: finalOrderRows } = await client.query("SELECT * FROM orders WHERE id = $1", [orderId]);
+    const { rows: finalItemRows } = await client.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [orderId]);
+    const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [orderId]);
+    await client.query("COMMIT");
+    res.json(mapOrder(finalOrderRows[0], finalItemRows, paymentRows));
+  } catch (err) {
+    await client.query("ROLLBACK");
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// Quita un servicio de un pedido (no aplica a productos). No deja vaciar el
+// pedido del todo — para eso hay que eliminarlo entero.
+app.delete("/api/orders/:orderId/items/:itemId", requireAuth, async (req, res) => {
+  const orderId = Number(req.params.orderId);
+  const itemId = Number(req.params.itemId);
+  if (!Number.isInteger(orderId) || !Number.isInteger(itemId)) {
+    return res.status(400).json({ error: "Pedido o ítem inválido" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: orderRows } = await client.query(
+      "SELECT id, total, status, charge_type, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
+      [orderId]
+    );
+    if (orderRows.length === 0) {
+      throw new Error("El pedido no existe");
+    }
+    const order = orderRows[0];
+
+    const { rows: itemRows } = await client.query(
+      "SELECT id, service_id, subtotal FROM order_items WHERE id = $1 AND order_id = $2",
+      [itemId, orderId]
+    );
+    if (itemRows.length === 0) {
+      throw new Error("El ítem no existe en este pedido");
+    }
+    const item = itemRows[0];
+    if (item.service_id === null) {
+      throw new Error("Solo se pueden quitar servicios");
+    }
+
+    const { rows: countRows } = await client.query("SELECT COUNT(*)::int AS count FROM order_items WHERE order_id = $1", [orderId]);
+    if (countRows[0].count <= 1) {
+      throw new Error("El pedido no puede quedar sin ítems");
+    }
+
+    await client.query("DELETE FROM order_items WHERE id = $1", [itemId]);
+
+    const newTotal = Number(order.total) - Number(item.subtotal);
+    const { status: newStatus, separationDeadline: newDeadline } = await recomputeOrderStatusForTotal(client, orderId, newTotal, order);
+    await client.query("UPDATE orders SET total = $1, status = $2, separation_deadline = $3 WHERE id = $4", [newTotal, newStatus, newDeadline, orderId]);
+
+    const { rows: finalOrderRows } = await client.query("SELECT * FROM orders WHERE id = $1", [orderId]);
+    const { rows: finalItemRows } = await client.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [orderId]);
+    const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [orderId]);
+    await client.query("COMMIT");
+    res.json(mapOrder(finalOrderRows[0], finalItemRows, paymentRows));
   } catch (err) {
     await client.query("ROLLBACK");
     res.status(400).json({ error: err.message });

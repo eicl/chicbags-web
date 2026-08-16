@@ -4,8 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Plus, Printer, Search, Settings, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
 import {
   AdminOrder, ChargeType, DiscountSettings, OrderItem, OrderStatus, PaymentInput, Service,
-  addOrderItem, deleteOrder, fetchOrders, fetchServices, fetchSettings, markOrderDelivered, markOrderWarehouseSeparated,
-  registerPayment, updateOrderChargeType, updateOrderItemColor, updateOrderReceipt, updateSettings, uploadImage,
+  addOrderItem, deleteOrder, deleteOrderItem, fetchOrders, fetchServices, fetchSettings, markOrderDelivered,
+  markOrderWarehouseSeparated, registerPayment, updateOrderChargeType, updateOrderItemColor, updateOrderReceipt,
+  updateOrderServiceItem, updateSettings, uploadImage,
 } from "@/lib/api";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import { productImageUrl } from "@/lib/images";
@@ -291,6 +292,98 @@ const ItemColorEditor = ({ orderId, item }: { orderId: number; item: OrderItem }
         aria-label="Cancelar"
       >
         <X className="w-3.5 h-3.5" />
+      </button>
+    </span>
+  );
+};
+
+// Deja editar la cantidad de un servicio ya agregado a un pedido, o
+// quitarlo del todo — los productos no se editan acá (ahí lo editable es
+// el color, con ItemColorEditor).
+const ServiceItemEditor = ({ orderId, item }: { orderId: number; item: OrderItem }) => {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [quantity, setQuantity] = useState(item.quantity);
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["orders"] });
+
+  const updateMutation = useMutation({
+    mutationFn: (q: number) => updateOrderServiceItem(orderId, item.id, { quantity: q, discount: item.discount }),
+    onSuccess: () => {
+      toast.success("Cantidad actualizada");
+      invalidate();
+      setEditing(false);
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo actualizar la cantidad"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteOrderItem(orderId, item.id),
+    onSuccess: () => {
+      toast.success("Servicio quitado del pedido");
+      invalidate();
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo quitar el servicio"),
+  });
+
+  const handleRemove = () => {
+    if (!confirm(`¿Quitar "${item.productName}" del pedido?`)) return;
+    deleteMutation.mutate();
+  };
+
+  if (editing) {
+    return (
+      <span className="inline-flex items-center gap-1.5 justify-end">
+        <Input
+          type="number"
+          min={1}
+          value={quantity}
+          onChange={(e) => setQuantity(e.target.valueAsNumber)}
+          className="h-7 w-14 text-xs px-1 text-right"
+        />
+        <button
+          type="button"
+          onClick={() => updateMutation.mutate(quantity)}
+          disabled={updateMutation.isPending || !Number.isInteger(quantity) || quantity <= 0}
+          className="text-primary hover:text-primary/80 disabled:opacity-50"
+          aria-label="Guardar cantidad"
+        >
+          <Check className="w-3.5 h-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setEditing(false)}
+          className="text-muted-foreground hover:text-destructive"
+          aria-label="Cancelar"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5 justify-end">
+      {item.quantity}
+      <button
+        type="button"
+        onClick={() => {
+          setQuantity(item.quantity);
+          setEditing(true);
+        }}
+        className="text-muted-foreground hover:text-primary"
+        aria-label="Editar cantidad"
+      >
+        <Pencil className="w-3 h-3" />
+      </button>
+      <button
+        type="button"
+        onClick={handleRemove}
+        disabled={deleteMutation.isPending}
+        className="text-muted-foreground hover:text-destructive"
+        aria-label="Quitar servicio"
+      >
+        <Trash2 className="w-3 h-3" />
       </button>
     </span>
   );
@@ -843,7 +936,9 @@ const AdminOrders = () => {
                                     {item.serviceId === null ? <ItemColorEditor orderId={order.id} item={item} /> : "—"}
                                   </td>
                                   <td className="py-1.5 text-right">S/.{item.unitPrice.toFixed(2)}</td>
-                                  <td className="py-1.5 text-right">{item.quantity}</td>
+                                  <td className="py-1.5 text-right">
+                                    {item.serviceId !== null ? <ServiceItemEditor orderId={order.id} item={item} /> : item.quantity}
+                                  </td>
                                   <td className="py-1.5 text-right text-muted-foreground">
                                     {item.discount > 0 ? `S/.${item.discount.toFixed(2)}` : "—"}
                                   </td>
