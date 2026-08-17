@@ -26,6 +26,9 @@ const matchesCustomer = (customer: Customer, query: string) => {
 
 const DOCUMENT_TYPES = ["DNI", "Carné de Extranjería", "Pasaporte", "RUC"];
 const DELIVERY_TYPES: DeliveryType[] = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Olva", "Marvisur"];
+// Los motorizados propios solo reparten en la provincia de Lima; en el
+// resto del país solo hay envío por agencia (Shalom/Olva/Marvisur).
+const LIMA_ONLY_DELIVERY_TYPES: DeliveryType[] = ["Motorizado Express", "Motorizado Delivery"];
 const DELIVERY_MODE_REQUIRED: DeliveryType[] = ["Shalom", "Olva"];
 const DELIVERY_MODES: DeliveryMode[] = ["Terrestre", "Aéreo"];
 // Solo Shalom tiene sedes cargadas por ahora.
@@ -203,6 +206,9 @@ const AdminCustomers = () => {
   };
 
   const provinces = form.department ? PERU_LOCATIONS[form.department] ?? [] : [];
+  const availableDeliveryTypes = DELIVERY_TYPES.filter(
+    (t) => form.province === "Lima" || !LIMA_ONLY_DELIVERY_TYPES.includes(t) || t === form.deliveryType
+  );
 
   const { data: districts = [] } = useQuery({
     queryKey: ["districts", form.province],
@@ -341,7 +347,17 @@ const AdminCustomers = () => {
               <label className={errorLabelClass(hasError("province"))}>Provincia *</label>
               <select
                 value={form.province}
-                onChange={(e) => setForm({ ...form, province: e.target.value, district: "" })}
+                onChange={(e) => {
+                  const province = e.target.value;
+                  const resetDeliveryType = province !== "Lima" && LIMA_ONLY_DELIVERY_TYPES.includes(form.deliveryType);
+                  setForm({
+                    ...form,
+                    province,
+                    district: "",
+                    deliveryType: resetDeliveryType ? "Shalom" : form.deliveryType,
+                    deliveryMode: resetDeliveryType ? "Terrestre" : form.deliveryMode,
+                  });
+                }}
                 disabled={!form.department}
                 className={cn(
                   "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
@@ -396,10 +412,16 @@ const AdminCustomers = () => {
                 }}
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {DELIVERY_TYPES.map((t) => (
+                {availableDeliveryTypes.map((t) => (
                   <option key={t} value={t}>{t}</option>
                 ))}
               </select>
+              {form.province && form.province !== "Lima" && (
+                <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+                  <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  Fuera de la provincia de Lima solo hay envío por agencia (Shalom, Olva o Marvisur).
+                </p>
+              )}
               {form.deliveryType === "Motorizado Express" && (
                 <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
                   <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />

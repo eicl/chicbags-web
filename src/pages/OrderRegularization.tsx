@@ -24,6 +24,9 @@ const PAYMENT_SOURCES = ["Yape", "Plin", "Otro"];
 
 const DOCUMENT_TYPES = ["DNI", "Carné de Extranjería", "Pasaporte", "RUC"];
 const DELIVERY_TYPES: DeliveryType[] = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Olva", "Marvisur"];
+// Los motorizados propios solo reparten en la provincia de Lima; en el
+// resto del país solo hay envío por agencia (Shalom/Olva/Marvisur).
+const LIMA_ONLY_DELIVERY_TYPES: DeliveryType[] = ["Motorizado Express", "Motorizado Delivery"];
 const DELIVERY_MODE_REQUIRED: DeliveryType[] = ["Shalom", "Olva"];
 const DELIVERY_MODES: DeliveryMode[] = ["Terrestre", "Aéreo"];
 const AGENCY_REQUIRED: DeliveryType[] = ["Shalom"];
@@ -147,6 +150,9 @@ const OrderRegularization = () => {
   });
 
   const provinces = customerForm.department ? PERU_LOCATIONS[customerForm.department] ?? [] : [];
+  const availableDeliveryTypes = DELIVERY_TYPES.filter(
+    (t) => customerForm.province === "Lima" || !LIMA_ONLY_DELIVERY_TYPES.includes(t) || t === customerForm.deliveryType
+  );
   const { data: districts = [] } = useQuery({
     queryKey: ["districts", customerForm.province],
     queryFn: () => fetchDistricts(customerForm.province),
@@ -579,7 +585,17 @@ const OrderRegularization = () => {
                   <label className="text-sm text-muted-foreground mb-1 block">Provincia</label>
                   <select
                     value={customerForm.province}
-                    onChange={(e) => setCustomerForm({ ...customerForm, province: e.target.value, district: "" })}
+                    onChange={(e) => {
+                      const province = e.target.value;
+                      const resetDeliveryType = province !== "Lima" && LIMA_ONLY_DELIVERY_TYPES.includes(customerForm.deliveryType);
+                      setCustomerForm({
+                        ...customerForm,
+                        province,
+                        district: "",
+                        deliveryType: resetDeliveryType ? "Shalom" : customerForm.deliveryType,
+                        deliveryMode: resetDeliveryType ? "Terrestre" : customerForm.deliveryMode,
+                      });
+                    }}
                     disabled={!customerForm.department}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -623,10 +639,16 @@ const OrderRegularization = () => {
                     }}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {DELIVERY_TYPES.map((t) => (
+                    {availableDeliveryTypes.map((t) => (
                       <option key={t} value={t}>{t}</option>
                     ))}
                   </select>
+                  {customerForm.province && customerForm.province !== "Lima" && (
+                    <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+                      <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      Fuera de la provincia de Lima solo hay envío por agencia (Shalom, Olva o Marvisur).
+                    </p>
+                  )}
                 </div>
                 {needsAddress && (
                   <div className="md:col-span-2">
