@@ -1291,6 +1291,21 @@ app.get("/api/pitaya-reports/:id/download", requireAuth, async (req, res) => {
   res.send(Buffer.from(buffer));
 });
 
+// Elimina una generación del reporte Pitaya. Sus filas de shipments se
+// borran solas por el ON DELETE CASCADE de su FK a report_generations —
+// eso libera a esos pedidos para que vuelvan a salir en la próxima
+// generación (la consulta de /pitaya-reports los excluye mientras sigan en
+// shipments). No toca los pedidos en sí.
+app.delete("/api/pitaya-reports/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: "Reporte inválido" });
+  }
+  const { rowCount } = await pool.query("DELETE FROM report_generations WHERE id = $1", [id]);
+  if (rowCount === 0) return res.status(404).json({ error: "Reporte no encontrado" });
+  res.status(204).end();
+});
+
 // Elimina un pedido desde el panel admin. Si es un pedido normal (no una
 // Regularización, que nunca descontó stock), devuelve el stock de cada
 // ítem a su producto y color antes de borrar — si el producto o el color

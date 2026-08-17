@@ -706,3 +706,8 @@ export const downloadPitayaReportById = (id: number): Promise<void> =>
   fetch(`${API_URL}/pitaya-reports/${id}/download`, { credentials: "include" }).then((res) =>
     downloadFile(res, "Reporte Chic Bags.xlsx")
   );
+
+// Elimina una generación del reporte Pitaya. Los pedidos que tenía vuelven
+// a quedar disponibles para la próxima generación.
+export const deletePitayaReport = (id: number): Promise<void> =>
+  fetch(`${API_URL}/pitaya-reports/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));

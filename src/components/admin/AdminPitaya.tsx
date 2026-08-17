@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FileSpreadsheet } from "lucide-react";
+import { Download, FileSpreadsheet, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { downloadPitayaReportById, fetchPitayaReports, generatePitayaReport } from "@/lib/api";
+import { deletePitayaReport, downloadPitayaReportById, fetchPitayaReports, generatePitayaReport } from "@/lib/api";
 
 const formatDateTime = (iso: string) =>
   new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
@@ -25,6 +25,20 @@ const AdminPitaya = () => {
     mutationFn: downloadPitayaReportById,
     onError,
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: deletePitayaReport,
+    onSuccess: () => {
+      toast.success("Reporte eliminado");
+      queryClient.invalidateQueries({ queryKey: ["pitaya-reports"] });
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo eliminar el reporte"),
+  });
+
+  const handleDelete = (id: number, fileName: string) => {
+    if (!confirm(`¿Eliminar "${fileName}"? Sus pedidos volverán a salir en la próxima generación.`)) return;
+    deleteMutation.mutate(id);
+  };
 
   return (
     <div className="max-w-2xl">
@@ -56,15 +70,26 @@ const AdminPitaya = () => {
                   <td className="py-3 px-4 text-muted-foreground text-sm">{formatDateTime(report.createdAt)}</td>
                   <td className="py-3 px-4 text-muted-foreground text-sm">{report.rowCount}</td>
                   <td className="py-3 px-4 text-right">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => downloadMutation.mutate(report.id)}
-                      disabled={downloadMutation.isPending}
-                      className="gap-2"
-                    >
-                      <Download className="w-3.5 h-3.5" /> Descargar
-                    </Button>
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => downloadMutation.mutate(report.id)}
+                        disabled={downloadMutation.isPending}
+                        className="gap-2"
+                      >
+                        <Download className="w-3.5 h-3.5" /> Descargar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDelete(report.id, report.fileName)}
+                        disabled={deleteMutation.isPending}
+                        className="gap-2 text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
