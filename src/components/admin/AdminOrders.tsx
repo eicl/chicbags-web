@@ -239,11 +239,11 @@ const buildPendingShipmentReportHtml = (orders: AdminOrder[]) => {
         <style>
           @page { size: A6 portrait; margin: 6mm; }
           ${PRINT_BASE_STYLES}
-          h1 { font-size: 14px; margin: 0 0 8px; text-align: center; }
-          table { width: 100%; border-collapse: collapse; font-size: 11px; }
+          h1 { font-size: 16px; margin: 0 0 8px; text-align: center; }
+          table { width: 100%; border-collapse: collapse; font-size: 13px; }
           thead { display: table-header-group; }
           th, td { padding: 3px 4px; border-bottom: 1px solid #ddd; text-align: left; }
-          th { font-size: 9px; text-transform: uppercase; letter-spacing: 0.03em; color: #555; }
+          th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: #555; }
           tr { page-break-inside: avoid; }
         </style>
       </head>
