@@ -1189,7 +1189,12 @@ app.post("/api/pitaya-reports", requireAuth, async (req, res) => {
         o.id, o.total, o.charge_type, o.created_at,
         c.first_name, c.paternal_surname, c.maternal_surname, c.mobile, c.address, c.district,
         c.location_lat, c.location_lng,
-        COALESCE(payments.payments, '[]') AS payments
+        COALESCE(payments.payments, '[]') AS payments,
+        EXISTS (
+          SELECT 1 FROM order_items oi
+          JOIN services sv ON sv.id = oi.service_id
+          WHERE oi.order_id = o.id AND sv.name ILIKE '%pitaya%'
+        ) AS has_pitaya_service
       FROM orders o
       JOIN customers c ON c.id = o.customer_id
       LEFT JOIN LATERAL (
@@ -1215,7 +1220,13 @@ app.post("/api/pitaya-reports", requireAuth, async (req, res) => {
       const paid = row.payments.reduce((sum, p) => sum + Number(p.amount), 0);
       const remaining = Number(row.total) - paid;
       const pendingCod = row.charge_type === "Contraentrega" && remaining > 0;
-      const monto = pendingCod ? remaining : Number(row.total);
+      // Si ya no hay nada que cobrarle al cliente pero el pedido lleva un
+      // servicio de Pitaya (la tarifa del motorizado, que Pitaya cobra
+      // aparte), el monto a reportar es 0 y la situación queda pendiente —
+      // no se le pide nada de la mercadería, pero sí falta su tarifa.
+      const nothingToCharge = remaining <= 0;
+      const monto = nothingToCharge && row.has_pitaya_service ? 0 : pendingCod ? remaining : Number(row.total);
+      const situacionPago = nothingToCharge && row.has_pitaya_service ? "PENDIENTE" : "YAPE";
       const nombre = [row.first_name, row.paternal_surname, row.maternal_surname].filter(Boolean).join(" ");
       const maps =
         row.location_lat != null && row.location_lng != null
@@ -1224,7 +1235,7 @@ app.post("/api/pitaya-reports", requireAuth, async (req, res) => {
       const { rows: inserted } = await client.query(
         `INSERT INTO shipments (order_id, report_id, fecha_compra, monto, situacion_pago, nombre, celular, producto, fecha_entrega, direccion, distrito, maps)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
-        [row.id, report.id, formatPeruDate(row.created_at), monto, "YAPE", nombre, row.mobile, "CARTERA", todayStr, row.address, row.district, maps]
+        [row.id, report.id, formatPeruDate(row.created_at), monto, situacionPago, nombre, row.mobile, "CARTERA", todayStr, row.address, row.district, maps]
       );
       shipmentRows.push(inserted[0]);
     }
