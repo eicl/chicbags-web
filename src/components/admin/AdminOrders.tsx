@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Plus, Printer, Search, Settings, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
 import {
-  AdminOrder, ChargeType, DiscountSettings, OrderItem, OrderStatus, PaymentInput, Service,
+  AdminOrder, ChargeType, DeliveryType, DiscountSettings, OrderItem, OrderStatus, PaymentInput, Service,
   addOrderItem, deleteOrder, deleteOrderItem, fetchOrders, fetchServices, fetchSettings, markOrderDelivered,
   markOrderWarehouseSeparated, registerPayment, updateOrderChargeType, updateOrderItemColor, updateOrderItemDiscount,
   updateOrderReceipt, updateOrderServiceItem, updateSettings, uploadImage,
@@ -91,6 +91,27 @@ const COURIER_DELIVERY_TYPES = ["Shalom", "Olva", "Marvisur"];
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+// Ícono de moto para la etiqueta de envío de los "motorizado": rojo para
+// Motorizado Delivery (Pitaya), verde para Motorizado Express — así se
+// distingue de un vistazo qué motorizado le toca a cada paquete apilado.
+const MOTO_ICON_COLOR: Partial<Record<DeliveryType, string>> = {
+  "Motorizado Delivery": "#dc2626",
+  "Motorizado Express": "#16a34a",
+};
+
+const buildMotoIconSvg = (color: string) => `
+  <svg class="moto-icon" viewBox="0 0 120 60" width="40" height="20" xmlns="http://www.w3.org/2000/svg"
+       fill="none" stroke="${color}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="20" cy="45" r="13" />
+    <circle cx="95" cy="45" r="13" />
+    <path d="M20 45 L50 45 L68 20 L88 20" />
+    <path d="M88 20 L95 45" />
+    <path d="M88 20 L98 10" />
+    <path d="M88 20 L80 10" />
+    <rect x="40" y="35" width="18" height="10" rx="2" fill="${color}" stroke="none" />
+  </svg>
+`;
+
 // Reglas comunes a los dos reportes; el tamaño de página va aparte porque
 // cada uno usa uno distinto (A6 horizontal para el de envío, A5 vertical
 // para el de separación).
@@ -111,6 +132,7 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
   const paid = order.payments.reduce((sum, p) => sum + p.amount, 0);
   const remaining = order.total - paid;
   const showCobrar = order.chargeType === "Contraentrega" && remaining > 0;
+  const motoColor = MOTO_ICON_COLOR[order.customerDeliveryType];
   const rows: [string, string][] = [
     ...(showMode && order.customerDeliveryMode ? ([["Vía", order.customerDeliveryMode]] as [string, string][]) : []),
     ["Delivery", order.customerAgency ? `${order.customerDeliveryType} - ${order.customerAgency}` : order.customerDeliveryType],
@@ -141,6 +163,7 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
           td:first-child { font-weight: 700; width: 38%; color: #444; }
           .cobrar { font-size: 18px; font-weight: 800; text-align: center; margin-top: 12px; }
           .yape-qr { position: absolute; right: 0; bottom: 0; width: 24mm; height: 24mm; object-fit: contain; }
+          .moto-icon { position: absolute; left: 0; bottom: 2mm; }
         </style>
       </head>
       <body>
@@ -151,6 +174,7 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
         </table>
         ${showCobrar ? `<div class="cobrar">Cobrar: S/.${remaining.toFixed(2)}</div>` : ""}
         ${showCobrar ? `<img class="yape-qr" src="${window.location.origin}/yapeChicBags.jpg" alt="QR Yape ChicBags" />` : ""}
+        ${motoColor ? buildMotoIconSvg(motoColor) : ""}
       </body>
     </html>
   `;
