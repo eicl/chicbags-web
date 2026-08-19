@@ -9,13 +9,18 @@ import Header from "@/components/Header";
 import { useProducts } from "@/context/ProductContext";
 import { useAuth } from "@/context/AuthContext";
 import { Product, ProductColor } from "@/context/CartContext";
-import { lookupCustomer, registerOrder, uploadPaymentProof, fetchSellers, fetchSettings, fetchServices, Customer, Order, Service } from "@/lib/api";
+import { lookupCustomer, registerOrder, uploadPaymentProof, fetchSellers, fetchSettings, fetchServices, ChargeType, Customer, Order, Service } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import ProductOrderPicker from "@/components/ProductOrderPicker";
 import ServiceOrderPicker from "@/components/ServiceOrderPicker";
 
 const PAYMENT_SOURCES = ["Yape", "Plin", "Otro"];
+const CHARGE_TYPES: ChargeType[] = ["Normal", "Contraentrega"];
+// El tipo de cobro solo se puede elegir acá para clientes de la provincia
+// de Lima con delivery Shalom o Motorizado Delivery — el resto se registra
+// siempre como "Normal".
+const CHARGE_TYPE_ELIGIBLE_DELIVERY_TYPES = ["Shalom", "Motorizado Delivery"];
 
 interface OrderLine {
   product: Product;
@@ -100,6 +105,7 @@ const OrderRegister = () => {
   const [documentNumber, setDocumentNumber] = useState("");
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [sellerId, setSellerId] = useState("");
+  const [chargeType, setChargeType] = useState<ChargeType>("Normal");
   const [lines, setLines] = useState<OrderLine[]>([]);
   const [serviceLines, setServiceLines] = useState<ServiceLine[]>([]);
   const [order, setOrder] = useState<Order | null>(null);
@@ -175,6 +181,7 @@ const OrderRegister = () => {
     setCustomer(null);
     setLines([]);
     setServiceLines([]);
+    setChargeType("Normal");
     setCode("");
     setDocumentNumber("");
   };
@@ -249,6 +256,10 @@ const OrderRegister = () => {
     lines.reduce((sum, l) => sum + l.product.price * l.quantity - l.discount, 0) +
     serviceLines.reduce((sum, l) => sum + l.service.price * l.quantity - l.discount, 0);
 
+  const canPickChargeType = Boolean(
+    customer && customer.province === "Lima" && CHARGE_TYPE_ELIGIBLE_DELIVERY_TYPES.includes(customer.deliveryType)
+  );
+
   // El pago es opcional: si no se llenó ningún campo del borrador, no hay
   // nada pendiente de agregar. Si se llenó alguno, todos los demás pasan a
   // ser obligatorios para poder agregarlo a la lista — no tendría sentido
@@ -309,6 +320,7 @@ const OrderRegister = () => {
     orderMutation.mutate({
       customerId: customer.id,
       sellerId: Number(sellerId),
+      chargeType: canPickChargeType ? chargeType : "Normal",
       items: [
         ...lines.map((l) => ({ productId: l.product.id, colorName: l.color.name, quantity: l.quantity, discount: l.discount })),
         ...serviceLines.map((l) => ({ serviceId: l.service.id, quantity: l.quantity, discount: l.discount })),
@@ -483,6 +495,24 @@ const OrderRegister = () => {
                 </div>
               )}
             </div>
+
+            {canPickChargeType && (
+              <div className="border border-border rounded-lg p-6 mb-6">
+                <h2 className="text-lg font-medium mb-1" style={{ fontFamily: "var(--font-display)" }}>Tipo de cobro</h2>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Contraentrega deja registrar el pedido con saldo pendiente — el motorizado cobra el resto al entregar.
+                </p>
+                <select
+                  value={chargeType}
+                  onChange={(e) => setChargeType(e.target.value as ChargeType)}
+                  className="flex h-10 w-56 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  {CHARGE_TYPES.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div className="border border-border rounded-lg p-6 mb-6">
               <h2 className="text-lg font-medium mb-4" style={{ fontFamily: "var(--font-display)" }}>Agregar productos</h2>

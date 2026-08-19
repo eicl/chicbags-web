@@ -1499,7 +1499,7 @@ app.put("/api/orders/:orderId/items/:itemId/discount", requireAuth, async (req, 
 // (opcional) se carga al mismo tiempo que los productos y queda enlazado
 // al pedido dentro de la misma transacción, sin un paso aparte.
 app.post("/api/orders/register", async (req, res) => {
-  const { customerId, sellerId, items, payments } = req.body;
+  const { customerId, sellerId, items, payments, chargeType } = req.body;
   if (!Number.isInteger(customerId)) {
     return res.status(400).json({ error: "Cliente inválido" });
   }
@@ -1509,6 +1509,10 @@ app.post("/api/orders/register", async (req, res) => {
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "El pedido no tiene ítems" });
   }
+  if (chargeType !== undefined && !["Normal", "Contraentrega"].includes(chargeType)) {
+    return res.status(400).json({ error: "Tipo de cobro inválido" });
+  }
+  const resolvedChargeType = chargeType === "Contraentrega" ? "Contraentrega" : "Normal";
   if (payments !== undefined) {
     if (!Array.isArray(payments)) {
       return res.status(400).json({ error: "Los pagos son inválidos" });
@@ -1541,10 +1545,11 @@ app.post("/api/orders/register", async (req, res) => {
   try {
     await client.query("BEGIN");
 
-    const { rows: customerRows } = await client.query("SELECT id FROM customers WHERE id = $1", [customerId]);
+    const { rows: customerRows } = await client.query("SELECT id, delivery_type FROM customers WHERE id = $1", [customerId]);
     if (customerRows.length === 0) {
       throw new Error("El cliente no existe");
     }
+    const customer = customerRows[0];
 
     const { rows: sellerRows } = await client.query("SELECT id, username FROM users WHERE id = $1 AND role = 'Vendedor'", [sellerId]);
     if (sellerRows.length === 0) {
@@ -1621,8 +1626,8 @@ app.post("/api/orders/register", async (req, res) => {
     }
 
     const { rows: orderRows } = await client.query(
-      "INSERT INTO orders (customer_id, seller_id, total, type) VALUES ($1, $2, $3, 'Pedido') RETURNING *",
-      [customerId, sellerId, total]
+      "INSERT INTO orders (customer_id, seller_id, total, type, charge_type) VALUES ($1, $2, $3, 'Pedido', $4) RETURNING *",
+      [customerId, sellerId, total, resolvedChargeType]
     );
     const order = orderRows[0];
 
@@ -1642,6 +1647,15 @@ app.post("/api/orders/register", async (req, res) => {
         const result = await applyPayment(client, order.id, total, deadline, { ...p, registeredBy: seller.username });
         deadline = result.separationDeadline;
       }
+    }
+    // Contraentrega en un delivery elegible salta directo a "Pendiente de
+    // envío" aunque el pago (si hubo) no cubra el total — mismo bypass que
+    // el PUT de tipo de cobro, aplicado también al registrar el pedido.
+    if (resolvedChargeType === "Contraentrega" && CHARGE_TYPE_DELIVERY_TYPES.includes(customer.delivery_type)) {
+      await client.query(
+        "UPDATE orders SET status = 'Pendiente de envío' WHERE id = $1 AND status IN ('Registrado', 'Separación', 'Separado en almacén')",
+        [order.id]
+      );
     }
     const { rows: finalOrderRows } = await client.query("SELECT * FROM orders WHERE id = $1", [order.id]);
     const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [order.id]);
