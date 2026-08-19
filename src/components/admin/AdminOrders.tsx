@@ -100,7 +100,7 @@ const MOTO_ICON_COLOR: Partial<Record<DeliveryType, string>> = {
 };
 
 const buildMotoIconSvg = (color: string) => `
-  <svg class="moto-icon" viewBox="0 0 120 60" width="40" height="20" xmlns="http://www.w3.org/2000/svg"
+  <svg class="moto-icon" viewBox="0 0 120 60" width="80" height="40" xmlns="http://www.w3.org/2000/svg"
        fill="none" stroke="${color}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="20" cy="45" r="13" />
     <circle cx="95" cy="45" r="13" />
