@@ -2131,8 +2131,13 @@ app.put("/api/orders/:id/charge-type", requireAuth, async (req, res) => {
       throw new Error("Pedido no encontrado");
     }
     const order = orderRows[0];
+    // Cualquier estado previo al envío (recién registrado, en separación o
+    // ya separado en almacén, todavía sin pagar del todo) salta directo a
+    // "Pendiente de envío" al elegir Contraentrega — no hace falta que haya
+    // pasado primero por "Separación".
+    const preShippingStatuses = ["Registrado", "Separación", "Separado en almacén"];
     const newStatus =
-      chargeType === "Contraentrega" && CHARGE_TYPE_DELIVERY_TYPES.includes(order.delivery_type) && order.status === "Separación"
+      chargeType === "Contraentrega" && CHARGE_TYPE_DELIVERY_TYPES.includes(order.delivery_type) && preShippingStatuses.includes(order.status)
         ? "Pendiente de envío"
         : order.status;
     const { rows } = await client.query(
