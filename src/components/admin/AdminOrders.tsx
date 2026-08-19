@@ -109,19 +109,22 @@ const PRINT_BASE_STYLES = `
 
 // Reporte para pedidos "Pendiente de envío"/"Entregado a delivery" (ya
 // pagados): datos de entrega del cliente, listos para pegar en el paquete.
-// Orden fijo de filas: Vía (si aplica, Terrestre/Aéreo), Delivery (tipo +
-// agencia), Ubicación/Documento (o, si es "motorizado", Distrito +
-// Dirección en su lugar y sin Documento), Número de cliente, Nombre,
-// Celular.
+// Vía (si aplica, Terrestre/Aéreo) va en la esquina superior izquierda y el
+// número de pedido en la superior derecha; el resto son filas fijas:
+// Delivery (tipo + agencia), Ubicación/Documento (o, si es "motorizado",
+// Distrito + Dirección en su lugar y sin Documento), Nombre, Celular.
 const buildShippingLabelHtml = (order: AdminOrder) => {
   const showMode = DELIVERY_MODE_TYPES.includes(order.customerDeliveryType);
   const isMotorized = ADDRESS_TYPES.includes(order.customerDeliveryType);
   const paid = order.payments.reduce((sum, p) => sum + p.amount, 0);
   const remaining = order.total - paid;
   const showCobrar = order.chargeType === "Contraentrega" && remaining > 0;
+  // El QR de Yape es para que pague el mismo motorizado (Motorizado
+  // Delivery); las agencias/courier cobran en efectivo al entregar, así que
+  // no tiene sentido mostrárselo a ellas.
+  const showYapeQr = showCobrar && !COURIER_DELIVERY_TYPES.includes(order.customerDeliveryType);
   const motoIconSrc = MOTO_ICON_SRC[order.customerDeliveryType];
   const rows: [string, string][] = [
-    ...(showMode && order.customerDeliveryMode ? ([["Vía", order.customerDeliveryMode]] as [string, string][]) : []),
     ["Delivery", order.customerAgency ? `${order.customerDeliveryType} - ${order.customerAgency}` : order.customerDeliveryType],
     ...(isMotorized
       ? ([
@@ -129,7 +132,6 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
           ["Dirección", order.customerAddress],
         ] as [string, string][])
       : ([["Ubicación", `${order.customerDepartment} - ${order.customerProvince} - ${order.customerDistrict}`]] as [string, string][])),
-    ["Número de cliente", `#${order.customerId}`],
     ...(isMotorized ? [] : ([["Documento", `${order.customerDocumentType} - ${order.customerDocumentNumber}`]] as [string, string][])),
     ["Nombre", order.customerName],
     ["Celular", order.customerMobile],
@@ -148,32 +150,37 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
           ${PRINT_BASE_STYLES}
           body { position: relative; min-height: 89mm; }
           .logo { display: block; margin: 0 auto 6px; width: 20mm; height: 20mm; border-radius: 9999px; object-fit: cover; }
-          h1 { font-size: 20px; margin: 0 0 10px; text-align: center; }
+          .via-corner { position: absolute; top: 0; left: 0; font-size: 12px; font-weight: 700; color: #444; }
+          .order-corner { position: absolute; top: 0; right: 0; font-size: 16px; font-weight: 800; }
           table { width: 100%; border-collapse: collapse; font-size: 17px; }
-          td { padding: 5px 4px; border-bottom: 1px solid #ddd; vertical-align: top; }
+          td { padding: 4px 4px; border-bottom: 1px solid #ddd; vertical-align: top; }
           td:first-child { font-weight: 700; width: 38%; color: #444; }
-          .cobrar { font-size: 18px; font-weight: 800; text-align: center; margin-top: 12px; }
-          .items-list { font-size: 12px; color: #333; margin-top: 8px; padding-bottom: 22mm; }
-          .items-list div { margin: 2px 0; }
+          .cobrar { font-size: 18px; font-weight: 800; text-align: center; margin-top: 8px; }
+          .items-list { font-size: 11px; line-height: 1.3; color: #333; margin-top: 6px; }
+          .items-list div { margin: 1px 0; break-inside: avoid; }
+          .items-list.two-col { column-count: 2; column-gap: 8px; }
           .yape-qr { position: absolute; right: 0; bottom: 0; width: 24mm; height: 24mm; object-fit: contain; }
           .moto-icon { position: absolute; left: 0; bottom: 2mm; width: 20mm; height: 20mm; object-fit: contain; }
         </style>
       </head>
       <body>
+        ${showMode && order.customerDeliveryMode ? `<div class="via-corner">Vía: ${escapeHtml(order.customerDeliveryMode)}</div>` : ""}
+        <div class="order-corner">Pedido #${order.id}</div>
         <img class="logo" src="${window.location.origin}/chicBags.jpeg" alt="ChicBags" />
-        <h1>Pedido #${order.id}</h1>
         <table>
           ${rows.map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(value)}</td></tr>`).join("")}
         </table>
         ${showCobrar ? `<div class="cobrar">Cobrar: S/.${remaining.toFixed(2)}</div>` : ""}
         ${
           productItems.length > 0
-            ? `<div class="items-list">${productItems
+            ? `<div class="items-list${productItems.length > 2 ? " two-col" : ""}" style="margin-left: ${
+                motoIconSrc ? "20mm" : "4mm"
+              }; margin-right: ${showYapeQr ? "24mm" : "4mm"};">${productItems
                 .map((item) => `<div>${escapeHtml(item.productCode || "—")} · x${item.quantity} · ${escapeHtml(item.colorName || "—")}</div>`)
                 .join("")}</div>`
             : ""
         }
-        ${showCobrar ? `<img class="yape-qr" src="${window.location.origin}/yapeChicBags.jpg" alt="QR Yape ChicBags" />` : ""}
+        ${showYapeQr ? `<img class="yape-qr" src="${window.location.origin}/yapeChicBags.jpg" alt="QR Yape ChicBags" />` : ""}
         ${motoIconSrc ? `<img class="moto-icon" src="${window.location.origin}${motoIconSrc}" alt="Moto" />` : ""}
       </body>
     </html>
