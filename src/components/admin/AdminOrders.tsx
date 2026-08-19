@@ -143,9 +143,9 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
           @page { size: A6 landscape; margin: 8mm; }
           ${PRINT_BASE_STYLES}
           body { position: relative; min-height: 89mm; }
-          .logo { display: block; margin: 0 auto 6px; width: 47px; height: 47px; border-radius: 9999px; object-fit: cover; }
-          h1 { font-size: 18px; margin: 0 0 10px; text-align: center; }
-          table { width: 100%; border-collapse: collapse; font-size: 15px; }
+          .logo { display: block; margin: 0 auto 6px; width: 20mm; height: 20mm; border-radius: 9999px; object-fit: cover; }
+          h1 { font-size: 20px; margin: 0 0 10px; text-align: center; }
+          table { width: 100%; border-collapse: collapse; font-size: 17px; }
           td { padding: 5px 4px; border-bottom: 1px solid #ddd; vertical-align: top; }
           td:first-child { font-weight: 700; width: 38%; color: #444; }
           .cobrar { font-size: 18px; font-weight: 800; text-align: center; margin-top: 12px; }
