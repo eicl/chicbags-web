@@ -134,6 +134,10 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
     ["Nombre", order.customerName],
     ["Celular", order.customerMobile],
   ];
+  // Solo productos (sin servicios, que no tienen color) — código, cantidad
+  // y color de cada ítem, para armar el paquete sin tener que abrir el
+  // pedido en el panel.
+  const productItems = order.items.filter((item) => item.serviceId === null);
   return `
     <html>
       <head>
@@ -149,6 +153,8 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
           td { padding: 5px 4px; border-bottom: 1px solid #ddd; vertical-align: top; }
           td:first-child { font-weight: 700; width: 38%; color: #444; }
           .cobrar { font-size: 18px; font-weight: 800; text-align: center; margin-top: 12px; }
+          .items-list { font-size: 12px; color: #333; margin-top: 8px; padding-bottom: 22mm; }
+          .items-list div { margin: 2px 0; }
           .yape-qr { position: absolute; right: 0; bottom: 0; width: 24mm; height: 24mm; object-fit: contain; }
           .moto-icon { position: absolute; left: 0; bottom: 2mm; width: 20mm; height: 20mm; object-fit: contain; }
         </style>
@@ -160,6 +166,13 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
           ${rows.map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(value)}</td></tr>`).join("")}
         </table>
         ${showCobrar ? `<div class="cobrar">Cobrar: S/.${remaining.toFixed(2)}</div>` : ""}
+        ${
+          productItems.length > 0
+            ? `<div class="items-list">${productItems
+                .map((item) => `<div>${escapeHtml(item.productCode || "—")} · x${item.quantity} · ${escapeHtml(item.colorName || "—")}</div>`)
+                .join("")}</div>`
+            : ""
+        }
         ${showCobrar ? `<img class="yape-qr" src="${window.location.origin}/yapeChicBags.jpg" alt="QR Yape ChicBags" />` : ""}
         ${motoIconSrc ? `<img class="moto-icon" src="${window.location.origin}${motoIconSrc}" alt="Moto" />` : ""}
       </body>
