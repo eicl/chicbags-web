@@ -64,7 +64,6 @@ const REQUIRED_FIELD_LABELS: Record<string, string> = {
   deliveryMode: "Vía de envío (terrestre/aéreo)",
   agency: "Sede",
   address: "Dirección",
-  location: "Ubicación actual",
 };
 
 const CustomerRegister = () => {
@@ -141,7 +140,6 @@ const CustomerRegister = () => {
     if (needsDeliveryMode && !form.deliveryMode) missing.push("deliveryMode");
     if (needsAgency && !form.agency.trim()) missing.push("agency");
     if (needsAddress && !form.address.trim()) missing.push("address");
-    if (needsAddress && (form.locationLat == null || form.locationLng == null)) missing.push("location");
     return missing;
   };
 
@@ -393,7 +391,7 @@ const CustomerRegister = () => {
             )}
             {needsAddress && (
               <div className="md:col-span-2">
-                <label className={errorLabelClass(hasError("location"))}>Ubicación actual *</label>
+                <label className="text-sm text-muted-foreground mb-1 block">Ubicación actual (opcional)</label>
                 <div className="flex flex-wrap items-center gap-3">
                   <Button type="button" variant="outline" onClick={handleShareLocation} disabled={locating} className="gap-2">
                     <MapPin className="w-4 h-4" />
@@ -414,9 +412,6 @@ const CustomerRegister = () => {
                     </a>
                   )}
                 </div>
-                {hasError("location") && (
-                  <p className="mt-1 text-xs text-destructive">Comparte tu ubicación actual para continuar.</p>
-                )}
               </div>
             )}
             {needsDeliveryMode && (

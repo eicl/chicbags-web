@@ -669,12 +669,6 @@ app.post("/api/customers", requireAuth, async (req, res) => {
 app.post("/api/customers/register", async (req, res) => {
   const error = validateCustomer(req.body);
   if (error) return res.status(400).json({ error });
-  // Los tipos de delivery "motorizado" reparten a domicilio, así que además
-  // de la dirección exigen que el cliente comparta su ubicación GPS actual
-  // (solo en este link público; el panel admin no lo pide al editar).
-  if (ADDRESS_REQUIRED.includes(req.body.deliveryType) && !(isFiniteNumber(req.body.locationLat) && isFiniteNumber(req.body.locationLng))) {
-    return res.status(400).json({ error: "Comparte tu ubicación actual para continuar" });
-  }
   try {
     const row = await insertCustomer(req.body);
     res.status(201).json(mapCustomer(row));
