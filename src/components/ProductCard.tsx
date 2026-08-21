@@ -2,19 +2,31 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Plus } from "lucide-react";
-import { Product, useCart } from "@/context/CartContext";
+import { Product, ProductColor, useCart } from "@/context/CartContext";
 import { productImageUrl } from "@/lib/images";
 import { CART_ENABLED } from "@/lib/config";
 import { sortColors } from "@/lib/colors";
 
+// Si el primer color (el que se mostraría por defecto) está agotado, elige
+// al azar la foto de otro color que sí tenga stock, para no mostrar en el
+// catálogo principal un color que no se puede comprar. Si todos están
+// agotados, no hay de otra: se queda en el primero.
+const pickDefaultColorIndex = (colors: ProductColor[]) => {
+  if (colors.length === 0 || colors[0].stock > 0) return 0;
+  const inStock = colors.map((_, index) => index).filter((index) => colors[index].stock > 0);
+  if (inStock.length === 0) return 0;
+  return inStock[Math.floor(Math.random() * inStock.length)];
+};
+
 const ProductCard = ({ product, isNew = false }: { product: Product; isNew?: boolean }) => {
   const { addToCart } = useCart();
-  const [selectedColor, setSelectedColor] = useState(0);
+  const colors = sortColors(product.colors ?? []);
+  const [selectedColor, setSelectedColor] = useState(() => pickDefaultColorIndex(colors));
   const [hoveredColor, setHoveredColor] = useState<number | null>(null);
 
-  const colors = sortColors(product.colors ?? []);
   const activeColor = hoveredColor ?? selectedColor;
   const displayImage = colors[activeColor]?.image ?? product.image;
+  const activeStock = colors[activeColor]?.stock;
 
   return (
     <motion.div
@@ -29,6 +41,15 @@ const ProductCard = ({ product, isNew = false }: { product: Product; isNew?: boo
           {isNew && (
             <span className="absolute top-3 left-3 z-10 bg-primary text-primary-foreground text-[10px] font-medium tracking-widest uppercase px-2.5 py-1 rounded-sm">
               Nuevo
+            </span>
+          )}
+          {colors.length > 0 && (
+            <span
+              className={`absolute top-3 right-3 z-10 text-[10px] font-medium tracking-widest uppercase px-2.5 py-1 rounded-sm ${
+                activeStock === 0 ? "bg-destructive text-destructive-foreground" : "bg-emerald-600 text-white"
+              }`}
+            >
+              {activeStock === 0 ? "Agotado" : "Disponible"}
             </span>
           )}
           <img
