@@ -2,7 +2,7 @@ import { Fragment, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useProducts } from "@/context/ProductContext";
 import { Product, ProductColor } from "@/context/CartContext";
-import { Plus, Pipette, Search, Trash2, X, Upload, Loader2, Video as VideoIcon, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Pipette, RefreshCw, Search, Trash2, X, Upload, Loader2, Video as VideoIcon, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -56,9 +56,13 @@ const AdminProducts = () => {
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [replacingPhotoIndex, setReplacingPhotoIndex] = useState<number | null>(null);
+  const [replacingVideoIndex, setReplacingVideoIndex] = useState<number | null>(null);
   const fileInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
+  const replacePhotoInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
+  const replaceVideoInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
 
   const nameError = attemptedSubmit && !form.name.trim();
@@ -167,6 +171,18 @@ const AdminProducts = () => {
 
   const handleRemovePhoto = (index: number) => setPhotos((prev) => prev.filter((_, i) => i !== index));
 
+  const handleReplacePhoto = async (index: number, file: File) => {
+    setReplacingPhotoIndex(index);
+    try {
+      const { filename } = await uploadImage(file);
+      setPhotos((prev) => prev.map((p, i) => (i === index ? filename : p)));
+    } catch {
+      toast.error("No se pudo reemplazar la foto");
+    } finally {
+      setReplacingPhotoIndex(null);
+    }
+  };
+
   const handleVideoUpload = async (file: File) => {
     if (videos.length >= MAX_VIDEOS) {
       toast.error(`Máximo ${MAX_VIDEOS} videos por producto`);
@@ -184,6 +200,18 @@ const AdminProducts = () => {
   };
 
   const handleRemoveVideo = (index: number) => setVideos((prev) => prev.filter((_, i) => i !== index));
+
+  const handleReplaceVideo = async (index: number, file: File) => {
+    setReplacingVideoIndex(index);
+    try {
+      const { filename } = await uploadVideo(file);
+      setVideos((prev) => prev.map((v, i) => (i === index ? filename : v)));
+    } catch {
+      toast.error("No se pudo reemplazar el video");
+    } finally {
+      setReplacingVideoIndex(null);
+    }
+  };
 
   const handleSave = () => {
     const missing: string[] = [];
@@ -538,14 +566,42 @@ const AdminProducts = () => {
               {photos.map((photo, index) => (
                 <div key={photo} className="relative w-20 h-20 rounded-sm overflow-hidden bg-muted border border-border group">
                   <img src={productImageUrl(photo)} alt={`Foto ${index + 1}`} className="w-full h-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => handleRemovePhoto(index)}
-                    className="absolute top-1 right-1 p-0.5 rounded-full bg-background/90 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                    aria-label="Quitar foto"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
+                  {replacingPhotoIndex === index && (
+                    <span className="absolute inset-0 flex items-center justify-center bg-background/70">
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                    </span>
+                  )}
+                  <input
+                    ref={(el) => { replacePhotoInputRefs.current[index] = el; }}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleReplacePhoto(index, file);
+                      e.target.value = "";
+                    }}
+                  />
+                  <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      type="button"
+                      onClick={() => replacePhotoInputRefs.current[index]?.click()}
+                      className="p-0.5 rounded-full bg-background/90 text-muted-foreground hover:text-primary"
+                      aria-label="Reemplazar foto"
+                      title="Reemplazar foto"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePhoto(index)}
+                      className="p-0.5 rounded-full bg-background/90 text-muted-foreground hover:text-destructive"
+                      aria-label="Quitar foto"
+                      title="Quitar foto"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
               {photos.length < MAX_PHOTOS && (
@@ -579,14 +635,42 @@ const AdminProducts = () => {
               {videos.map((video, index) => (
                 <div key={video} className="relative w-32 h-20 rounded-sm overflow-hidden bg-muted border border-border group">
                   <video src={productImageUrl(video)} className="w-full h-full object-cover" muted />
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveVideo(index)}
-                    className="absolute top-1 right-1 p-0.5 rounded-full bg-background/90 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                    aria-label="Quitar video"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
+                  {replacingVideoIndex === index && (
+                    <span className="absolute inset-0 flex items-center justify-center bg-background/70">
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                    </span>
+                  )}
+                  <input
+                    ref={(el) => { replaceVideoInputRefs.current[index] = el; }}
+                    type="file"
+                    accept="video/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleReplaceVideo(index, file);
+                      e.target.value = "";
+                    }}
+                  />
+                  <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      type="button"
+                      onClick={() => replaceVideoInputRefs.current[index]?.click()}
+                      className="p-0.5 rounded-full bg-background/90 text-muted-foreground hover:text-primary"
+                      aria-label="Reemplazar video"
+                      title="Reemplazar video"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveVideo(index)}
+                      className="p-0.5 rounded-full bg-background/90 text-muted-foreground hover:text-destructive"
+                      aria-label="Quitar video"
+                      title="Quitar video"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
               {videos.length < MAX_VIDEOS && (

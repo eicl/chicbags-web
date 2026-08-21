@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Play, ShoppingBag, Truck, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Maximize2, Play, ShoppingBag, Truck, ShieldCheck, X } from "lucide-react";
 import { useProducts } from "@/context/ProductContext";
 import { useCart } from "@/context/CartContext";
 import { Button } from "@/components/ui/button";
@@ -26,11 +26,21 @@ const ProductDetail = () => {
   // visor grande de arriba (igual que al elegir un color) hasta que se
   // vuelva a elegir un color, que retoma la foto de ese color.
   const [mediaOverride, setMediaOverride] = useState<{ kind: "photo" | "video"; index: number } | null>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   const handleSelectColor = (index: number) => {
     setSelectedColor(index);
     setMediaOverride(null);
   };
+
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLightboxOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [lightboxOpen]);
 
   if (isLoading) {
     return (
@@ -117,6 +127,17 @@ const ProductDetail = () => {
                   />
                 )}
               </AnimatePresence>
+              {!activeVideo && (
+                <button
+                  type="button"
+                  onClick={() => setLightboxOpen(true)}
+                  className="absolute bottom-3 right-3 p-2 rounded-full bg-background/80 text-foreground hover:bg-background transition-colors shadow-sm"
+                  aria-label="Ver foto más grande"
+                  title="Ver foto más grande"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </button>
+              )}
             </div>
 
             {(colors.length > 1 || photos.length > 0 || videos.length > 0) && (
@@ -280,6 +301,41 @@ const ProductDetail = () => {
           </div>
         )}
       </div>
+
+      <AnimatePresence>
+        {lightboxOpen && !activeVideo && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-foreground/80 z-50"
+              onClick={() => setLightboxOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-4 md:inset-12 z-50 flex items-center justify-center pointer-events-none"
+            >
+              <img
+                src={productImageUrl(mainMediaSrc)}
+                alt={activePhoto ? product.name : `${product.name}${colors[selectedColor] ? " - " + colors[selectedColor].name : ""}`}
+                className="max-w-full max-h-full object-contain pointer-events-auto"
+              />
+            </motion.div>
+            <button
+              type="button"
+              onClick={() => setLightboxOpen(false)}
+              className="fixed top-4 right-4 md:top-6 md:right-6 z-50 p-2 rounded-full bg-background/90 text-foreground hover:bg-background transition-colors"
+              aria-label="Cerrar"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </>
+        )}
+      </AnimatePresence>
 
       <CartDrawer />
       <Footer />
