@@ -10,16 +10,24 @@ export const formatDeadlineDate = (iso: string) =>
 // número de su pedido (registro inicial o actualizaciones de pago). En
 // "Separación" (o "Separado en almacén", que sigue siendo pago parcial)
 // además indica cuánto pagó, cuánto le falta, y el plazo de 15 días
-// calendario para cancelar.
+// calendario para cancelar. Un pedido Contraentrega puede llegar a
+// "Pendiente de envío" con saldo pendiente (el motorizado lo cobra al
+// entregar) — ahí también hace falta el desglose, aunque ya no esté "en
+// separación" ni tenga plazo de cancelación.
 export const buildOrderStatusText = (order: Order) => {
   let text = `Estado del pedido: ${order.status}`;
-  if (order.status === "Separación" || order.status === "Separado en almacén") {
-    const paid = order.payments.reduce((sum, p) => sum + p.amount, 0);
-    const remaining = order.total - paid;
+  const paid = order.payments.reduce((sum, p) => sum + p.amount, 0);
+  const remaining = order.total - paid;
+  const isWaitingPayment = order.status === "Separación" || order.status === "Separado en almacén";
+  const isPendingCod = order.status === "Pendiente de envío" && remaining > 0;
+  if (isWaitingPayment || isPendingCod) {
     text += `\n\nPagado: S/.${paid.toFixed(2)}\nSaldo pendiente: S/.${remaining.toFixed(2)}`;
-    if (order.separationDeadline) {
-      text += `\n\nTienes 15 días calendario para cancelar tu pedido. Fecha límite: ${formatDeadlineDate(order.separationDeadline)}.`;
+    if (isPendingCod) {
+      text += ` (se cobra al momento de la entrega)`;
     }
+  }
+  if (isWaitingPayment && order.separationDeadline) {
+    text += `\n\nTienes 15 días calendario para cancelar tu pedido. Fecha límite: ${formatDeadlineDate(order.separationDeadline)}.`;
   }
   return text;
 };
