@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ShoppingBag, Truck, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Play, ShoppingBag, Truck, ShieldCheck } from "lucide-react";
 import { useProducts } from "@/context/ProductContext";
 import { useCart } from "@/context/CartContext";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,15 @@ const ProductDetail = () => {
   const product = products.find((p) => p.id === Number(id));
 
   const [selectedColor, setSelectedColor] = useState(0);
+  // Cuando se hace click en una foto o video adicional, se muestra en el
+  // visor grande de arriba (igual que al elegir un color) hasta que se
+  // vuelva a elegir un color, que retoma la foto de ese color.
+  const [mediaOverride, setMediaOverride] = useState<{ kind: "photo" | "video"; index: number } | null>(null);
+
+  const handleSelectColor = (index: number) => {
+    setSelectedColor(index);
+    setMediaOverride(null);
+  };
 
   if (isLoading) {
     return (
@@ -46,6 +55,12 @@ const ProductDetail = () => {
 
   const colors = sortColors(product.colors ?? []);
   const displayImage = colors[selectedColor]?.image ?? product.image;
+  const photos = product.photos ?? [];
+  const videos = product.videos ?? [];
+
+  const activeVideo = mediaOverride?.kind === "video" ? videos[mediaOverride.index] : undefined;
+  const activePhoto = mediaOverride?.kind === "photo" ? photos[mediaOverride.index] : undefined;
+  const mainMediaSrc = activeVideo ?? activePhoto ?? displayImage;
 
   const handleAddToCart = () => {
     if (colors.length > 0 && colors[selectedColor]?.stock === 0) {
@@ -77,72 +92,95 @@ const ProductDetail = () => {
           <div>
             <div className="relative aspect-[4/5] overflow-hidden bg-muted rounded-sm mb-4">
               <AnimatePresence mode="wait">
-                <motion.img
-                  key={displayImage}
-                  src={productImageUrl(displayImage)}
-                  alt={`${product.name}${colors[selectedColor] ? " - " + colors[selectedColor].name : ""}`}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.25 }}
-                  className="w-full h-full object-cover"
-                />
+                {activeVideo ? (
+                  <motion.video
+                    key={activeVideo}
+                    src={productImageUrl(activeVideo)}
+                    controls
+                    autoPlay
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.25 }}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <motion.img
+                    key={mainMediaSrc}
+                    src={productImageUrl(mainMediaSrc)}
+                    alt={activePhoto ? product.name : `${product.name}${colors[selectedColor] ? " - " + colors[selectedColor].name : ""}`}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.25 }}
+                    className="w-full h-full object-cover"
+                  />
+                )}
               </AnimatePresence>
             </div>
 
-            {colors.length > 1 && (
+            {(colors.length > 1 || photos.length > 0 || videos.length > 0) && (
               <div className="flex flex-wrap gap-3">
-                {colors.map((color, index) => (
-                  <button
-                    key={color.name}
-                    onClick={() => color.stock > 0 && setSelectedColor(index)}
-                    disabled={color.stock === 0}
-                    aria-label={`Ver color ${color.name}${color.stock === 0 ? " (agotado)" : ""}`}
-                    aria-pressed={selectedColor === index}
-                    title={color.stock === 0 ? `${color.name} - Agotado` : color.name}
-                    className={`relative w-16 h-20 rounded-sm overflow-hidden border-2 transition-all ${
-                      selectedColor === index ? "border-primary" : "border-border hover:border-muted-foreground/50"
-                    } ${color.stock === 0 ? "cursor-not-allowed" : ""}`}
-                  >
-                    <img
-                      src={productImageUrl(color.image)}
-                      alt={color.name}
-                      className={`w-full h-full object-cover ${color.stock === 0 ? "opacity-40 grayscale" : ""}`}
-                    />
-                    {color.stock === 0 && (
-                      <span className="absolute inset-0 flex items-center justify-center bg-background/40">
-                        <span className="text-[10px] font-medium tracking-wide uppercase text-foreground bg-background/90 px-1.5 py-0.5 rounded-sm -rotate-12">
-                          Agotado
+                {colors.length > 1 &&
+                  colors.map((color, index) => (
+                    <button
+                      key={color.name}
+                      onClick={() => color.stock > 0 && handleSelectColor(index)}
+                      disabled={color.stock === 0}
+                      aria-label={`Ver color ${color.name}${color.stock === 0 ? " (agotado)" : ""}`}
+                      aria-pressed={!mediaOverride && selectedColor === index}
+                      title={color.stock === 0 ? `${color.name} - Agotado` : color.name}
+                      className={`relative w-16 h-20 rounded-sm overflow-hidden border-2 transition-all ${
+                        !mediaOverride && selectedColor === index ? "border-primary" : "border-border hover:border-muted-foreground/50"
+                      } ${color.stock === 0 ? "cursor-not-allowed" : ""}`}
+                    >
+                      <img
+                        src={productImageUrl(color.image)}
+                        alt={color.name}
+                        className={`w-full h-full object-cover ${color.stock === 0 ? "opacity-40 grayscale" : ""}`}
+                      />
+                      {color.stock === 0 && (
+                        <span className="absolute inset-0 flex items-center justify-center bg-background/40">
+                          <span className="text-[10px] font-medium tracking-wide uppercase text-foreground bg-background/90 px-1.5 py-0.5 rounded-sm -rotate-12">
+                            Agotado
+                          </span>
                         </span>
-                      </span>
-                    )}
+                      )}
+                    </button>
+                  ))}
+                {photos.map((photo, index) => (
+                  <button
+                    key={photo}
+                    onClick={() => setMediaOverride({ kind: "photo", index })}
+                    aria-label={`Ver foto ${index + 1} de ${product.name}`}
+                    aria-pressed={mediaOverride?.kind === "photo" && mediaOverride.index === index}
+                    className={`relative w-16 h-20 rounded-sm overflow-hidden border-2 transition-all ${
+                      mediaOverride?.kind === "photo" && mediaOverride.index === index
+                        ? "border-primary"
+                        : "border-border hover:border-muted-foreground/50"
+                    }`}
+                  >
+                    <img src={productImageUrl(photo)} alt={`${product.name} - foto ${index + 1}`} className="w-full h-full object-cover" />
                   </button>
                 ))}
-              </div>
-            )}
-
-            {((product.photos?.length ?? 0) > 0 || (product.videos?.length ?? 0) > 0) && (
-              <div className="mt-6 pt-6 border-t border-border">
-                <p className="text-sm font-medium mb-3">Más fotos y videos</p>
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                  {product.photos?.map((photo, index) => (
-                    <img
-                      key={photo}
-                      src={productImageUrl(photo)}
-                      alt={`${product.name} - foto ${index + 1}`}
-                      className="w-full aspect-square object-cover rounded-sm bg-muted"
-                    />
-                  ))}
-                  {product.videos?.map((video, index) => (
-                    <video
-                      key={video}
-                      src={productImageUrl(video)}
-                      controls
-                      className="w-full aspect-square object-cover rounded-sm bg-muted"
-                      aria-label={`${product.name} - video ${index + 1}`}
-                    />
-                  ))}
-                </div>
+                {videos.map((video, index) => (
+                  <button
+                    key={video}
+                    onClick={() => setMediaOverride({ kind: "video", index })}
+                    aria-label={`Ver video ${index + 1} de ${product.name}`}
+                    aria-pressed={mediaOverride?.kind === "video" && mediaOverride.index === index}
+                    className={`relative w-16 h-20 rounded-sm overflow-hidden border-2 transition-all ${
+                      mediaOverride?.kind === "video" && mediaOverride.index === index
+                        ? "border-primary"
+                        : "border-border hover:border-muted-foreground/50"
+                    }`}
+                  >
+                    <video src={productImageUrl(video)} muted className="w-full h-full object-cover" />
+                    <span className="absolute inset-0 flex items-center justify-center bg-background/30">
+                      <Play className="w-5 h-5 text-white drop-shadow" fill="white" />
+                    </span>
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -172,13 +210,13 @@ const ProductDetail = () => {
                   {colors.map((color, index) => (
                     <button
                       key={color.name}
-                      onClick={() => color.stock > 0 && setSelectedColor(index)}
+                      onClick={() => color.stock > 0 && handleSelectColor(index)}
                       disabled={color.stock === 0}
                       aria-label={`${color.name}${color.stock === 0 ? " (agotado)" : ""}`}
-                      aria-pressed={selectedColor === index}
+                      aria-pressed={!mediaOverride && selectedColor === index}
                       title={color.stock === 0 ? `${color.name} - Agotado` : color.name}
                       className={`relative w-8 h-8 rounded-full border-2 transition-all ${
-                        selectedColor === index ? "border-primary scale-110" : "border-border hover:scale-105"
+                        !mediaOverride && selectedColor === index ? "border-primary scale-110" : "border-border hover:scale-105"
                       } ${color.stock === 0 ? "cursor-not-allowed opacity-50" : ""}`}
                       style={{ backgroundColor: color.hex }}
                     >
