@@ -159,14 +159,13 @@ const ProductDetail = () => {
                   colors.map((color, index) => (
                     <button
                       key={color.name}
-                      onClick={() => color.stock > 0 && handleSelectColor(index)}
-                      disabled={color.stock === 0}
+                      onClick={() => handleSelectColor(index)}
                       aria-label={`Ver color ${color.name}${color.stock === 0 ? " (agotado)" : ""}`}
                       aria-pressed={!mediaOverride && selectedColor === index}
                       title={color.stock === 0 ? `${color.name} - Agotado` : color.name}
                       className={`relative w-16 h-20 rounded-sm overflow-hidden border-2 transition-all ${
                         !mediaOverride && selectedColor === index ? "border-primary" : "border-border hover:border-muted-foreground/50"
-                      } ${color.stock === 0 ? "cursor-not-allowed" : ""}`}
+                      }`}
                     >
                       <img
                         src={productImageUrl(color.image)}
@@ -244,14 +243,13 @@ const ProductDetail = () => {
                   {colors.map((color, index) => (
                     <button
                       key={color.name}
-                      onClick={() => color.stock > 0 && handleSelectColor(index)}
-                      disabled={color.stock === 0}
+                      onClick={() => handleSelectColor(index)}
                       aria-label={`${color.name}${color.stock === 0 ? " (agotado)" : ""}`}
                       aria-pressed={!mediaOverride && selectedColor === index}
                       title={color.stock === 0 ? `${color.name} - Agotado` : color.name}
                       className={`relative w-8 h-8 rounded-full border-2 transition-all ${
                         !mediaOverride && selectedColor === index ? "border-primary scale-110" : "border-border hover:scale-105"
-                      } ${color.stock === 0 ? "cursor-not-allowed opacity-50" : ""}`}
+                      } ${color.stock === 0 ? "opacity-50" : ""}`}
                       style={{ backgroundColor: color.hex }}
                     >
                       {color.stock === 0 && (

@@ -87,11 +87,10 @@ const ProductCard = ({ product, isNew = false }: { product: Product; isNew?: boo
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    if (color.stock > 0) setSelectedColor(index);
+                    setSelectedColor(index);
                   }}
-                  onMouseEnter={() => color.stock > 0 && setHoveredColor(index)}
+                  onMouseEnter={() => setHoveredColor(index)}
                   onMouseLeave={() => setHoveredColor(null)}
-                  disabled={color.stock === 0}
                   aria-label={`Ver color ${color.name}${color.stock === 0 ? " (agotado)" : ""}`}
                   aria-pressed={selectedColor === index}
                   title={color.stock === 0 ? `${color.name} - Agotado` : color.name}
@@ -99,7 +98,7 @@ const ProductCard = ({ product, isNew = false }: { product: Product; isNew?: boo
                     selectedColor === index
                       ? "border-primary scale-110"
                       : "border-background/70 hover:scale-105"
-                  } ${color.stock === 0 ? "cursor-not-allowed opacity-40" : ""}`}
+                  } ${color.stock === 0 ? "opacity-40" : ""}`}
                   style={{ backgroundColor: color.hex }}
                 />
               ))}
