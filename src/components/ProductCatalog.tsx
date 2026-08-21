@@ -2,11 +2,18 @@ import { useState } from "react";
 import { useProducts } from "@/context/ProductContext";
 import ProductCard from "./ProductCard";
 
+// Stock total del producto (suma del stock de todos sus colores) — el
+// catálogo muestra primero los que tienen más disponible.
+const totalStock = (product: { colors?: { stock: number }[] }) =>
+  (product.colors ?? []).reduce((sum, c) => sum + c.stock, 0);
+
 const ProductCatalog = () => {
   const { products, categories, isLoading, isError } = useProducts();
   const [activeCategory, setActiveCategory] = useState("Todos");
 
-  const filtered = activeCategory === "Todos" ? products : products.filter((p) => p.categories.includes(activeCategory));
+  const filtered = (activeCategory === "Todos" ? products : products.filter((p) => p.categories.includes(activeCategory)))
+    .slice()
+    .sort((a, b) => totalStock(b) - totalStock(a));
   const newestIds = new Set(
     products.slice().sort((a, b) => b.id - a.id).slice(0, 4).map((p) => p.id)
   );
