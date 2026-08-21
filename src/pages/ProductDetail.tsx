@@ -63,7 +63,9 @@ const ProductDetail = () => {
     );
   }
 
-  const colors = sortColors(product.colors ?? []);
+  // Los agotados quedan al final (orden estable, así que dentro de cada
+  // grupo — disponibles / agotados — se respeta el orden configurado).
+  const colors = sortColors(product.colors ?? []).sort((a, b) => Number(a.stock === 0) - Number(b.stock === 0));
   const displayImage = colors[selectedColor]?.image ?? product.image;
   const photos = product.photos ?? [];
   const videos = product.videos ?? [];
@@ -71,6 +73,8 @@ const ProductDetail = () => {
   const activeVideo = mediaOverride?.kind === "video" ? videos[mediaOverride.index] : undefined;
   const activePhoto = mediaOverride?.kind === "photo" ? photos[mediaOverride.index] : undefined;
   const mainMediaSrc = activeVideo ?? activePhoto ?? displayImage;
+  const showAvailabilityBadge = !mediaOverride && colors.length > 0;
+  const isAvailable = colors[selectedColor]?.stock !== 0;
 
   const handleAddToCart = () => {
     if (colors.length > 0 && colors[selectedColor]?.stock === 0) {
@@ -127,6 +131,15 @@ const ProductDetail = () => {
                   />
                 )}
               </AnimatePresence>
+              {showAvailabilityBadge && (
+                <span
+                  className={`absolute top-3 right-3 z-10 text-[10px] font-medium tracking-widest uppercase px-2.5 py-1 rounded-sm ${
+                    isAvailable ? "bg-emerald-600 text-white" : "bg-destructive text-destructive-foreground"
+                  }`}
+                >
+                  {isAvailable ? "Disponible" : "Agotado"}
+                </span>
+              )}
               {!activeVideo && (
                 <button
                   type="button"
