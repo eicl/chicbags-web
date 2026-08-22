@@ -180,6 +180,25 @@ app.post("/api/upload-video", requireAuth, uploadVideo.single("video"), (req, re
   res.json({ filename: req.file.filename });
 });
 
+// Recibos del Registro de Compras: a diferencia de las demás subidas, acá
+// además de fotos se permite PDF (muchos comprobantes electrónicos llegan
+// así), así que necesita su propio filtro en vez de reusar `upload`.
+const uploadReceipt = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith("image/") && file.mimetype !== "application/pdf") {
+      return cb(new Error("Solo se permiten imágenes o PDF"));
+    }
+    cb(null, true);
+  },
+});
+
+app.post("/api/upload-receipt", requireAuth, uploadReceipt.single("file"), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "No se recibió ningún archivo" });
+  res.json({ filename: req.file.filename });
+});
+
 const PRODUCTS_SELECT = `
   SELECT p.*, b.name AS brand
   FROM products p

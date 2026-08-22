@@ -1,16 +1,17 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Pencil, Plus, Save, Search, Trash2, Upload, X } from "lucide-react";
+import { FileText, Loader2, Pencil, Plus, Save, Search, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { createPurchase, deletePurchase, fetchPurchases, updatePurchase, uploadImage, Purchase, PurchaseDocumentType, PurchaseInput } from "@/lib/api";
+import { createPurchase, deletePurchase, fetchPurchases, updatePurchase, uploadReceipt, Purchase, PurchaseDocumentType, PurchaseInput } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
 import { errorLabelClass, errorInputClass } from "@/lib/utils";
 import Pagination from "@/components/admin/Pagination";
 
 const PAGE_SIZE = 20;
 const DOCUMENT_TYPES: PurchaseDocumentType[] = ["Factura", "Boleta", "Recibo por Honorarios", "Nota de Crédito", "Nota de Débito", "Otro"];
+const isPdf = (filename: string) => filename.toLowerCase().endsWith(".pdf");
 
 // Igual que en el registro de pagos: no usar toISOString(), que convierte a
 // UTC y en Perú (UTC-5) ya adelanta la fecha un día después de las 7pm.
@@ -130,10 +131,10 @@ const AdminPurchases = () => {
   const handleUploadReceipt = async (file: File) => {
     setUploading(true);
     try {
-      const { filename } = await uploadImage(file);
+      const { filename } = await uploadReceipt(file);
       setForm((f) => ({ ...f, receiptImage: filename }));
-    } catch {
-      toast.error("No se pudo subir la foto del recibo");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo subir el recibo");
     } finally {
       setUploading(false);
     }
@@ -299,14 +300,14 @@ const AdminPurchases = () => {
               <p className="h-10 flex items-center text-sm text-muted-foreground">S/.{igvNumber.toFixed(2)}</p>
             </div>
             <div className="lg:col-span-3">
-              <label className="text-sm text-muted-foreground mb-1 block">Foto del recibo</label>
+              <label className="text-sm text-muted-foreground mb-1 block">Foto o PDF del recibo</label>
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-2 h-9 px-3 rounded-md border border-input text-sm cursor-pointer hover:bg-muted/50">
                   {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                   {form.receiptImage ? "Cambiar" : "Subir"}
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/*,application/pdf"
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
@@ -317,11 +318,17 @@ const AdminPurchases = () => {
                 </label>
                 {form.receiptImage && (
                   <a href={productImageUrl(form.receiptImage)} target="_blank" rel="noopener noreferrer">
-                    <img
-                      src={productImageUrl(form.receiptImage)}
-                      alt="Recibo"
-                      className="w-12 h-12 rounded object-cover border border-border"
-                    />
+                    {isPdf(form.receiptImage) ? (
+                      <span className="w-12 h-12 rounded border border-border flex items-center justify-center text-muted-foreground hover:text-primary">
+                        <FileText className="w-5 h-5" />
+                      </span>
+                    ) : (
+                      <img
+                        src={productImageUrl(form.receiptImage)}
+                        alt="Recibo"
+                        className="w-12 h-12 rounded object-cover border border-border"
+                      />
+                    )}
                   </a>
                 )}
               </div>
@@ -369,11 +376,17 @@ const AdminPurchases = () => {
                   <td className="py-3 px-4 text-center">
                     {purchase.receiptImage ? (
                       <a href={productImageUrl(purchase.receiptImage)} target="_blank" rel="noopener noreferrer" className="inline-block">
-                        <img
-                          src={productImageUrl(purchase.receiptImage)}
-                          alt="Recibo"
-                          className="w-9 h-9 rounded object-cover border border-border mx-auto"
-                        />
+                        {isPdf(purchase.receiptImage) ? (
+                          <span className="w-9 h-9 rounded border border-border flex items-center justify-center text-muted-foreground hover:text-primary mx-auto">
+                            <FileText className="w-4 h-4" />
+                          </span>
+                        ) : (
+                          <img
+                            src={productImageUrl(purchase.receiptImage)}
+                            alt="Recibo"
+                            className="w-9 h-9 rounded object-cover border border-border mx-auto"
+                          />
+                        )}
                       </a>
                     ) : (
                       <span className="text-muted-foreground text-xs">—</span>

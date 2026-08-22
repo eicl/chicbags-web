@@ -688,6 +688,16 @@ export const uploadVideo = (file: File): Promise<{ filename: string }> => {
   );
 };
 
+// Recibos del Registro de Compras: a diferencia de uploadImage, acepta PDF
+// además de fotos.
+export const uploadReceipt = (file: File): Promise<{ filename: string }> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  return fetch(`${API_URL}/upload-receipt`, { method: "POST", credentials: "include", body: formData }).then(
+    (res) => handle<{ filename: string }>(res)
+  );
+};
+
 export interface AuthUser {
   username: string;
 }
