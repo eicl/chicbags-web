@@ -2309,6 +2309,34 @@ app.put("/api/route-meta/:key", requireAuth, async (req, res) => {
   res.json({ key: rows[0].route_key, title: rows[0].title, description: rows[0].description });
 });
 
+// Plantillas de los mensajes de WhatsApp (registro de pedido, aviso de
+// estado, registro de cliente) — GET público porque las páginas que arman
+// esos links (registro de pedido, registro de cliente) no siempre tienen
+// sesión de admin; solo editarlas requiere sesión.
+const MESSAGE_TEMPLATE_KEYS = ["order_registration", "order_status_update", "customer_registration"];
+
+app.get("/api/message-templates", async (req, res) => {
+  const { rows } = await pool.query("SELECT template_key, template FROM message_templates ORDER BY template_key");
+  res.json(rows.map((r) => ({ key: r.template_key, template: r.template })));
+});
+
+app.put("/api/message-templates/:key", requireAuth, async (req, res) => {
+  const { key } = req.params;
+  const { template } = req.body;
+  if (!MESSAGE_TEMPLATE_KEYS.includes(key)) {
+    return res.status(400).json({ error: "Plantilla inválida" });
+  }
+  if (!template?.trim()) {
+    return res.status(400).json({ error: "La plantilla no puede quedar vacía" });
+  }
+  const { rows } = await pool.query(
+    "UPDATE message_templates SET template = $1 WHERE template_key = $2 RETURNING *",
+    [template, key]
+  );
+  if (rows.length === 0) return res.status(404).json({ error: "Plantilla no encontrada" });
+  res.json({ key: rows[0].template_key, template: rows[0].template });
+});
+
 const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 const replaceMetaContent = (html, selectorRegex, value) => html.replace(selectorRegex, (_match, before, after) => `${before}${escapeHtml(value)}${after}`);

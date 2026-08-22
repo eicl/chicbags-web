@@ -374,6 +374,32 @@ export const initSchema = async () => {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+
+  // Plantillas de los mensajes que se abren en WhatsApp (registro de
+  // pedido, aviso de estado, registro de cliente) — editables desde el
+  // panel. Las variables {{...}} se reemplazan en el navegador al armar el
+  // link, no acá; esta tabla solo guarda el texto tal cual se escribe.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS message_templates (
+      template_key TEXT PRIMARY KEY,
+      template TEXT NOT NULL
+    );
+  `);
+  await pool.query(`
+    INSERT INTO message_templates (template_key, template) VALUES
+      ('order_registration', 'Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}}:
+
+{{items}}
+
+Total: S/.{{total}}
+
+{{estado_texto}}'),
+      ('order_status_update', 'Hola {{cliente}}, novedades de tu pedido #{{pedido}}:
+
+{{estado_texto}}'),
+      ('customer_registration', 'Hola, soy {{cliente}} {{apellido}}, acabo de registrarme. Mi código de cliente es #{{codigo}}. Aquí está el link para registrar mi pedido: {{link}}')
+    ON CONFLICT (template_key) DO NOTHING;
+  `);
 };
 
 // Busca una marca por nombre (sin distinguir mayúsculas/minúsculas) o la crea

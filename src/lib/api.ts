@@ -578,6 +578,28 @@ export const updateRouteMeta = (key: string, data: { title: string; description:
     body: JSON.stringify(data),
   }).then((res) => handle<RouteMeta>(res));
 
+// Plantillas de los mensajes que se abren en WhatsApp (registro de pedido,
+// aviso de estado, registro de cliente), editables desde el panel. Público
+// en GET porque las páginas que arman esos links (registro de pedido,
+// registro de cliente) no siempre tienen sesión de admin.
+export type MessageTemplateKey = "order_registration" | "order_status_update" | "customer_registration";
+
+export interface MessageTemplate {
+  key: MessageTemplateKey;
+  template: string;
+}
+
+export const fetchMessageTemplates = (): Promise<MessageTemplate[]> =>
+  fetch(`${API_URL}/message-templates`).then((res) => handle<MessageTemplate[]>(res));
+
+export const updateMessageTemplate = (key: MessageTemplateKey, template: string): Promise<MessageTemplate> =>
+  fetch(`${API_URL}/message-templates/${key}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ template }),
+  }).then((res) => handle<MessageTemplate>(res));
+
 // Registra un pago de un pedido (panel admin): el servidor recalcula el
 // estado del pedido sumando todos los pagos contra el total.
 export const registerPayment = (orderId: number, data: PaymentInput): Promise<Order> =>

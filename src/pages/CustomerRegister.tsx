@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import Header from "@/components/Header";
 import {
-  registerCustomer, fetchDistricts, fetchAgencies, Customer, CustomerInput, DeliveryType, DeliveryMode,
+  registerCustomer, fetchDistricts, fetchAgencies, fetchMessageTemplates, Customer, CustomerInput, DeliveryType, DeliveryMode,
 } from "@/lib/api";
 import { PERU_DEPARTMENTS, PERU_LOCATIONS } from "@/lib/peru-locations";
 import { errorLabelClass, errorInputClass, cn } from "@/lib/utils";
+import { DEFAULT_MESSAGE_TEMPLATES, renderMessageTemplate } from "@/lib/messageTemplates";
 import AgencyPicker from "@/components/AgencyPicker";
 
 const DOCUMENT_TYPES = ["DNI", "Carné de Extranjería", "Pasaporte", "RUC"];
@@ -47,9 +48,14 @@ const emptyForm: CustomerInput = {
 // Enviar. Ese link trae el código de cliente, así que quien lo abra no
 // tiene que volver a buscarlo (aunque la búsqueda sigue disponible ahí).
 const COMPANY_WHATSAPP_NUMBER = "51914104629";
-const buildRegistrationWhatsAppLink = (customer: Customer) => {
+const buildRegistrationWhatsAppLink = (customer: Customer, template: string) => {
   const orderLink = `${window.location.origin}/registro-pedido/${customer.id}`;
-  const message = `Hola, soy ${customer.firstName} ${customer.paternalSurname}, acabo de registrarme. Mi código de cliente es #${customer.id}. Aquí está el link para registrar mi pedido: ${orderLink}`;
+  const message = renderMessageTemplate(template, {
+    cliente: customer.firstName,
+    apellido: customer.paternalSurname,
+    codigo: String(customer.id),
+    link: orderLink,
+  });
   return `https://wa.me/${COMPANY_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
 };
 
@@ -72,15 +78,18 @@ const CustomerRegister = () => {
   const [registered, setRegistered] = useState<Customer | null>(null);
   const [locating, setLocating] = useState(false);
   const autoOpenedRef = useRef(false);
+  const { data: messageTemplates = [] } = useQuery({ queryKey: ["messageTemplates"], queryFn: fetchMessageTemplates });
+  const registrationTemplate =
+    messageTemplates.find((t) => t.key === "customer_registration")?.template ?? DEFAULT_MESSAGE_TEMPLATES.customer_registration;
 
   // En cuanto se registra, abre solo el chat de WhatsApp — el botón sigue
   // visible por si el navegador bloquea la ventana emergente.
   useEffect(() => {
     if (registered && !autoOpenedRef.current) {
       autoOpenedRef.current = true;
-      window.open(buildRegistrationWhatsAppLink(registered), "_blank", "noopener,noreferrer");
+      window.open(buildRegistrationWhatsAppLink(registered, registrationTemplate), "_blank", "noopener,noreferrer");
     }
-  }, [registered]);
+  }, [registered, registrationTemplate]);
 
   // Los tipos de delivery "motorizado" reparten a domicilio, así que además
   // de la dirección piden la ubicación GPS actual del cliente.
@@ -192,7 +201,7 @@ const CustomerRegister = () => {
             Código de cliente: #{registered.id}
           </span>
           <a
-            href={buildRegistrationWhatsAppLink(registered)}
+            href={buildRegistrationWhatsAppLink(registered, registrationTemplate)}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-5 py-3 rounded-md text-white font-medium transition-transform hover:scale-105"

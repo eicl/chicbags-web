@@ -4,11 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Plus, Printer, Search, Settings, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
 import {
   AdminOrder, ChargeType, DeliveryType, DiscountSettings, OrderItem, OrderStatus, PaymentInput, Service,
-  addOrderItem, deleteOrder, deleteOrderItem, fetchOrders, fetchServices, fetchSettings, markOrderDelivered,
+  addOrderItem, deleteOrder, deleteOrderItem, fetchMessageTemplates, fetchOrders, fetchServices, fetchSettings, markOrderDelivered,
   markOrderWarehouseSeparated, registerPayment, updateOrderChargeType, updateOrderItemColor, updateOrderItemDiscount,
   updateOrderReceipt, updateOrderServiceItem, updateSettings, uploadImage,
 } from "@/lib/api";
 import { buildOrderStatusText } from "@/lib/orderMessages";
+import { DEFAULT_MESSAGE_TEMPLATES, renderMessageTemplate } from "@/lib/messageTemplates";
 import { productImageUrl } from "@/lib/images";
 import { useProducts } from "@/context/ProductContext";
 import { Product, ProductColor } from "@/context/CartContext";
@@ -67,11 +68,16 @@ const STATUS_BADGE_CLASS: Record<OrderStatus, string> = {
 };
 
 // Lleva la conversación de WhatsApp al celular del cliente con el estado
-// actual del pedido (y, si está en Separación, el plazo para cancelar).
-const buildStatusWhatsAppLink = (order: AdminOrder) => {
+// actual del pedido (y, si está en Separación, el plazo para cancelar). El
+// texto sale de la plantilla configurable (Admin > Mensajes de WhatsApp).
+const buildStatusWhatsAppLink = (order: AdminOrder, template: string) => {
   const digits = order.customerMobile.replace(/\D/g, "");
   const phone = digits.startsWith("51") ? digits : `51${digits}`;
-  const message = `Hola ${order.customerName}, novedades de tu pedido #${order.id}:\n\n${buildOrderStatusText(order)}`;
+  const message = renderMessageTemplate(template, {
+    cliente: order.customerName,
+    pedido: String(order.id),
+    estado_texto: buildOrderStatusText(order),
+  });
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 };
 
@@ -953,6 +959,9 @@ const AdminOrders = () => {
   const queryClient = useQueryClient();
   const { data: orders = [], isLoading, isError } = useQuery({ queryKey: ["orders"], queryFn: fetchOrders });
   const { products } = useProducts();
+  const { data: messageTemplates = [] } = useQuery({ queryKey: ["messageTemplates"], queryFn: fetchMessageTemplates });
+  const statusUpdateTemplate =
+    messageTemplates.find((t) => t.key === "order_status_update")?.template ?? DEFAULT_MESSAGE_TEMPLATES.order_status_update;
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -1274,7 +1283,7 @@ const AdminOrders = () => {
 
                           <div className="flex flex-wrap items-center gap-3">
                             <a
-                              href={buildStatusWhatsAppLink(order)}
+                              href={buildStatusWhatsAppLink(order, statusUpdateTemplate)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-white font-medium text-sm transition-transform hover:scale-105"
