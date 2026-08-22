@@ -430,6 +430,80 @@ app.delete("/api/services/:id", requireAuth, async (req, res) => {
   res.status(204).end();
 });
 
+// Registro de Compras (efectos contables): comprobantes de compra con
+// proveedor, montos y foto del recibo. Solo accesible con sesión de admin —
+// no hay ningún link público para esto.
+const PURCHASE_DOCUMENT_TYPES = ["Factura", "Boleta", "Recibo por Honorarios", "Nota de Crédito", "Nota de Débito", "Otro"];
+
+const mapPurchase = (row) => ({
+  id: row.id,
+  purchaseDate: row.purchase_date,
+  documentType: row.document_type,
+  documentNumber: row.document_number,
+  supplierName: row.supplier_name,
+  supplierRuc: row.supplier_ruc,
+  description: row.description,
+  subtotal: Number(row.subtotal),
+  igv: Number(row.igv),
+  total: Number(row.total),
+  receiptImage: row.receipt_image,
+  createdAt: row.created_at,
+});
+
+const validatePurchase = ({ purchaseDate, documentType, supplierName, subtotal, igv, total }) => {
+  if (!purchaseDate) return "La fecha de compra es obligatoria";
+  if (!PURCHASE_DOCUMENT_TYPES.includes(documentType)) return "Tipo de comprobante inválido";
+  if (!supplierName?.trim()) return "El proveedor es obligatorio";
+  if (typeof subtotal !== "number" || !Number.isFinite(subtotal) || subtotal < 0) return "El subtotal es inválido";
+  if (typeof igv !== "number" || !Number.isFinite(igv) || igv < 0) return "El IGV es inválido";
+  if (typeof total !== "number" || !Number.isFinite(total) || total <= 0) return "El total es inválido";
+  return null;
+};
+
+app.get("/api/purchases", requireAuth, async (req, res) => {
+  const { rows } = await pool.query("SELECT * FROM purchases ORDER BY purchase_date DESC, id DESC");
+  res.json(rows.map(mapPurchase));
+});
+
+app.post("/api/purchases", requireAuth, async (req, res) => {
+  const { purchaseDate, documentType, documentNumber, supplierName, supplierRuc, description, subtotal, igv, total, receiptImage } = req.body;
+  const error = validatePurchase({ purchaseDate, documentType, supplierName, subtotal, igv, total });
+  if (error) return res.status(400).json({ error });
+  const { rows } = await pool.query(
+    `INSERT INTO purchases (purchase_date, document_type, document_number, supplier_name, supplier_ruc, description, subtotal, igv, total, receipt_image)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+    [
+      new Date(purchaseDate), documentType, (documentNumber ?? "").trim(), supplierName.trim(), (supplierRuc ?? "").trim(),
+      (description ?? "").trim(), subtotal, igv, total, (receiptImage ?? "").trim(),
+    ]
+  );
+  res.status(201).json(mapPurchase(rows[0]));
+});
+
+app.put("/api/purchases/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const { purchaseDate, documentType, documentNumber, supplierName, supplierRuc, description, subtotal, igv, total, receiptImage } = req.body;
+  const error = validatePurchase({ purchaseDate, documentType, supplierName, subtotal, igv, total });
+  if (error) return res.status(400).json({ error });
+  const { rows } = await pool.query(
+    `UPDATE purchases SET purchase_date = $1, document_type = $2, document_number = $3, supplier_name = $4, supplier_ruc = $5,
+       description = $6, subtotal = $7, igv = $8, total = $9, receipt_image = $10 WHERE id = $11 RETURNING *`,
+    [
+      new Date(purchaseDate), documentType, (documentNumber ?? "").trim(), supplierName.trim(), (supplierRuc ?? "").trim(),
+      (description ?? "").trim(), subtotal, igv, total, (receiptImage ?? "").trim(), id,
+    ]
+  );
+  if (rows.length === 0) return res.status(404).json({ error: "Compra no encontrada" });
+  res.json(mapPurchase(rows[0]));
+});
+
+app.delete("/api/purchases/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const { rowCount } = await pool.query("DELETE FROM purchases WHERE id = $1", [id]);
+  if (rowCount === 0) return res.status(404).json({ error: "Compra no encontrada" });
+  res.status(204).end();
+});
+
 // El perfil es solo informativo por ahora: no restringe qué puede ver o
 // hacer cada usuario dentro del panel admin.
 const USER_ROLES = ["Administrador", "Vendedor"];

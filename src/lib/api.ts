@@ -75,6 +75,50 @@ export const updateService = (service: Service): Promise<Service> =>
 export const deleteService = (id: number): Promise<void> =>
   fetch(`${API_URL}/services/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
 
+// Registro de Compras (efectos contables): comprobantes de compra con
+// proveedor, montos (subtotal/IGV/total) y foto del recibo. Solo accesible
+// con sesión de admin.
+export type PurchaseDocumentType = "Factura" | "Boleta" | "Recibo por Honorarios" | "Nota de Crédito" | "Nota de Débito" | "Otro";
+
+export interface Purchase {
+  id: number;
+  purchaseDate: string;
+  documentType: PurchaseDocumentType;
+  documentNumber: string;
+  supplierName: string;
+  supplierRuc: string;
+  description: string;
+  subtotal: number;
+  igv: number;
+  total: number;
+  receiptImage: string;
+  createdAt: string;
+}
+
+export type PurchaseInput = Omit<Purchase, "id" | "createdAt">;
+
+export const fetchPurchases = (): Promise<Purchase[]> =>
+  fetch(`${API_URL}/purchases`, { credentials: "include" }).then((res) => handle<Purchase[]>(res));
+
+export const createPurchase = (data: PurchaseInput): Promise<Purchase> =>
+  fetch(`${API_URL}/purchases`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<Purchase>(res));
+
+export const updatePurchase = (purchase: Purchase): Promise<Purchase> =>
+  fetch(`${API_URL}/purchases/${purchase.id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(purchase),
+  }).then((res) => handle<Purchase>(res));
+
+export const deletePurchase = (id: number): Promise<void> =>
+  fetch(`${API_URL}/purchases/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
+
 export type UserRole = "Administrador" | "Vendedor";
 
 export interface UserAccount {

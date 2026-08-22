@@ -353,6 +353,27 @@ export const initSchema = async () => {
       ('catalogo', 'Catálogo - ChicBags', 'Aquí podrás ver todas nuestras hermosas carteras.')
     ON CONFLICT (route_key) DO NOTHING;
   `);
+
+  // Registro de Compras (efectos contables): cada fila es un comprobante de
+  // compra (factura/boleta/etc.) con su proveedor, montos y una foto del
+  // recibo. purchase_date se guarda en UTC medianoche, mismo criterio que
+  // separation_deadline — para mostrarla hay que leerla también en UTC.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS purchases (
+      id SERIAL PRIMARY KEY,
+      purchase_date TIMESTAMPTZ NOT NULL,
+      document_type TEXT NOT NULL DEFAULT 'Factura',
+      document_number TEXT NOT NULL DEFAULT '',
+      supplier_name TEXT NOT NULL,
+      supplier_ruc TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      subtotal NUMERIC NOT NULL DEFAULT 0,
+      igv NUMERIC NOT NULL DEFAULT 0,
+      total NUMERIC NOT NULL,
+      receipt_image TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
 };
 
 // Busca una marca por nombre (sin distinguir mayúsculas/minúsculas) o la crea
