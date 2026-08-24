@@ -779,9 +779,10 @@ const ReceiptForm = ({ order }: { order: AdminOrder }) => {
 
 const CHARGE_TYPES: ChargeType[] = ["Normal", "Contraentrega"];
 // Los tipos de delivery donde tiene sentido elegir Contraentrega: el
-// motorizado propio, o las agencias/courier — Motorizado Express queda
-// afuera, no lo pidieron.
-const CHARGE_TYPE_DELIVERY_TYPES = ["Motorizado Delivery", "Shalom", "Olva", "Marvisur"];
+// motorizado propio (Delivery, o el que manda el mismo cliente a
+// recoger), o las agencias/courier — Motorizado Express queda afuera, no
+// lo pidieron.
+const CHARGE_TYPE_DELIVERY_TYPES = ["Motorizado Delivery", "Motorizado Cliente", "Shalom", "Olva", "Marvisur"];
 
 // Deja elegir el tipo de cobro (Normal/Contraentrega). Contraentrega pasa
 // el pedido a "Pendiente de envío" aunque tenga saldo pendiente — quien

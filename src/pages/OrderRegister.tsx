@@ -19,10 +19,11 @@ import ServiceOrderPicker from "@/components/ServiceOrderPicker";
 const PAYMENT_SOURCES = ["Yape", "Plin", "Otro"];
 const CHARGE_TYPES: ChargeType[] = ["Normal", "Contraentrega"];
 // Shalom, Olva y Marvisur reparten a nivel nacional, así que Contraentrega
-// se puede elegir para ellos en cualquier provincia. Motorizado Delivery
-// solo existe en la provincia de Lima (ya restringido al registrar el
-// cliente), así que ahí sí se exige esa provincia.
+// se puede elegir para ellos en cualquier provincia. Motorizado Delivery y
+// Motorizado Cliente solo existen en la provincia de Lima (ya restringido
+// al registrar el cliente), así que ahí sí se exige esa provincia.
 const CHARGE_TYPE_NATIONWIDE_DELIVERY_TYPES = ["Shalom", "Olva", "Marvisur"];
+const CHARGE_TYPE_LIMA_ONLY_DELIVERY_TYPES = ["Motorizado Delivery", "Motorizado Cliente"];
 
 interface OrderLine {
   product: Product;
@@ -272,7 +273,7 @@ const OrderRegister = () => {
   const canPickChargeType = Boolean(
     customer &&
       (CHARGE_TYPE_NATIONWIDE_DELIVERY_TYPES.includes(customer.deliveryType) ||
-        (customer.province === "Lima" && customer.deliveryType === "Motorizado Delivery"))
+        (customer.province === "Lima" && CHARGE_TYPE_LIMA_ONLY_DELIVERY_TYPES.includes(customer.deliveryType)))
   );
 
   // El pago es opcional: si no se llenó ningún campo del borrador, no hay

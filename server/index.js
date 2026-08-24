@@ -585,14 +585,15 @@ app.get("/api/sellers", async (req, res) => {
   res.json(rows);
 });
 
-const DELIVERY_TYPES = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Olva", "Marvisur"];
+const DELIVERY_TYPES = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Motorizado Cliente", "Olva", "Marvisur"];
 // Los que reparten por agencia/courier (no motorizado propio): antes de
 // marcarlos "Entregado a delivery" hace falta subir el recibo del envío.
 const COURIER_DELIVERY_TYPES = ["Shalom", "Olva", "Marvisur"];
 // Tipos de delivery donde tiene sentido "Contraentrega": el motorizado
-// propio, o las agencias/courier de arriba. Motorizado Express queda
-// afuera — no lo pidieron.
-const CHARGE_TYPE_DELIVERY_TYPES = ["Motorizado Delivery", ...COURIER_DELIVERY_TYPES];
+// propio (Delivery, o el que manda el mismo cliente a recoger), o las
+// agencias/courier de arriba. Motorizado Express queda afuera — no lo
+// pidieron.
+const CHARGE_TYPE_DELIVERY_TYPES = ["Motorizado Delivery", "Motorizado Cliente", ...COURIER_DELIVERY_TYPES];
 
 // Tope de descuento manual por ítem al registrar un pedido: más alto si
 // quien registra tiene sesión de admin abierta en el navegador (aunque el

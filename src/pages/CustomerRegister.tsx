@@ -14,10 +14,10 @@ import { DEFAULT_MESSAGE_TEMPLATES, renderMessageTemplate } from "@/lib/messageT
 import AgencyPicker from "@/components/AgencyPicker";
 
 const DOCUMENT_TYPES = ["DNI", "Carné de Extranjería", "Pasaporte", "RUC"];
-const DELIVERY_TYPES: DeliveryType[] = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Olva", "Marvisur"];
+const DELIVERY_TYPES: DeliveryType[] = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Motorizado Cliente", "Olva", "Marvisur"];
 // Los motorizados propios solo reparten en la provincia de Lima; en el
 // resto del país solo hay envío por agencia (Shalom/Olva/Marvisur).
-const LIMA_ONLY_DELIVERY_TYPES: DeliveryType[] = ["Motorizado Express", "Motorizado Delivery"];
+const LIMA_ONLY_DELIVERY_TYPES: DeliveryType[] = ["Motorizado Express", "Motorizado Delivery", "Motorizado Cliente"];
 const DELIVERY_MODE_REQUIRED: DeliveryType[] = ["Shalom", "Olva"];
 const DELIVERY_MODES: DeliveryMode[] = ["Terrestre", "Aéreo"];
 // Solo Shalom tiene sedes cargadas por ahora.
@@ -384,6 +384,12 @@ const CustomerRegister = () => {
                 <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
                   <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                   Entregas al día siguiente en el rango horario de 11:00 AM a 9:00 PM. Envía tu ubicación actual.
+                </p>
+              )}
+              {form.deliveryType === "Motorizado Cliente" && (
+                <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+                  <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  Tú envías a tu propio motorizado a recoger el pedido en nuestro punto de atención en Lima — no hace falta dirección de entrega.
                 </p>
               )}
             </div>

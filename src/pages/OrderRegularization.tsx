@@ -23,10 +23,10 @@ import ServiceOrderPicker from "@/components/ServiceOrderPicker";
 const PAYMENT_SOURCES = ["Yape", "Plin", "Otro"];
 
 const DOCUMENT_TYPES = ["DNI", "Carné de Extranjería", "Pasaporte", "RUC"];
-const DELIVERY_TYPES: DeliveryType[] = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Olva", "Marvisur"];
+const DELIVERY_TYPES: DeliveryType[] = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Motorizado Cliente", "Olva", "Marvisur"];
 // Los motorizados propios solo reparten en la provincia de Lima; en el
 // resto del país solo hay envío por agencia (Shalom/Olva/Marvisur).
-const LIMA_ONLY_DELIVERY_TYPES: DeliveryType[] = ["Motorizado Express", "Motorizado Delivery"];
+const LIMA_ONLY_DELIVERY_TYPES: DeliveryType[] = ["Motorizado Express", "Motorizado Delivery", "Motorizado Cliente"];
 const DELIVERY_MODE_REQUIRED: DeliveryType[] = ["Shalom", "Olva"];
 const DELIVERY_MODES: DeliveryMode[] = ["Terrestre", "Aéreo"];
 const AGENCY_REQUIRED: DeliveryType[] = ["Shalom"];
