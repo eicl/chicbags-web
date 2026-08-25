@@ -1,12 +1,12 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Plus, Printer, Search, Settings, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Plus, Printer, Search, Settings, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
 import {
   AdminOrder, ChargeType, DeliveryType, DiscountSettings, OrderItem, OrderStatus, PaymentInput, Service,
-  addOrderItem, deleteOrder, deleteOrderItem, fetchMessageTemplates, fetchOrders, fetchServices, fetchSettings, markOrderDelivered,
-  markOrderWarehouseSeparated, registerPayment, updateOrderChargeType, updateOrderItemColor, updateOrderItemDiscount,
-  updateOrderReceipt, updateOrderServiceItem, updateSettings, uploadImage,
+  addOrderItem, deleteOrder, deleteOrderItem, fetchMessageTemplates, fetchOrders, fetchServices, fetchSettings, markOrderAccumulating,
+  markOrderDelivered, markOrderWarehouseSeparated, registerPayment, releaseOrderAccumulating, updateOrderChargeType,
+  updateOrderItemColor, updateOrderItemDiscount, updateOrderReceipt, updateOrderServiceItem, updateSettings, uploadImage,
 } from "@/lib/api";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import { DEFAULT_MESSAGE_TEMPLATES, renderMessageTemplate } from "@/lib/messageTemplates";
@@ -63,6 +63,7 @@ const STATUS_BADGE_CLASS: Record<OrderStatus, string> = {
   "Registrado": "bg-muted text-muted-foreground",
   "Separación": "bg-amber-500/10 text-amber-600",
   "Separado en almacén": "bg-sky-500/10 text-sky-600",
+  "Pendiente de envío en almacén por acumulación": "bg-violet-500/10 text-violet-600",
   "Pendiente de envío": "bg-primary/10 text-primary",
   "Entregado a delivery": "bg-emerald-500/10 text-emerald-600",
 };
@@ -240,7 +241,9 @@ const buildSeparationLabelHtml = (order: AdminOrder) => {
 
 const printOrder = (order: AdminOrder) => {
   const html =
-    order.status === "Pendiente de envío" || order.status === "Entregado a delivery"
+    order.status === "Pendiente de envío" ||
+    order.status === "Entregado a delivery" ||
+    order.status === "Pendiente de envío en almacén por acumulación"
       ? buildShippingLabelHtml(order)
       : buildSeparationLabelHtml(order);
   const printWindow = window.open("", "_blank", "width=600,height=800");
@@ -1037,6 +1040,24 @@ const AdminOrders = () => {
     onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo actualizar el pedido"),
   });
 
+  const accumulateMutation = useMutation({
+    mutationFn: markOrderAccumulating,
+    onSuccess: () => {
+      toast.success("Pedido guardado en almacén por acumulación");
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo actualizar el pedido"),
+  });
+
+  const releaseAccumulateMutation = useMutation({
+    mutationFn: releaseOrderAccumulating,
+    onSuccess: () => {
+      toast.success("Pedido liberado, vuelve a Pendiente de envío");
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo actualizar el pedido"),
+  });
+
   return (
     <div>
       <div className="mb-6 p-4 rounded-md border border-border bg-muted/20">
@@ -1329,6 +1350,30 @@ const AdminOrders = () => {
                                 </Button>
                               );
                             })()}
+                            {order.status === "Pendiente de envío" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => accumulateMutation.mutate(order.id)}
+                                disabled={accumulateMutation.isPending}
+                                title="Guarda el pedido en almacén para despacharlo junto con otros pedidos del mismo cliente más adelante"
+                                className="gap-2 text-violet-600 hover:text-violet-600"
+                              >
+                                <Archive className="w-3.5 h-3.5" /> Guardar en almacén (acumulación)
+                              </Button>
+                            )}
+                            {order.status === "Pendiente de envío en almacén por acumulación" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => releaseAccumulateMutation.mutate(order.id)}
+                                disabled={releaseAccumulateMutation.isPending}
+                                title="Libera el pedido de vuelta a Pendiente de envío para despacharlo"
+                                className="gap-2 text-violet-600 hover:text-violet-600"
+                              >
+                                <ArchiveRestore className="w-3.5 h-3.5" /> Liberar de almacén
+                              </Button>
+                            )}
                             <Button
                               variant="outline"
                               size="sm"

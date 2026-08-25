@@ -1945,6 +1945,51 @@ app.put("/api/orders/:id/warehouse", requireAuth, async (req, res) => {
   res.json(mapOrder(rows[0], itemRows, paymentRows));
 });
 
+// Un pedido ya pagado del todo ("Pendiente de envío") puede guardarse en
+// almacén para acumularlo con otros pedidos del mismo cliente y despachar
+// todo junto más adelante — distinto de "Separado en almacén", que es para
+// pedidos con pago parcial. Solo se llega a este estado desde "Pendiente de
+// envío"; para salir hace falta liberarlo a mano (ver endpoint de abajo),
+// porque al estar ya pagado del todo no hay un pago futuro que lo empuje de
+// vuelta solo.
+app.put("/api/orders/:id/accumulate", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  const { rows } = await pool.query(
+    "UPDATE orders SET status = 'Pendiente de envío en almacén por acumulación' WHERE id = $1 AND status = 'Pendiente de envío' RETURNING *",
+    [id]
+  );
+  if (rows.length === 0) {
+    const { rows: existing } = await pool.query("SELECT id FROM orders WHERE id = $1", [id]);
+    if (existing.length === 0) return res.status(404).json({ error: "Pedido no encontrado" });
+    return res.status(400).json({ error: "Solo se puede guardar en almacén por acumulación un pedido en Pendiente de envío" });
+  }
+  const { rows: itemRows } = await pool.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [id]);
+  const { rows: paymentRows } = await pool.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [id]);
+  res.json(mapOrder(rows[0], itemRows, paymentRows));
+});
+
+app.put("/api/orders/:id/release-accumulate", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  const { rows } = await pool.query(
+    "UPDATE orders SET status = 'Pendiente de envío' WHERE id = $1 AND status = 'Pendiente de envío en almacén por acumulación' RETURNING *",
+    [id]
+  );
+  if (rows.length === 0) {
+    const { rows: existing } = await pool.query("SELECT id FROM orders WHERE id = $1", [id]);
+    if (existing.length === 0) return res.status(404).json({ error: "Pedido no encontrado" });
+    return res.status(400).json({ error: "Este pedido no está guardado en almacén por acumulación" });
+  }
+  const { rows: itemRows } = await pool.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [id]);
+  const { rows: paymentRows } = await pool.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [id]);
+  res.json(mapOrder(rows[0], itemRows, paymentRows));
+});
+
 // Recalcula estado/plazo de un pedido después de que cambió su total (por
 // agregar, editar o quitar un ítem) — misma regla que applyPayment: solo
 // toca el estado si el pedido ya estaba en Separación/Pendiente de envío

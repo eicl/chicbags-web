@@ -370,7 +370,13 @@ export interface OrderItem {
   subtotal: number;
 }
 
-export type OrderStatus = "Registrado" | "Separación" | "Separado en almacén" | "Pendiente de envío" | "Entregado a delivery";
+export type OrderStatus =
+  | "Registrado"
+  | "Separación"
+  | "Separado en almacén"
+  | "Pendiente de envío en almacén por acumulación"
+  | "Pendiente de envío"
+  | "Entregado a delivery";
 export type OrderType = "Pedido" | "Regularización";
 
 export interface Payment {
@@ -621,6 +627,22 @@ export const markOrderDelivered = (orderId: number): Promise<Order> =>
 // Marca un pedido "Separación" como ya apartado físicamente en el almacén.
 export const markOrderWarehouseSeparated = (orderId: number): Promise<Order> =>
   fetch(`${API_URL}/orders/${orderId}/warehouse`, {
+    method: "PUT",
+    credentials: "include",
+  }).then((res) => handle<Order>(res));
+
+// Guarda un pedido ya pagado del todo ("Pendiente de envío") en almacén
+// para acumularlo con otros pedidos del mismo cliente y despacharlos
+// juntos más adelante — y su liberación de vuelta a "Pendiente de envío"
+// cuando ya se quiera consolidar y enviar.
+export const markOrderAccumulating = (orderId: number): Promise<Order> =>
+  fetch(`${API_URL}/orders/${orderId}/accumulate`, {
+    method: "PUT",
+    credentials: "include",
+  }).then((res) => handle<Order>(res));
+
+export const releaseOrderAccumulating = (orderId: number): Promise<Order> =>
+  fetch(`${API_URL}/orders/${orderId}/release-accumulate`, {
     method: "PUT",
     credentials: "include",
   }).then((res) => handle<Order>(res));
