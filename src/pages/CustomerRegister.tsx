@@ -8,15 +8,16 @@ import Header from "@/components/Header";
 import {
   registerCustomer, fetchDistricts, fetchAgencies, fetchMessageTemplates, Customer, CustomerInput, DeliveryType, DeliveryMode,
 } from "@/lib/api";
-import { PERU_DEPARTMENTS, PERU_LOCATIONS } from "@/lib/peru-locations";
+import { PERU_DEPARTMENTS, PERU_LOCATIONS, isLimaMetroProvince } from "@/lib/peru-locations";
 import { errorLabelClass, errorInputClass, cn } from "@/lib/utils";
 import { DEFAULT_MESSAGE_TEMPLATES, renderMessageTemplate } from "@/lib/messageTemplates";
 import AgencyPicker from "@/components/AgencyPicker";
 
 const DOCUMENT_TYPES = ["DNI", "Carné de Extranjería", "Pasaporte", "RUC"];
 const DELIVERY_TYPES: DeliveryType[] = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Motorizado Cliente", "Olva", "Marvisur"];
-// Los motorizados propios solo reparten en la provincia de Lima; en el
-// resto del país solo hay envío por agencia (Shalom/Olva/Marvisur).
+// Los motorizados propios solo reparten en Lima o Callao (misma área
+// metropolitana); en el resto del país solo hay envío por agencia
+// (Shalom/Olva/Marvisur).
 const LIMA_ONLY_DELIVERY_TYPES: DeliveryType[] = ["Motorizado Express", "Motorizado Delivery", "Motorizado Cliente"];
 const DELIVERY_MODE_REQUIRED: DeliveryType[] = ["Shalom", "Olva"];
 const DELIVERY_MODES: DeliveryMode[] = ["Terrestre", "Aéreo"];
@@ -176,7 +177,7 @@ const CustomerRegister = () => {
 
   const provinces = form.department ? PERU_LOCATIONS[form.department] ?? [] : [];
   const availableDeliveryTypes = DELIVERY_TYPES.filter(
-    (t) => form.province === "Lima" || !LIMA_ONLY_DELIVERY_TYPES.includes(t) || t === form.deliveryType
+    (t) => isLimaMetroProvince(form.province) || !LIMA_ONLY_DELIVERY_TYPES.includes(t) || t === form.deliveryType
   );
 
   const { data: districts = [] } = useQuery({
@@ -306,7 +307,7 @@ const CustomerRegister = () => {
                 value={form.province}
                 onChange={(e) => {
                   const province = e.target.value;
-                  const resetDeliveryType = province !== "Lima" && LIMA_ONLY_DELIVERY_TYPES.includes(form.deliveryType);
+                  const resetDeliveryType = !isLimaMetroProvince(province) && LIMA_ONLY_DELIVERY_TYPES.includes(form.deliveryType);
                   setForm({
                     ...form,
                     province,
@@ -368,10 +369,10 @@ const CustomerRegister = () => {
                   <option key={t} value={t}>{t}</option>
                 ))}
               </select>
-              {form.province && form.province !== "Lima" && (
+              {form.province && !isLimaMetroProvince(form.province) && (
                 <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
                   <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  Fuera de la provincia de Lima solo hay envío por agencia (Shalom, Olva o Marvisur).
+                  Fuera de Lima o Callao solo hay envío por agencia (Shalom, Olva o Marvisur).
                 </p>
               )}
               {form.deliveryType === "Motorizado Express" && (

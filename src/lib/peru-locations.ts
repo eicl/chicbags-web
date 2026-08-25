@@ -56,3 +56,8 @@ export const PERU_LOCATIONS: Record<string, string[]> = {
 };
 
 export const PERU_DEPARTMENTS = Object.keys(PERU_LOCATIONS).sort((a, b) => a.localeCompare(b, "es"));
+
+// Para qué tipos de delivery motorizado están disponibles (y demás reglas
+// atadas a "provincia de Lima"), el Callao se trata igual que Lima — es la
+// misma área metropolitana, aunque sea su propia provincia/departamento.
+export const isLimaMetroProvince = (province: string) => province === "Lima" || province === "Callao";

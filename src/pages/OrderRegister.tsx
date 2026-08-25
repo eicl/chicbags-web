@@ -13,6 +13,7 @@ import { lookupCustomer, registerOrder, uploadPaymentProof, fetchSellers, fetchS
 import { productImageUrl } from "@/lib/images";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import { DEFAULT_MESSAGE_TEMPLATES, renderMessageTemplate } from "@/lib/messageTemplates";
+import { isLimaMetroProvince } from "@/lib/peru-locations";
 import ProductOrderPicker from "@/components/ProductOrderPicker";
 import ServiceOrderPicker from "@/components/ServiceOrderPicker";
 
@@ -20,8 +21,8 @@ const PAYMENT_SOURCES = ["Yape", "Plin", "Otro"];
 const CHARGE_TYPES: ChargeType[] = ["Normal", "Contraentrega"];
 // Shalom, Olva y Marvisur reparten a nivel nacional, así que Contraentrega
 // se puede elegir para ellos en cualquier provincia. Motorizado Delivery y
-// Motorizado Cliente solo existen en la provincia de Lima (ya restringido
-// al registrar el cliente), así que ahí sí se exige esa provincia.
+// Motorizado Cliente solo existen en Lima o Callao (ya restringido al
+// registrar el cliente), así que ahí sí se exige esa zona.
 const CHARGE_TYPE_NATIONWIDE_DELIVERY_TYPES = ["Shalom", "Olva", "Marvisur"];
 const CHARGE_TYPE_LIMA_ONLY_DELIVERY_TYPES = ["Motorizado Delivery", "Motorizado Cliente"];
 
@@ -273,7 +274,7 @@ const OrderRegister = () => {
   const canPickChargeType = Boolean(
     customer &&
       (CHARGE_TYPE_NATIONWIDE_DELIVERY_TYPES.includes(customer.deliveryType) ||
-        (customer.province === "Lima" && CHARGE_TYPE_LIMA_ONLY_DELIVERY_TYPES.includes(customer.deliveryType)))
+        (isLimaMetroProvince(customer.province) && CHARGE_TYPE_LIMA_ONLY_DELIVERY_TYPES.includes(customer.deliveryType)))
   );
 
   // El pago es opcional: si no se llenó ningún campo del borrador, no hay
