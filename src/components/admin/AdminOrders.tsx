@@ -66,7 +66,7 @@ const STATUS_BADGE_CLASS: Record<OrderStatus, string> = {
   "Separado en almacén": "bg-sky-500/10 text-sky-600",
   "Pendiente de envío en almacén por acumulación": "bg-violet-500/10 text-violet-600",
   "Pendiente de envío": "bg-primary/10 text-primary",
-  "Listo para delivery": "bg-teal-500/10 text-teal-600",
+  "Listo para delivery": "bg-purple-500/10 text-purple-600",
   "Entregado a delivery": "bg-emerald-500/10 text-emerald-600",
 };
 
@@ -1357,7 +1357,7 @@ const AdminOrders = () => {
                                 size="sm"
                                 onClick={() => readyForDeliveryMutation.mutate(order.id)}
                                 disabled={readyForDeliveryMutation.isPending}
-                                className="gap-2 text-teal-600 hover:text-teal-600"
+                                className="gap-2 text-purple-600 hover:text-purple-600"
                               >
                                 <PackageCheck className="w-3.5 h-3.5" /> Marcar como listo para delivery
                               </Button>
