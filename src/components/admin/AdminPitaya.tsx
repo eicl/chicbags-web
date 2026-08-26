@@ -44,8 +44,9 @@ const AdminPitaya = () => {
     <div className="max-w-2xl">
       <p className="text-sm text-muted-foreground mb-6">
         Genera el Excel con los pedidos listos para el motorizado Pitaya: solo pedidos con delivery
-        "Motorizado Delivery" que están en estado "Pendiente de envío" y que todavía no salieron en un reporte
-        anterior. Cada generación queda guardada abajo — se puede volver a descargar cuando haga falta.
+        "Motorizado Delivery" que están en estado "Pendiente de envío" o "Listo para delivery" y que todavía no
+        salieron en un reporte anterior. Cada generación queda guardada abajo — se puede volver a descargar cuando
+        haga falta.
       </p>
       <Button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending} className="gap-2 mb-8">
         <FileSpreadsheet className="w-4 h-4" />

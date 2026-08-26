@@ -1264,10 +1264,11 @@ const buildPitayaWorkbook = async (shipmentRows) => {
 };
 
 // Genera un reporte NUEVO para el motorizado Pitaya: toma los pedidos
-// Motorizado Delivery en Pendiente de envío que todavía no salieron en
-// ningún reporte anterior (shipments), los deja asentados (report_generations
-// + shipments, con su código secuencial) y devuelve el Excel. Si se vuelve a
-// generar después, esos mismos pedidos ya no van a aparecer de nuevo.
+// Motorizado Delivery en Pendiente de envío o Listo para delivery que
+// todavía no salieron en ningún reporte anterior (shipments), los deja
+// asentados (report_generations + shipments, con su código secuencial) y
+// devuelve el Excel. Si se vuelve a generar después, esos mismos pedidos ya
+// no van a aparecer de nuevo.
 app.post("/api/pitaya-reports", requireAuth, async (req, res) => {
   const client = await pool.connect();
   try {
@@ -1289,7 +1290,7 @@ app.post("/api/pitaya-reports", requireAuth, async (req, res) => {
         SELECT json_agg(json_build_object('amount', p.amount, 'source', p.source) ORDER BY p.id) AS payments
         FROM payments p WHERE p.order_id = o.id
       ) payments ON true
-      WHERE o.status = 'Pendiente de envío' AND c.delivery_type = 'Motorizado Delivery'
+      WHERE o.status IN ('Pendiente de envío', 'Listo para delivery') AND c.delivery_type = 'Motorizado Delivery'
         AND o.id NOT IN (SELECT order_id FROM shipments)
       ORDER BY o.id
     `);
@@ -1856,8 +1857,32 @@ app.post("/api/orders/:id/payments", requireAuth, async (req, res) => {
   }
 });
 
+// Transición de estado a mano desde el panel: cuando el pedido ya está
+// armado/empacado en el almacén, esperando que lo recojan, pasa de
+// "Pendiente de envío" a "Listo para delivery" — un paso intermedio antes
+// de "Entregado a delivery", sin ningún requisito extra (el recibo del
+// envío se sigue pidiendo recién en ese último paso).
+app.put("/api/orders/:id/ready-for-delivery", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  const { rows } = await pool.query(
+    "UPDATE orders SET status = 'Listo para delivery' WHERE id = $1 AND status = 'Pendiente de envío' RETURNING *",
+    [id]
+  );
+  if (rows.length === 0) {
+    const { rows: existing } = await pool.query("SELECT id FROM orders WHERE id = $1", [id]);
+    if (existing.length === 0) return res.status(404).json({ error: "Pedido no encontrado" });
+    return res.status(400).json({ error: "Solo se puede marcar como listo para delivery un pedido en Pendiente de envío" });
+  }
+  const { rows: itemRows } = await pool.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [id]);
+  const { rows: paymentRows } = await pool.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [id]);
+  res.json(mapOrder(rows[0], itemRows, paymentRows));
+});
+
 // Transición de estado a mano desde el panel: cuando el paquete ya se le
-// entregó al courier/delivery, deja de estar "Pendiente de envío" y pasa a
+// entregó al courier/delivery, deja de estar "Listo para delivery" y pasa a
 // "Entregado a delivery". El resto del ciclo de vida (Registrado →
 // Separación/Pendiente de envío) sigue calculándose solo a partir de los
 // pagos, nunca a mano. Para Shalom/Olva/Marvisur, además exige que ya se
@@ -1879,8 +1904,8 @@ app.put("/api/orders/:id/deliver", requireAuth, async (req, res) => {
       throw Object.assign(new Error("Pedido no encontrado"), { status: 404 });
     }
     const order = orderRows[0];
-    if (order.status !== "Pendiente de envío") {
-      throw new Error("Solo se puede marcar como entregado a delivery un pedido Pendiente de envío");
+    if (order.status !== "Listo para delivery") {
+      throw new Error("Solo se puede marcar como entregado a delivery un pedido Listo para delivery");
     }
     if (COURIER_DELIVERY_TYPES.includes(order.delivery_type) && !order.receipt_image) {
       throw new Error("Sube el recibo del envío antes de marcar el pedido como entregado a delivery");

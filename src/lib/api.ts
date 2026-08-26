@@ -376,6 +376,7 @@ export type OrderStatus =
   | "Separado en almacén"
   | "Pendiente de envío en almacén por acumulación"
   | "Pendiente de envío"
+  | "Listo para delivery"
   | "Entregado a delivery";
 export type OrderType = "Pedido" | "Regularización";
 
@@ -616,8 +617,16 @@ export const registerPayment = (orderId: number, data: PaymentInput): Promise<Or
     body: JSON.stringify(data),
   }).then((res) => handle<Order>(res));
 
-// Única transición de estado manual desde el panel: marca un pedido
-// "Pendiente de envío" como ya entregado al courier/delivery.
+// Marca un pedido "Pendiente de envío" como ya armado/empacado, esperando
+// que lo recojan — paso intermedio antes de "Entregado a delivery".
+export const markOrderReadyForDelivery = (orderId: number): Promise<Order> =>
+  fetch(`${API_URL}/orders/${orderId}/ready-for-delivery`, {
+    method: "PUT",
+    credentials: "include",
+  }).then((res) => handle<Order>(res));
+
+// Transición de estado manual desde el panel: marca un pedido "Listo para
+// delivery" como ya entregado al courier/delivery.
 export const markOrderDelivered = (orderId: number): Promise<Order> =>
   fetch(`${API_URL}/orders/${orderId}/deliver`, {
     method: "PUT",

@@ -1,12 +1,13 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ArchiveRestore, Check, ChevronDown, ChevronUp, MessageCircle, Loader2, Pencil, Plus, Printer, Search, Settings, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, ChevronDown, ChevronUp, MessageCircle, Loader2, PackageCheck, Pencil, Plus, Printer, Search, Settings, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
 import {
   AdminOrder, ChargeType, DeliveryType, DiscountSettings, OrderItem, OrderStatus, PaymentInput, Service,
   addOrderItem, deleteOrder, deleteOrderItem, fetchMessageTemplates, fetchOrders, fetchServices, fetchSettings, markOrderAccumulating,
-  markOrderDelivered, markOrderWarehouseSeparated, registerPayment, releaseOrderAccumulating, updateOrderChargeType,
-  updateOrderItemColor, updateOrderItemDiscount, updateOrderReceipt, updateOrderServiceItem, updateSettings, uploadImage,
+  markOrderDelivered, markOrderReadyForDelivery, markOrderWarehouseSeparated, registerPayment, releaseOrderAccumulating,
+  updateOrderChargeType, updateOrderItemColor, updateOrderItemDiscount, updateOrderReceipt, updateOrderServiceItem,
+  updateSettings, uploadImage,
 } from "@/lib/api";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import { DEFAULT_MESSAGE_TEMPLATES, renderMessageTemplate } from "@/lib/messageTemplates";
@@ -65,6 +66,7 @@ const STATUS_BADGE_CLASS: Record<OrderStatus, string> = {
   "Separado en almacén": "bg-sky-500/10 text-sky-600",
   "Pendiente de envío en almacén por acumulación": "bg-violet-500/10 text-violet-600",
   "Pendiente de envío": "bg-primary/10 text-primary",
+  "Listo para delivery": "bg-teal-500/10 text-teal-600",
   "Entregado a delivery": "bg-emerald-500/10 text-emerald-600",
 };
 
@@ -114,8 +116,9 @@ const PRINT_BASE_STYLES = `
   body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 0; }
 `;
 
-// Reporte para pedidos "Pendiente de envío"/"Entregado a delivery" (ya
-// pagados): datos de entrega del cliente, listos para pegar en el paquete.
+// Reporte para pedidos "Pendiente de envío"/"Listo para delivery"/
+// "Entregado a delivery" (ya pagados): datos de entrega del cliente,
+// listos para pegar en el paquete.
 // Vía (si aplica, Terrestre/Aéreo) va en la esquina superior izquierda y el
 // número de pedido en la superior derecha; el resto son filas fijas:
 // Delivery (tipo + agencia), Ubicación/Documento (o, si es "motorizado",
@@ -242,6 +245,7 @@ const buildSeparationLabelHtml = (order: AdminOrder) => {
 const printOrder = (order: AdminOrder) => {
   const html =
     order.status === "Pendiente de envío" ||
+    order.status === "Listo para delivery" ||
     order.status === "Entregado a delivery" ||
     order.status === "Pendiente de envío en almacén por acumulación"
       ? buildShippingLabelHtml(order)
@@ -260,12 +264,13 @@ const printOrder = (order: AdminOrder) => {
 };
 
 // Reporte en A6 con todos los productos (sin servicios) de los pedidos en
-// "Pendiente de envío": una tabla con pedido, código y color, para tener a
-// mano qué armar antes de que pase el delivery. El thead se repite en cada
-// página impresa si la lista no entra en una sola hoja.
+// "Pendiente de envío" o "Listo para delivery": una tabla con pedido,
+// código y color, para tener a mano qué armar antes de que pase el
+// delivery. El thead se repite en cada página impresa si la lista no entra
+// en una sola hoja.
 const buildPendingShipmentReportHtml = (orders: AdminOrder[]) => {
   const rows = orders
-    .filter((o) => o.status === "Pendiente de envío")
+    .filter((o) => o.status === "Pendiente de envío" || o.status === "Listo para delivery")
     .flatMap((o) =>
       o.items
         .filter((item) => item.serviceId === null)
@@ -304,7 +309,9 @@ const buildPendingShipmentReportHtml = (orders: AdminOrder[]) => {
 
 const printPendingShipmentReport = (orders: AdminOrder[]) => {
   const hasPending = orders.some(
-    (o) => o.status === "Pendiente de envío" && o.items.some((item) => item.serviceId === null)
+    (o) =>
+      (o.status === "Pendiente de envío" || o.status === "Listo para delivery") &&
+      o.items.some((item) => item.serviceId === null)
   );
   if (!hasPending) {
     toast.error("No hay productos en pedidos pendientes de envío");
@@ -1031,6 +1038,15 @@ const AdminOrders = () => {
     onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo actualizar el pedido"),
   });
 
+  const readyForDeliveryMutation = useMutation({
+    mutationFn: markOrderReadyForDelivery,
+    onSuccess: () => {
+      toast.success("Pedido marcado como listo para delivery");
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo actualizar el pedido"),
+  });
+
   const warehouseMutation = useMutation({
     mutationFn: markOrderWarehouseSeparated,
     onSuccess: () => {
@@ -1335,7 +1351,18 @@ const AdminOrders = () => {
                                 <Warehouse className="w-3.5 h-3.5" /> Marcar como separado en almacén
                               </Button>
                             )}
-                            {order.status === "Pendiente de envío" && (() => {
+                            {order.status === "Pendiente de envío" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => readyForDeliveryMutation.mutate(order.id)}
+                                disabled={readyForDeliveryMutation.isPending}
+                                className="gap-2 text-teal-600 hover:text-teal-600"
+                              >
+                                <PackageCheck className="w-3.5 h-3.5" /> Marcar como listo para delivery
+                              </Button>
+                            )}
+                            {order.status === "Listo para delivery" && (() => {
                               const needsReceipt = COURIER_DELIVERY_TYPES.includes(order.customerDeliveryType) && !order.receiptImage;
                               return (
                                 <Button
