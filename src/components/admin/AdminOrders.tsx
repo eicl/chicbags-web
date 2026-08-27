@@ -263,73 +263,6 @@ const printOrder = (order: AdminOrder) => {
   };
 };
 
-// Reporte en A6 con todos los productos (sin servicios) de los pedidos en
-// "Pendiente de envío" o "Listo para delivery": una tabla con pedido,
-// código y color, para tener a mano qué armar antes de que pase el
-// delivery. El thead se repite en cada página impresa si la lista no entra
-// en una sola hoja.
-const buildPendingShipmentReportHtml = (orders: AdminOrder[]) => {
-  const rows = orders
-    .filter((o) => o.status === "Pendiente de envío" || o.status === "Listo para delivery")
-    .flatMap((o) =>
-      o.items
-        .filter((item) => item.serviceId === null)
-        .map((item) => ({ orderId: o.id, code: item.productCode || "—", color: item.colorName || "—" }))
-    );
-  return `
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>Productos pendientes de envío</title>
-        <style>
-          @page { size: A6 portrait; margin: 6mm; }
-          ${PRINT_BASE_STYLES}
-          h1 { font-size: 16px; margin: 0 0 8px; text-align: center; }
-          table { width: 100%; border-collapse: collapse; font-size: 13px; }
-          thead { display: table-header-group; }
-          th, td { padding: 3px 4px; border-bottom: 1px solid #ddd; text-align: left; }
-          th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: #555; }
-          tr { page-break-inside: avoid; }
-        </style>
-      </head>
-      <body>
-        <h1>Productos pendientes de envío</h1>
-        <table>
-          <thead>
-            <tr><th>Pedido</th><th>Código</th><th>Color</th></tr>
-          </thead>
-          <tbody>
-            ${rows.map((r) => `<tr><td>#${r.orderId}</td><td>${escapeHtml(r.code)}</td><td>${escapeHtml(r.color)}</td></tr>`).join("")}
-          </tbody>
-        </table>
-      </body>
-    </html>
-  `;
-};
-
-const printPendingShipmentReport = (orders: AdminOrder[]) => {
-  const hasPending = orders.some(
-    (o) =>
-      (o.status === "Pendiente de envío" || o.status === "Listo para delivery") &&
-      o.items.some((item) => item.serviceId === null)
-  );
-  if (!hasPending) {
-    toast.error("No hay productos en pedidos pendientes de envío");
-    return;
-  }
-  const printWindow = window.open("", "_blank", "width=600,height=800");
-  if (!printWindow) {
-    toast.error("El navegador bloqueó la ventana de impresión");
-    return;
-  }
-  printWindow.document.write(buildPendingShipmentReportHtml(orders));
-  printWindow.document.close();
-  printWindow.onload = () => {
-    printWindow.focus();
-    printWindow.print();
-  };
-};
-
 // Deja cambiar el color de un ítem ya registrado. Si el producto sigue en
 // el catálogo, ofrece sus colores actuales (con el stock de cada uno) en
 // un select; si no, un texto libre. El servidor es quien ajusta el stock
@@ -1124,16 +1057,11 @@ const AdminOrders = () => {
             className="pl-9"
           />
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <Button variant="outline" className="gap-2" onClick={() => printPendingShipmentReport(orders)}>
-            <Printer className="w-4 h-4" /> Imprimir pendientes de envío
+        <Link to="/registro-pedido" target="_blank" rel="noopener noreferrer">
+          <Button className="gap-2">
+            <Plus className="w-4 h-4" /> Registrar pedido
           </Button>
-          <Link to="/registro-pedido" target="_blank" rel="noopener noreferrer">
-            <Button className="gap-2">
-              <Plus className="w-4 h-4" /> Registrar pedido
-            </Button>
-          </Link>
-        </div>
+        </Link>
       </div>
 
       <div className="border border-border rounded-lg overflow-hidden">
