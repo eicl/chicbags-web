@@ -70,6 +70,17 @@ const STATUS_BADGE_CLASS: Record<OrderStatus, string> = {
   "Entregado a delivery": "bg-emerald-500/10 text-emerald-600",
 };
 
+// Mismo orden del ciclo de vida, para el filtro por estado del panel.
+const ORDER_STATUSES: OrderStatus[] = [
+  "Registrado",
+  "Separación",
+  "Separado en almacén",
+  "Pendiente de envío en almacén por acumulación",
+  "Pendiente de envío",
+  "Listo para delivery",
+  "Entregado a delivery",
+];
+
 // Lleva la conversación de WhatsApp al celular del cliente con el estado
 // actual del pedido (y, si está en Separación, el plazo para cancelar). El
 // texto sale de la plantilla configurable (Admin > Mensajes de WhatsApp).
@@ -908,11 +919,12 @@ const AdminOrders = () => {
     messageTemplates.find((t) => t.key === "order_status_update")?.template ?? DEFAULT_MESSAGE_TEMPLATES.order_status_update;
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<OrderStatus | "Todos">("Todos");
   const [page, setPage] = useState(1);
   const [salesFrom, setSalesFrom] = useState(todayDate);
   const [salesTo, setSalesTo] = useState(todayDate);
 
-  const filteredOrders = orders.filter((o) => matchesOrder(o, query));
+  const filteredOrders = orders.filter((o) => matchesOrder(o, query) && (statusFilter === "Todos" || o.status === statusFilter));
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
   const pageOrders = filteredOrders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -942,6 +954,11 @@ const AdminOrders = () => {
 
   const handleQueryChange = (value: string) => {
     setQuery(value);
+    setPage(1);
+  };
+
+  const handleStatusFilterChange = (value: OrderStatus | "Todos") => {
+    setStatusFilter(value);
     setPage(1);
   };
 
@@ -1048,14 +1065,26 @@ const AdminOrders = () => {
       <DiscountSettingsPanel />
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => handleQueryChange(e.target.value)}
-            placeholder="Buscar por pedido, cliente, vendedor, estado..."
-            className="pl-9"
-          />
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => handleQueryChange(e.target.value)}
+              placeholder="Buscar por pedido, cliente, vendedor, estado..."
+              className="pl-9"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => handleStatusFilterChange(e.target.value as OrderStatus | "Todos")}
+            className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <option value="Todos">Todos los estados</option>
+            {ORDER_STATUSES.map((status) => (
+              <option key={status} value={status}>{status}</option>
+            ))}
+          </select>
         </div>
         <Link to="/registro-pedido" target="_blank" rel="noopener noreferrer">
           <Button className="gap-2">
