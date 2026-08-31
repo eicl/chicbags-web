@@ -62,15 +62,18 @@ const matchesOrder = (order: AdminOrder, query: string) => {
 
 // Alerta visual: pedidos "Separación"/"Separado en almacén" (el plazo para
 // cancelar son 15 días desde el primer pago) que ya pasaron los 13 días
-// desde ese primer pago — para verlos de un vistazo antes de que se cumpla
-// el plazo.
+// desde ese primer pago y todavía tienen saldo pendiente — para verlos de
+// un vistazo antes de que se cumpla el plazo. Un pedido ya pagado del todo
+// (remaining = 0) no se marca, aunque siga técnicamente en ese estado.
 const isNearSeparationDeadline = (order: AdminOrder) => {
   const status = order.status.toLowerCase();
   if (!status.includes("separac") && !status.includes("separad")) return false;
   const firstPayment = order.payments[0];
   if (!firstPayment) return false;
   const daysSinceFirstPayment = (Date.now() - new Date(firstPayment.createdAt).getTime()) / (1000 * 60 * 60 * 24);
-  return daysSinceFirstPayment > 13;
+  if (daysSinceFirstPayment <= 13) return false;
+  const paid = order.payments.reduce((sum, p) => sum + p.amount, 0);
+  return order.total - paid > 0;
 };
 
 const STATUS_BADGE_CLASS: Record<OrderStatus, string> = {
@@ -937,7 +940,15 @@ const AdminOrders = () => {
   const [salesFrom, setSalesFrom] = useState(todayDate);
   const [salesTo, setSalesTo] = useState(todayDate);
 
-  const filteredOrders = orders.filter((o) => matchesOrder(o, query) && (statusFilter === "Todos" || o.status === statusFilter));
+  // Con el filtro en "Todos", los pedidos con la banderita (cerca del plazo
+  // de separación) van primero — orden estable, así que dentro de cada
+  // grupo (con/sin bandera) se respeta el orden que ya traían.
+  const filteredOrders = orders
+    .filter((o) => matchesOrder(o, query) && (statusFilter === "Todos" || o.status === statusFilter))
+    .sort((a, b) => {
+      if (statusFilter !== "Todos") return 0;
+      return Number(isNearSeparationDeadline(b)) - Number(isNearSeparationDeadline(a));
+    });
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
   const pageOrders = filteredOrders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
