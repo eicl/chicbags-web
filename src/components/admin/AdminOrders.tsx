@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ArchiveRestore, Check, ChevronDown, ChevronUp, MessageCircle, Loader2, PackageCheck, Pencil, Plus, Printer, Search, Settings, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, ChevronDown, ChevronUp, Flag, MessageCircle, Loader2, PackageCheck, Pencil, Plus, Printer, Search, Settings, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
 import {
   AdminOrder, ChargeType, DeliveryType, DiscountSettings, OrderItem, OrderStatus, PaymentInput, Service,
   addOrderItem, deleteOrder, deleteOrderItem, fetchMessageTemplates, fetchOrders, fetchServices, fetchSettings, markOrderAccumulating,
@@ -58,6 +58,19 @@ const matchesOrder = (order: AdminOrder, query: string) => {
   if (!q) return true;
   return [String(order.id), order.customerName, order.customerDocument, order.sellerName, order.status, order.type]
     .some((field) => (field ?? "").toLowerCase().includes(q));
+};
+
+// Alerta visual: pedidos "Separación"/"Separado en almacén" (el plazo para
+// cancelar son 15 días desde el primer pago) que ya pasaron los 13 días
+// desde ese primer pago — para verlos de un vistazo antes de que se cumpla
+// el plazo.
+const isNearSeparationDeadline = (order: AdminOrder) => {
+  const status = order.status.toLowerCase();
+  if (!status.includes("separac") && !status.includes("separad")) return false;
+  const firstPayment = order.payments[0];
+  if (!firstPayment) return false;
+  const daysSinceFirstPayment = (Date.now() - new Date(firstPayment.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+  return daysSinceFirstPayment > 13;
 };
 
 const STATUS_BADGE_CLASS: Record<OrderStatus, string> = {
@@ -1124,7 +1137,14 @@ const AdminOrders = () => {
                       className="border-b border-border last:border-0 hover:bg-muted/10 transition-colors cursor-pointer"
                     >
                       <td className="py-3 px-4 text-sm font-medium text-primary">
-                        #{order.id}
+                        <span className="inline-flex items-center gap-1.5">
+                          #{order.id}
+                          {isNearSeparationDeadline(order) && (
+                            <span title="Cerca del plazo de separación: más de 13 días desde el primer pago">
+                              <Flag className="w-3.5 h-3.5 text-destructive fill-destructive shrink-0" aria-label="Cerca del plazo de separación" />
+                            </span>
+                          )}
+                        </span>
                         {order.type === "Regularización" && (
                           <div className="text-[10px] uppercase tracking-wide text-amber-600 font-semibold">Regularización</div>
                         )}
