@@ -93,7 +93,7 @@ const AdminSettings = () => {
           <div>
             <label className="text-sm text-muted-foreground mb-1 block">Alerta de plazo próximo (días)</label>
             <p className="text-xs text-muted-foreground mb-1">
-              A cuántos días desde el primer pago se enciende la banderita roja en Pedidos.
+              A cuántos días calendario desde el primer pago se enciende la banderita roja en Pedidos.
             </p>
             <Input
               type="number"

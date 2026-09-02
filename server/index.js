@@ -1074,6 +1074,18 @@ const mapOrder = (order, items, payments = []) => ({
   payments: payments.map(mapPayment),
 });
 
+// Perú no observa horario de verano (offset fijo UTC-5), así que basta con
+// restar 5h para ubicar cualquier instante en su día calendario limeño.
+// Se usa para que "N días" de separación/alerta se cuenten por día
+// calendario y no por horas exactas transcurridas (un pago a las 11pm y
+// otro a las 6am del día siguiente no deberían contar como "un día"
+// distinto solo por unas horas de diferencia).
+const LIMA_OFFSET_MS = 5 * 60 * 60 * 1000;
+const limaCalendarDayStart = (date) => {
+  const shifted = new Date(date.getTime() - LIMA_OFFSET_MS);
+  return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) + LIMA_OFFSET_MS);
+};
+
 const validatePaymentInput = ({ amount, source, proofImage, date }) => {
   if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
     throw new Error("El monto del pago es inválido");
@@ -1098,7 +1110,12 @@ const validatePaymentInput = ({ amount, source, proofImage, date }) => {
 // creación del pedido, en la misma transacción, cuando el pago se carga al
 // mismo tiempo que los productos.
 const applyPayment = async (client, orderId, total, currentDeadline, { amount, source, proofImage, registeredBy, date }, separationDays) => {
-  const paidAt = date ? new Date(date) : new Date();
+  // "date" llega como fecha sin hora ("YYYY-MM-DD", del selector de fecha
+  // del formulario) pensada como día calendario en Lima. new Date(date) a
+  // secas la interpreta como medianoche UTC, que en Lima (UTC-5) todavía es
+  // la noche del día anterior — por eso se fija explícitamente el offset
+  // de Lima acá, para que el día quede donde el usuario lo eligió.
+  const paidAt = date ? new Date(`${date}T00:00:00-05:00`) : new Date();
   await client.query(
     `INSERT INTO payments (order_id, amount, source, proof_image, registered_by, created_at)
      VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -1110,11 +1127,14 @@ const applyPayment = async (client, orderId, total, currentDeadline, { amount, s
   );
   const paid = Number(paidRows[0].paid);
   const status = paid >= total ? "Pendiente de envío" : "Separación";
-  // El plazo se cuenta desde la fecha del pago (no desde que se registró en
-  // el sistema), así que si el pago se carga con una fecha pasada, el plazo
-  // también arranca desde esa fecha y no desde "ahora".
+  // El plazo se cuenta desde el día calendario del pago (no desde que se
+  // registró en el sistema ni desde su hora exacta), así que si el pago se
+  // carga con una fecha pasada, el plazo también arranca desde ese día y no
+  // desde "ahora".
   const separationDeadline =
-    status === "Separación" ? currentDeadline ?? new Date(paidAt.getTime() + separationDays * 24 * 60 * 60 * 1000) : currentDeadline;
+    status === "Separación"
+      ? currentDeadline ?? new Date(limaCalendarDayStart(paidAt).getTime() + separationDays * 24 * 60 * 60 * 1000)
+      : currentDeadline;
   await client.query("UPDATE orders SET status = $1, separation_deadline = $2 WHERE id = $3", [status, separationDeadline, orderId]);
   return { status, separationDeadline };
 };
@@ -2043,7 +2063,9 @@ const recomputeOrderStatusForTotal = async (client, orderId, newTotal, order, se
   const isContraentrega = order.charge_type === "Contraentrega";
   const status = paid >= newTotal || isContraentrega ? "Pendiente de envío" : "Separación";
   const separationDeadline =
-    status === "Separación" ? order.separation_deadline ?? new Date(Date.now() + separationDays * 24 * 60 * 60 * 1000) : order.separation_deadline;
+    status === "Separación"
+      ? order.separation_deadline ?? new Date(limaCalendarDayStart(new Date()).getTime() + separationDays * 24 * 60 * 60 * 1000)
+      : order.separation_deadline;
   return { status, separationDeadline };
 };
 

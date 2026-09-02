@@ -63,18 +63,30 @@ const matchesOrder = (order: AdminOrder, query: string) => {
     .some((field) => (field ?? "").toLowerCase().includes(q));
 };
 
+// Perú no observa horario de verano (offset fijo UTC-5), así que basta con
+// restar 5h para ubicar cualquier instante en su día calendario limeño. Se
+// usa para que "N días" se cuenten por día calendario y no por horas
+// exactas transcurridas (evita que la banderita se encienda o el plazo se
+// mueva solo por la hora del día en que se registró el pago).
+const limaCalendarDayStart = (date: Date) => {
+  const LIMA_OFFSET_MS = 5 * 60 * 60 * 1000;
+  const shifted = new Date(date.getTime() - LIMA_OFFSET_MS);
+  return Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate());
+};
+
 // Alerta visual: pedidos "Separación"/"Separado en almacén" (el plazo para
 // cancelar se configura en Admin > Configuración) que ya pasaron
-// nearSeparationDeadlineDays días desde el primer pago y todavía tienen
-// saldo pendiente — para verlos de un vistazo antes de que se cumpla el
-// plazo. Un pedido ya pagado del todo (remaining = 0) no se marca, aunque
-// siga técnicamente en ese estado.
+// nearSeparationDeadlineDays días calendario desde el primer pago y
+// todavía tienen saldo pendiente — para verlos de un vistazo antes de que
+// se cumpla el plazo. Un pedido ya pagado del todo (remaining = 0) no se
+// marca, aunque siga técnicamente en ese estado.
 const isNearSeparationDeadline = (order: AdminOrder, nearSeparationDeadlineDays: number) => {
   const status = order.status.toLowerCase();
   if (!status.includes("separac") && !status.includes("separad")) return false;
   const firstPayment = order.payments[0];
   if (!firstPayment) return false;
-  const daysSinceFirstPayment = (Date.now() - new Date(firstPayment.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+  const daysSinceFirstPayment =
+    (limaCalendarDayStart(new Date()) - limaCalendarDayStart(new Date(firstPayment.createdAt))) / (1000 * 60 * 60 * 24);
   if (daysSinceFirstPayment <= nearSeparationDeadlineDays) return false;
   const paid = order.payments.reduce((sum, p) => sum + p.amount, 0);
   return order.total - paid > 0;
