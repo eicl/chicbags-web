@@ -1,13 +1,13 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ArchiveRestore, Check, ChevronDown, ChevronUp, Flag, MessageCircle, Loader2, PackageCheck, Pencil, Plus, Printer, Search, Settings, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, ChevronDown, ChevronUp, Flag, MessageCircle, Loader2, PackageCheck, Pencil, Plus, Printer, Search, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
 import {
-  AdminOrder, ChargeType, DeliveryType, DiscountSettings, OrderItem, OrderStatus, PaymentInput, Service,
+  AdminOrder, ChargeType, DeliveryType, OrderItem, OrderStatus, PaymentInput, Service,
   addOrderItem, deleteOrder, deleteOrderItem, fetchMessageTemplates, fetchOrders, fetchServices, fetchSettings, markOrderAccumulating,
   markOrderDelivered, markOrderReadyForDelivery, markOrderWarehouseSeparated, registerPayment, releaseOrderAccumulating,
   updateOrderChargeType, updateOrderItemColor, updateOrderItemDiscount, updateOrderReceipt, updateOrderServiceItem,
-  updateSettings, uploadImage,
+  uploadImage,
 } from "@/lib/api";
 import { buildOrderStatusText } from "@/lib/orderMessages";
 import { DEFAULT_MESSAGE_TEMPLATES, renderMessageTemplate } from "@/lib/messageTemplates";
@@ -51,6 +51,9 @@ const toLocalDateStr = (date: Date) =>
 const todayDate = () => toLocalDateStr(new Date());
 
 const PAYMENT_SOURCES = ["Yape", "Plin", "Otro"];
+// Respaldo mientras se carga la configuración real desde el servidor
+// (Admin > Configuración > Pedidos).
+const FALLBACK_NEAR_SEPARATION_DEADLINE_DAYS = 13;
 const PAGE_SIZE = 20;
 
 const matchesOrder = (order: AdminOrder, query: string) => {
@@ -61,17 +64,18 @@ const matchesOrder = (order: AdminOrder, query: string) => {
 };
 
 // Alerta visual: pedidos "Separación"/"Separado en almacén" (el plazo para
-// cancelar son 15 días desde el primer pago) que ya pasaron los 13 días
-// desde ese primer pago y todavía tienen saldo pendiente — para verlos de
-// un vistazo antes de que se cumpla el plazo. Un pedido ya pagado del todo
-// (remaining = 0) no se marca, aunque siga técnicamente en ese estado.
-const isNearSeparationDeadline = (order: AdminOrder) => {
+// cancelar se configura en Admin > Configuración) que ya pasaron
+// nearSeparationDeadlineDays días desde el primer pago y todavía tienen
+// saldo pendiente — para verlos de un vistazo antes de que se cumpla el
+// plazo. Un pedido ya pagado del todo (remaining = 0) no se marca, aunque
+// siga técnicamente en ese estado.
+const isNearSeparationDeadline = (order: AdminOrder, nearSeparationDeadlineDays: number) => {
   const status = order.status.toLowerCase();
   if (!status.includes("separac") && !status.includes("separad")) return false;
   const firstPayment = order.payments[0];
   if (!firstPayment) return false;
   const daysSinceFirstPayment = (Date.now() - new Date(firstPayment.createdAt).getTime()) / (1000 * 60 * 60 * 24);
-  if (daysSinceFirstPayment <= 13) return false;
+  if (daysSinceFirstPayment <= nearSeparationDeadlineDays) return false;
   const paid = order.payments.reduce((sum, p) => sum + p.amount, 0);
   return order.total - paid > 0;
 };
@@ -843,89 +847,6 @@ const AddOrderItemsExtras = ({ order }: { order: AdminOrder }) => {
   );
 };
 
-// Deja editar los topes de descuento manual por ítem (link público de
-// registro de pedidos vs. con sesión de admin abierta), guardados en la
-// fila única de settings.
-const DiscountSettingsPanel = () => {
-  const queryClient = useQueryClient();
-  const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
-  const [open, setOpen] = useState(false);
-  const [publicMax, setPublicMax] = useState("");
-  const [adminMax, setAdminMax] = useState("");
-
-  useEffect(() => {
-    if (settings) {
-      setPublicMax(String(settings.maxItemDiscountPublic));
-      setAdminMax(String(settings.maxItemDiscountAdmin));
-    }
-  }, [settings]);
-
-  const mutation = useMutation({
-    mutationFn: (data: DiscountSettings) => updateSettings(data),
-    onSuccess: () => {
-      toast.success("Configuración guardada");
-      queryClient.invalidateQueries({ queryKey: ["settings"] });
-      setOpen(false);
-    },
-    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo guardar la configuración"),
-  });
-
-  const handleSave = () => {
-    const publicValue = Number(publicMax);
-    const adminValue = Number(adminMax);
-    if (!Number.isFinite(publicValue) || publicValue < 0) {
-      toast.error("Ingresa un descuento máximo público válido");
-      return;
-    }
-    if (!Number.isFinite(adminValue) || adminValue < 0) {
-      toast.error("Ingresa un descuento máximo con admin válido");
-      return;
-    }
-    mutation.mutate({ maxItemDiscountPublic: publicValue, maxItemDiscountAdmin: adminValue });
-  };
-
-  return (
-    <div className="mb-6">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <Settings className="w-4 h-4" /> Descuento máximo por ítem
-      </button>
-      {open && (
-        <div className="mt-3 flex flex-wrap items-end gap-3 p-4 rounded-md border border-border bg-muted/20">
-          <div>
-            <label className="block text-xs text-muted-foreground mb-1">Sin sesión (link público)</label>
-            <Input
-              type="number"
-              min={0}
-              step={0.5}
-              value={publicMax}
-              onChange={(e) => setPublicMax(e.target.value)}
-              className="h-9 w-28"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-muted-foreground mb-1">Con sesión de admin</label>
-            <Input
-              type="number"
-              min={0}
-              step={0.5}
-              value={adminMax}
-              onChange={(e) => setAdminMax(e.target.value)}
-              className="h-9 w-28"
-            />
-          </div>
-          <Button size="sm" onClick={handleSave} disabled={mutation.isPending}>
-            {mutation.isPending ? "Guardando..." : "Guardar"}
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-};
-
 const AdminOrders = () => {
   const queryClient = useQueryClient();
   const { data: orders = [], isLoading, isError } = useQuery({ queryKey: ["orders"], queryFn: fetchOrders });
@@ -933,6 +854,8 @@ const AdminOrders = () => {
   const { data: messageTemplates = [] } = useQuery({ queryKey: ["messageTemplates"], queryFn: fetchMessageTemplates });
   const statusUpdateTemplate =
     messageTemplates.find((t) => t.key === "order_status_update")?.template ?? DEFAULT_MESSAGE_TEMPLATES.order_status_update;
+  const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
+  const nearSeparationDeadlineDays = settings?.nearSeparationDeadlineDays ?? FALLBACK_NEAR_SEPARATION_DEADLINE_DAYS;
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "Todos">("Todos");
@@ -947,7 +870,10 @@ const AdminOrders = () => {
     .filter((o) => matchesOrder(o, query) && (statusFilter === "Todos" || o.status === statusFilter))
     .sort((a, b) => {
       if (statusFilter !== "Todos") return 0;
-      return Number(isNearSeparationDeadline(b)) - Number(isNearSeparationDeadline(a));
+      return (
+        Number(isNearSeparationDeadline(b, nearSeparationDeadlineDays)) -
+        Number(isNearSeparationDeadline(a, nearSeparationDeadlineDays))
+      );
     });
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
   const pageOrders = filteredOrders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -1086,8 +1012,6 @@ const AdminOrders = () => {
         </div>
       </div>
 
-      <DiscountSettingsPanel />
-
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative w-full sm:w-72">
@@ -1150,8 +1074,8 @@ const AdminOrders = () => {
                       <td className="py-3 px-4 text-sm font-medium text-primary">
                         <span className="inline-flex items-center gap-1.5">
                           #{order.id}
-                          {isNearSeparationDeadline(order) && (
-                            <span title="Cerca del plazo de separación: más de 13 días desde el primer pago">
+                          {isNearSeparationDeadline(order, nearSeparationDeadlineDays) && (
+                            <span title={`Cerca del plazo de separación: más de ${nearSeparationDeadlineDays} días desde el primer pago`}>
                               <Flag className="w-3.5 h-3.5 text-destructive fill-destructive shrink-0" aria-label="Cerca del plazo de separación" />
                             </span>
                           )}

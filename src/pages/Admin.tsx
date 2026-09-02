@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, LogOut, Package, Tag, Layers, Users, IdCard, MapPin, ShoppingBag, Share2, Wrench, FileSpreadsheet, Receipt, MessageCircle } from "lucide-react";
+import { ArrowLeft, LogOut, Package, Tag, Layers, Users, IdCard, MapPin, ShoppingBag, Share2, Wrench, FileSpreadsheet, Receipt, MessageCircle, Settings } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import AdminProducts from "@/components/admin/AdminProducts";
@@ -15,8 +15,9 @@ import AdminLinkPreviews from "@/components/admin/AdminLinkPreviews";
 import AdminPitaya from "@/components/admin/AdminPitaya";
 import AdminPurchases from "@/components/admin/AdminPurchases";
 import AdminMessageTemplates from "@/components/admin/AdminMessageTemplates";
+import AdminSettings from "@/components/admin/AdminSettings";
 
-type Tab = "products" | "services" | "brands" | "categories" | "customers" | "districts" | "orders" | "users" | "linkPreviews" | "pitaya" | "purchases" | "messageTemplates";
+type Tab = "products" | "services" | "brands" | "categories" | "customers" | "districts" | "orders" | "users" | "linkPreviews" | "pitaya" | "purchases" | "messageTemplates" | "settings";
 
 const TABS: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "products", label: "Productos", icon: Package },
@@ -31,6 +32,7 @@ const TABS: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "pitaya", label: "Pitaya", icon: FileSpreadsheet },
   { id: "purchases", label: "Registro de Compras", icon: Receipt },
   { id: "messageTemplates", label: "Mensajes de WhatsApp", icon: MessageCircle },
+  { id: "settings", label: "Configuración", icon: Settings },
 ];
 
 const Admin = () => {
@@ -90,6 +92,7 @@ const Admin = () => {
         {tab === "pitaya" && <AdminPitaya />}
         {tab === "purchases" && <AdminPurchases />}
         {tab === "messageTemplates" && <AdminMessageTemplates />}
+        {tab === "settings" && <AdminSettings />}
       </div>
     </div>
   );

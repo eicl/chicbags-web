@@ -595,13 +595,18 @@ const COURIER_DELIVERY_TYPES = ["Shalom", "Olva", "Marvisur"];
 // pidieron.
 const CHARGE_TYPE_DELIVERY_TYPES = ["Motorizado Delivery", "Motorizado Cliente", ...COURIER_DELIVERY_TYPES];
 
-// Tope de descuento manual por ítem al registrar un pedido: más alto si
-// quien registra tiene sesión de admin abierta en el navegador (aunque el
-// registro de pedidos en sí sea público), más bajo por el link público sin
-// sesión. Editable desde el panel — vive en la fila única de settings.
+// Configuración general editable desde Admin > Configuración: tope de
+// descuento manual por ítem al registrar un pedido (más alto si quien
+// registra tiene sesión de admin abierta, aunque el registro en sí sea
+// público, más bajo por el link público sin sesión), el plazo de
+// separación (días calendario para cancelar un pedido en "Separación") y a
+// cuántos días de ese plazo se enciende la bandera de alerta en el panel de
+// Pedidos. Vive en la fila única de settings.
 const mapSettings = (row) => ({
   maxItemDiscountPublic: Number(row.max_item_discount_public),
   maxItemDiscountAdmin: Number(row.max_item_discount_admin),
+  separationDays: Number(row.separation_days),
+  nearSeparationDeadlineDays: Number(row.near_separation_deadline_days),
 });
 
 const getSettings = async () => {
@@ -614,16 +619,23 @@ app.get("/api/settings", async (req, res) => {
 });
 
 app.put("/api/settings", requireAuth, async (req, res) => {
-  const { maxItemDiscountPublic, maxItemDiscountAdmin } = req.body;
+  const { maxItemDiscountPublic, maxItemDiscountAdmin, separationDays, nearSeparationDeadlineDays } = req.body;
   if (typeof maxItemDiscountPublic !== "number" || !Number.isFinite(maxItemDiscountPublic) || maxItemDiscountPublic < 0) {
     return res.status(400).json({ error: "El descuento máximo del link público es inválido" });
   }
   if (typeof maxItemDiscountAdmin !== "number" || !Number.isFinite(maxItemDiscountAdmin) || maxItemDiscountAdmin < 0) {
     return res.status(400).json({ error: "El descuento máximo con sesión de admin es inválido" });
   }
+  if (typeof separationDays !== "number" || !Number.isFinite(separationDays) || separationDays <= 0) {
+    return res.status(400).json({ error: "El plazo de separación es inválido" });
+  }
+  if (typeof nearSeparationDeadlineDays !== "number" || !Number.isFinite(nearSeparationDeadlineDays) || nearSeparationDeadlineDays < 0) {
+    return res.status(400).json({ error: "Los días para la alerta de plazo próximo son inválidos" });
+  }
   const { rows } = await pool.query(
-    "UPDATE settings SET max_item_discount_public = $1, max_item_discount_admin = $2 WHERE id = 1 RETURNING *",
-    [maxItemDiscountPublic, maxItemDiscountAdmin]
+    `UPDATE settings SET max_item_discount_public = $1, max_item_discount_admin = $2, separation_days = $3,
+       near_separation_deadline_days = $4 WHERE id = 1 RETURNING *`,
+    [maxItemDiscountPublic, maxItemDiscountAdmin, separationDays, nearSeparationDeadlineDays]
   );
   res.json(mapSettings(rows[0]));
 });
@@ -1062,8 +1074,6 @@ const mapOrder = (order, items, payments = []) => ({
   payments: payments.map(mapPayment),
 });
 
-const SEPARATION_DAYS = 15;
-
 const validatePaymentInput = ({ amount, source, proofImage, date }) => {
   if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
     throw new Error("El monto del pago es inválido");
@@ -1081,12 +1091,13 @@ const validatePaymentInput = ({ amount, source, proofImage, date }) => {
 
 // Inserta el pago y recalcula el estado del pedido sumando TODOS los pagos
 // ya registrados contra el total: si lo cubre pasa a "Pendiente de envío",
-// si no a "Separación" (con un plazo de 15 días calendario para cancelar,
-// que se fija solo la primera vez que entra a ese estado). No abre su
-// propia transacción: el caller decide el alcance — sola (registerPaymentTx)
-// o junto con la creación del pedido, en la misma transacción, cuando el
-// pago se carga al mismo tiempo que los productos.
-const applyPayment = async (client, orderId, total, currentDeadline, { amount, source, proofImage, registeredBy, date }) => {
+// si no a "Separación" (con un plazo de separationDays días calendario para
+// cancelar — configurable en Admin > Configuración — que se fija solo la
+// primera vez que entra a ese estado). No abre su propia transacción: el
+// caller decide el alcance — sola (registerPaymentTx) o junto con la
+// creación del pedido, en la misma transacción, cuando el pago se carga al
+// mismo tiempo que los productos.
+const applyPayment = async (client, orderId, total, currentDeadline, { amount, source, proofImage, registeredBy, date }, separationDays) => {
   const paidAt = date ? new Date(date) : new Date();
   await client.query(
     `INSERT INTO payments (order_id, amount, source, proof_image, registered_by, created_at)
@@ -1103,7 +1114,7 @@ const applyPayment = async (client, orderId, total, currentDeadline, { amount, s
   // el sistema), así que si el pago se carga con una fecha pasada, el plazo
   // también arranca desde esa fecha y no desde "ahora".
   const separationDeadline =
-    status === "Separación" ? currentDeadline ?? new Date(paidAt.getTime() + SEPARATION_DAYS * 24 * 60 * 60 * 1000) : currentDeadline;
+    status === "Separación" ? currentDeadline ?? new Date(paidAt.getTime() + separationDays * 24 * 60 * 60 * 1000) : currentDeadline;
   await client.query("UPDATE orders SET status = $1, separation_deadline = $2 WHERE id = $3", [status, separationDeadline, orderId]);
   return { status, separationDeadline };
 };
@@ -1113,6 +1124,7 @@ const applyPayment = async (client, orderId, total, currentDeadline, { amount, s
 // otro) y aplica applyPayment. Usada para agregar un pago a un pedido que
 // ya existe (panel admin, o un pago adicional desde el link público).
 const registerPaymentTx = async (orderId, paymentData) => {
+  const settings = await getSettings();
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -1124,7 +1136,7 @@ const registerPaymentTx = async (orderId, paymentData) => {
       throw new Error("El pedido no existe");
     }
     const order = orderRows[0];
-    await applyPayment(client, orderId, Number(order.total), order.separation_deadline, paymentData);
+    await applyPayment(client, orderId, Number(order.total), order.separation_deadline, paymentData, settings.separationDays);
 
     const { rows: updatedRows } = await client.query("SELECT * FROM orders WHERE id = $1", [orderId]);
     const { rows: itemRows } = await client.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [orderId]);
@@ -1565,7 +1577,7 @@ app.put("/api/orders/:orderId/items/:itemId/discount", requireAuth, async (req, 
 
     await client.query("UPDATE order_items SET discount = $1, subtotal = $2 WHERE id = $3", [newDiscount, newSubtotal, itemId]);
 
-    const { status: newStatus, separationDeadline: newDeadline } = await recomputeOrderStatusForTotal(client, orderId, newTotal, order);
+    const { status: newStatus, separationDeadline: newDeadline } = await recomputeOrderStatusForTotal(client, orderId, newTotal, order, settings.separationDays);
     await client.query("UPDATE orders SET total = $1, status = $2, separation_deadline = $3 WHERE id = $4", [newTotal, newStatus, newDeadline, orderId]);
 
     const { rows: finalOrderRows } = await client.query("SELECT * FROM orders WHERE id = $1", [orderId]);
@@ -1733,7 +1745,7 @@ app.post("/api/orders/register", async (req, res) => {
     if (Array.isArray(payments) && payments.length > 0) {
       let deadline = null;
       for (const p of payments) {
-        const result = await applyPayment(client, order.id, total, deadline, { ...p, registeredBy: seller.username });
+        const result = await applyPayment(client, order.id, total, deadline, { ...p, registeredBy: seller.username }, settings.separationDays);
         deadline = result.separationDeadline;
       }
     }
@@ -1827,7 +1839,8 @@ app.post("/api/orders/regularize", async (req, res) => {
 
     if (payment !== undefined) {
       validatePaymentInput(payment);
-      await applyPayment(client, order.id, total, null, { ...payment, registeredBy: seller.username });
+      const settings = await getSettings();
+      await applyPayment(client, order.id, total, null, { ...payment, registeredBy: seller.username }, settings.separationDays);
     }
     const { rows: finalOrderRows } = await client.query("SELECT * FROM orders WHERE id = $1", [order.id]);
     const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [order.id]);
@@ -2021,7 +2034,7 @@ app.put("/api/orders/:id/release-accumulate", requireAuth, async (req, res) => {
 // (es decir, si ya había al menos un pago); antes de eso no hay nada que
 // recalcular. Si ya eligieron Contraentrega, el saldo pendiente no lo
 // devuelve a Separación — quien reparte sigue cobrando el resto al entregar.
-const recomputeOrderStatusForTotal = async (client, orderId, newTotal, order) => {
+const recomputeOrderStatusForTotal = async (client, orderId, newTotal, order, separationDays) => {
   if (order.status !== "Separación" && order.status !== "Pendiente de envío") {
     return { status: order.status, separationDeadline: order.separation_deadline };
   }
@@ -2030,7 +2043,7 @@ const recomputeOrderStatusForTotal = async (client, orderId, newTotal, order) =>
   const isContraentrega = order.charge_type === "Contraentrega";
   const status = paid >= newTotal || isContraentrega ? "Pendiente de envío" : "Separación";
   const separationDeadline =
-    status === "Separación" ? order.separation_deadline ?? new Date(Date.now() + SEPARATION_DAYS * 24 * 60 * 60 * 1000) : order.separation_deadline;
+    status === "Separación" ? order.separation_deadline ?? new Date(Date.now() + separationDays * 24 * 60 * 60 * 1000) : order.separation_deadline;
   return { status, separationDeadline };
 };
 
@@ -2123,7 +2136,7 @@ app.post("/api/orders/:id/items", requireAuth, async (req, res) => {
       [orderId, li.productId, li.serviceId, li.productName, li.productCode, li.colorName, li.unitPrice, li.quantity, li.discount, li.subtotal]
     );
 
-    const { status: newStatus, separationDeadline: newDeadline } = await recomputeOrderStatusForTotal(client, orderId, newTotal, order);
+    const { status: newStatus, separationDeadline: newDeadline } = await recomputeOrderStatusForTotal(client, orderId, newTotal, order, settings.separationDays);
     await client.query("UPDATE orders SET total = $1, status = $2, separation_deadline = $3 WHERE id = $4", [newTotal, newStatus, newDeadline, orderId]);
 
     const { rows: finalOrderRows } = await client.query("SELECT * FROM orders WHERE id = $1", [orderId]);
@@ -2191,7 +2204,7 @@ app.put("/api/orders/:orderId/items/:itemId/service", requireAuth, async (req, r
 
     await client.query("UPDATE order_items SET quantity = $1, discount = $2, subtotal = $3 WHERE id = $4", [quantity, newDiscount, newSubtotal, itemId]);
 
-    const { status: newStatus, separationDeadline: newDeadline } = await recomputeOrderStatusForTotal(client, orderId, newTotal, order);
+    const { status: newStatus, separationDeadline: newDeadline } = await recomputeOrderStatusForTotal(client, orderId, newTotal, order, settings.separationDays);
     await client.query("UPDATE orders SET total = $1, status = $2, separation_deadline = $3 WHERE id = $4", [newTotal, newStatus, newDeadline, orderId]);
 
     const { rows: finalOrderRows } = await client.query("SELECT * FROM orders WHERE id = $1", [orderId]);
@@ -2261,7 +2274,8 @@ app.delete("/api/orders/:orderId/items/:itemId", requireAuth, async (req, res) =
     await client.query("DELETE FROM order_items WHERE id = $1", [itemId]);
 
     const newTotal = Number(order.total) - Number(item.subtotal);
-    const { status: newStatus, separationDeadline: newDeadline } = await recomputeOrderStatusForTotal(client, orderId, newTotal, order);
+    const settings = await getSettings();
+    const { status: newStatus, separationDeadline: newDeadline } = await recomputeOrderStatusForTotal(client, orderId, newTotal, order, settings.separationDays);
     await client.query("UPDATE orders SET total = $1, status = $2, separation_deadline = $3 WHERE id = $4", [newTotal, newStatus, newDeadline, orderId]);
 
     const { rows: finalOrderRows } = await client.query("SELECT * FROM orders WHERE id = $1", [orderId]);

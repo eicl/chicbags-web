@@ -544,24 +544,28 @@ export const deleteOrderItem = (orderId: number, itemId: number): Promise<Order>
     credentials: "include",
   }).then((res) => handle<Order>(res));
 
-// Tope de descuento manual por ítem al registrar un pedido: uno para el
-// link público (sin sesión) y otro, más alto, para cuando se registra con
-// sesión de admin abierta. Editable desde el panel.
-export interface DiscountSettings {
+// Configuración general, editable desde Admin > Configuración: tope de
+// descuento manual por ítem al registrar un pedido (uno para el link
+// público sin sesión, otro más alto con sesión de admin), el plazo de
+// separación (días calendario para cancelar un pedido en "Separación") y a
+// cuántos días de ese plazo se enciende la bandera de alerta en Pedidos.
+export interface AppSettings {
   maxItemDiscountPublic: number;
   maxItemDiscountAdmin: number;
+  separationDays: number;
+  nearSeparationDeadlineDays: number;
 }
 
-export const fetchSettings = (): Promise<DiscountSettings> =>
-  fetch(`${API_URL}/settings`).then((res) => handle<DiscountSettings>(res));
+export const fetchSettings = (): Promise<AppSettings> =>
+  fetch(`${API_URL}/settings`).then((res) => handle<AppSettings>(res));
 
-export const updateSettings = (data: DiscountSettings): Promise<DiscountSettings> =>
+export const updateSettings = (data: AppSettings): Promise<AppSettings> =>
   fetch(`${API_URL}/settings`, {
     method: "PUT",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
-  }).then((res) => handle<DiscountSettings>(res));
+  }).then((res) => handle<AppSettings>(res));
 
 // Título y descripción que se muestran al compartir cada link (ej. por
 // WhatsApp): editables desde el panel. path/label son solo informativos

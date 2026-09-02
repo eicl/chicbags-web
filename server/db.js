@@ -319,10 +319,12 @@ export const initSchema = async () => {
     END $do$;
   `);
 
-  // Fila única de configuración general. Por ahora solo el tope de
-  // descuento manual por ítem al registrar un pedido: uno para el link
-  // público (sin sesión) y otro, más alto, para cuando se registra con
-  // sesión de admin abierta — ambos editables desde el panel.
+  // Fila única de configuración general, editable desde Admin >
+  // Configuración: tope de descuento manual por ítem al registrar un
+  // pedido (uno para el link público sin sesión, otro más alto con sesión
+  // de admin), el plazo de separación (días calendario para cancelar un
+  // pedido en "Separación" antes de que se cumpla) y a cuántos días de ese
+  // plazo se enciende la bandera de alerta en el panel de Pedidos.
   await pool.query(`
     CREATE TABLE IF NOT EXISTS settings (
       id INTEGER PRIMARY KEY DEFAULT 1,
@@ -331,6 +333,8 @@ export const initSchema = async () => {
       CONSTRAINT settings_singleton CHECK (id = 1)
     );
   `);
+  await pool.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS separation_days NUMERIC NOT NULL DEFAULT 15;`);
+  await pool.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS near_separation_deadline_days NUMERIC NOT NULL DEFAULT 13;`);
   await pool.query(`INSERT INTO settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`);
 
   // Título y descripción que se muestran al compartir cada link (ej. por
