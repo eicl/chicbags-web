@@ -1456,7 +1456,7 @@ app.delete("/api/orders/:id", requireAuth, async (req, res) => {
         const { rows: productRows } = await client.query("SELECT colors FROM products WHERE id = $1 FOR UPDATE", [item.product_id]);
         if (productRows.length === 0) continue;
         const colors = productRows[0].colors ?? [];
-        const colorIndex = colors.findIndex((c) => c.name === item.color_name);
+        const colorIndex = colors.findIndex((c) => c.name.trim() === item.color_name.trim());
         if (colorIndex === -1) continue;
         colors[colorIndex] = { ...colors[colorIndex], stock: colors[colorIndex].stock + item.quantity };
         await client.query("UPDATE products SET colors = $1 WHERE id = $2", [JSON.stringify(colors), item.product_id]);
@@ -1517,14 +1517,17 @@ app.put("/api/orders/:orderId/items/:itemId", requireAuth, async (req, res) => {
         throw new Error("El producto de este ítem ya no existe");
       }
       const colors = productRows[0].colors ?? [];
-      const newColorIndex = colors.findIndex((c) => c.name === newColorName);
+      // Se compara sin espacios de borde: nombres de color con un espacio de
+      // más (typo al cargar el producto) no deberían impedir el cambio ni,
+      // peor, hacer que el stock del color anterior no se devuelva.
+      const newColorIndex = colors.findIndex((c) => c.name.trim() === newColorName);
       if (newColorIndex === -1) {
         throw new Error(`El producto ya no tiene el color "${newColorName}"`);
       }
       if (colors[newColorIndex].stock < item.quantity) {
         throw new Error(`No hay suficiente stock de "${newColorName}": quedan ${colors[newColorIndex].stock}`);
       }
-      const oldColorIndex = colors.findIndex((c) => c.name === item.color_name);
+      const oldColorIndex = colors.findIndex((c) => c.name.trim() === item.color_name.trim());
       if (oldColorIndex !== -1) {
         colors[oldColorIndex] = { ...colors[oldColorIndex], stock: colors[oldColorIndex].stock + item.quantity };
       }
@@ -1718,7 +1721,7 @@ app.post("/api/orders/register", async (req, res) => {
       }
       const product = productRows[0];
       const colors = product.colors ?? [];
-      const colorIndex = colors.findIndex((c) => c.name === item.colorName);
+      const colorIndex = colors.findIndex((c) => c.name.trim() === item.colorName.trim());
       if (colorIndex === -1) {
         throw new Error(`"${product.name}" ya no tiene el color "${item.colorName}"`);
       }
@@ -2135,7 +2138,7 @@ app.post("/api/orders/:id/items", requireAuth, async (req, res) => {
       }
       const product = productRows[0];
       const colors = product.colors ?? [];
-      const colorIndex = colors.findIndex((c) => c.name === colorName);
+      const colorIndex = colors.findIndex((c) => c.name.trim() === colorName.trim());
       if (colorIndex === -1) {
         throw new Error(`"${product.name}" ya no tiene el color "${colorName}"`);
       }
@@ -2285,7 +2288,7 @@ app.delete("/api/orders/:orderId/items/:itemId", requireAuth, async (req, res) =
       const { rows: productRows } = await client.query("SELECT colors FROM products WHERE id = $1 FOR UPDATE", [item.product_id]);
       if (productRows.length > 0) {
         const colors = productRows[0].colors ?? [];
-        const colorIndex = colors.findIndex((c) => c.name === item.color_name);
+        const colorIndex = colors.findIndex((c) => c.name.trim() === item.color_name.trim());
         if (colorIndex !== -1) {
           colors[colorIndex] = { ...colors[colorIndex], stock: colors[colorIndex].stock + item.quantity };
           await client.query("UPDATE products SET colors = $1 WHERE id = $2", [JSON.stringify(colors), item.product_id]);
