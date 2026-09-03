@@ -235,6 +235,20 @@ const validateMedia = (photos, videos) => {
   return null;
 };
 
+// Un nombre de color con espacio al inicio o al final es indistinguible a
+// simple vista del correcto, pero rompe la comparación exacta que se usa
+// para mover stock al cambiar de color/agregar/eliminar un ítem (ver
+// PUT /api/orders/:orderId/items/:itemId y afines) — mejor no dejar que
+// entre al catálogo.
+const validateColors = (colors) => {
+  if (!Array.isArray(colors)) return null;
+  const withPadding = colors.find((c) => typeof c?.name === "string" && c.name !== c.name.trim());
+  if (withPadding) {
+    return `El color "${withPadding.name}" tiene un espacio en blanco al inicio o al final del nombre`;
+  }
+  return null;
+};
+
 app.get("/api/products", async (req, res) => {
   const includeCost = isAuthenticated(req);
   const { rows } = await pool.query(`${PRODUCTS_SELECT} ORDER BY p.sort_order, p.id`);
@@ -986,6 +1000,8 @@ app.post("/api/products", requireAuth, async (req, res) => {
   const { name, price, categories, description, image, colors, code, brand, photos, videos, extraDescription, sortOrder, cost } = req.body;
   const mediaError = validateMedia(photos, videos);
   if (mediaError) return res.status(400).json({ error: mediaError });
+  const colorsError = validateColors(colors);
+  if (colorsError) return res.status(400).json({ error: colorsError });
   if (!Array.isArray(categories) || categories.length === 0 || categories.some((c) => !c?.trim())) {
     return res.status(400).json({ error: "Elige al menos una categoría" });
   }
@@ -1011,6 +1027,8 @@ app.put("/api/products/:id", requireAuth, async (req, res) => {
   const { name, price, categories, description, image, colors, code, brand, photos, videos, extraDescription, sortOrder, cost } = req.body;
   const mediaError = validateMedia(photos, videos);
   if (mediaError) return res.status(400).json({ error: mediaError });
+  const colorsError = validateColors(colors);
+  if (colorsError) return res.status(400).json({ error: colorsError });
   if (!Array.isArray(categories) || categories.length === 0 || categories.some((c) => !c?.trim())) {
     return res.status(400).json({ error: "Elige al menos una categoría" });
   }

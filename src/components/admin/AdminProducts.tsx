@@ -227,6 +227,7 @@ const AdminProducts = () => {
     }
     const validColors = colors
       .filter((c) => c.name.trim())
+      .map((c) => ({ ...c, name: c.name.trim() }))
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     if (validColors.some((c) => !c.image)) {
       setAttemptedSubmit(true);
