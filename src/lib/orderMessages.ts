@@ -1,5 +1,20 @@
 import { Order } from "@/lib/api";
 
+// Detalle de cada ítem del pedido (nombre, código, color, descuento y
+// subtotal), una línea por ítem — el mismo formato que se manda al
+// registrar el pedido, reusado también al enviar una actualización de
+// estado por WhatsApp para que el cliente tenga siempre a la vista qué
+// incluye su pedido.
+export const buildOrderItemsText = (order: Order) =>
+  order.items
+    .map((item) => {
+      const code = item.productCode ? ` [${item.productCode}]` : "";
+      const color = item.colorName ? ` (${item.colorName})` : "";
+      const discount = item.discount > 0 ? ` (dcto. S/.${item.discount.toFixed(2)})` : "";
+      return `- ${item.productName}${code}${color} x${item.quantity}${discount}: S/.${item.subtotal.toFixed(2)}`;
+    })
+    .join("\n");
+
 // El plazo es una fecha de calendario (no un momento con hora), y se guarda
 // en UTC medianoche — hay que mostrarla también en UTC para que no se corra
 // un día según la zona horaria del navegador que la mira (Perú es UTC-5).

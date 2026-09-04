@@ -400,6 +400,8 @@ Total: S/.{{total}}
 {{estado_texto}}'),
       ('order_status_update', 'Hola {{cliente}}, novedades de tu pedido #{{pedido}}:
 
+{{items}}
+
 {{estado_texto}}'),
       ('customer_registration', 'Hola, soy {{cliente}} {{apellido}}, acabo de registrarme. Mi código de cliente es #{{codigo}}. Aquí está el link para registrar mi pedido: {{link}}')
     ON CONFLICT (template_key) DO NOTHING;

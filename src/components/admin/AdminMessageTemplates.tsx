@@ -30,6 +30,7 @@ const TEMPLATE_META: { key: MessageTemplateKey; label: string; usage: string; va
     variables: [
       ["cliente", "Nombre del cliente"],
       ["pedido", "Número de pedido"],
+      ["items", "Lista de productos/servicios del pedido"],
       ["estado_texto", "Bloque con el estado y, si aplica, pagado/saldo pendiente/plazo"],
     ],
   },

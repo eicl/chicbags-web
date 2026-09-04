@@ -9,7 +9,7 @@ import {
   updateOrderChargeType, updateOrderItemColor, updateOrderItemDiscount, updateOrderReceipt, updateOrderServiceItem,
   uploadImage,
 } from "@/lib/api";
-import { buildOrderStatusText } from "@/lib/orderMessages";
+import { buildOrderItemsText, buildOrderStatusText } from "@/lib/orderMessages";
 import { DEFAULT_MESSAGE_TEMPLATES, renderMessageTemplate } from "@/lib/messageTemplates";
 import { productImageUrl } from "@/lib/images";
 import { useProducts } from "@/context/ProductContext";
@@ -114,14 +114,16 @@ const ORDER_STATUSES: OrderStatus[] = [
 ];
 
 // Lleva la conversación de WhatsApp al celular del cliente con el estado
-// actual del pedido (y, si está en Separación, el plazo para cancelar). El
-// texto sale de la plantilla configurable (Admin > Mensajes de WhatsApp).
+// actual del pedido (y, si está en Separación, el plazo para cancelar), más
+// el mismo detalle de ítems que se manda al registrar el pedido. El texto
+// sale de la plantilla configurable (Admin > Mensajes de WhatsApp).
 const buildStatusWhatsAppLink = (order: AdminOrder, template: string) => {
   const digits = order.customerMobile.replace(/\D/g, "");
   const phone = digits.startsWith("51") ? digits : `51${digits}`;
   const message = renderMessageTemplate(template, {
     cliente: order.customerName,
     pedido: String(order.id),
+    items: buildOrderItemsText(order),
     estado_texto: buildOrderStatusText(order),
   });
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;

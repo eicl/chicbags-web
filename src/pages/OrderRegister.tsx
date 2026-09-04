@@ -11,7 +11,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Product, ProductColor } from "@/context/CartContext";
 import { lookupCustomer, registerOrder, uploadPaymentProof, fetchSellers, fetchSettings, fetchServices, fetchMessageTemplates, ChargeType, Customer, Order, Service } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
-import { buildOrderStatusText } from "@/lib/orderMessages";
+import { buildOrderItemsText, buildOrderStatusText } from "@/lib/orderMessages";
 import { DEFAULT_MESSAGE_TEMPLATES, renderMessageTemplate } from "@/lib/messageTemplates";
 import { isLimaMetroProvince } from "@/lib/peru-locations";
 import ProductOrderPicker from "@/components/ProductOrderPicker";
@@ -84,19 +84,11 @@ const todayDate = () => {
 const buildOrderWhatsAppLink = (order: Order, customer: Customer, template: string) => {
   const digits = customer.mobile.replace(/\D/g, "");
   const phone = digits.startsWith("51") ? digits : `51${digits}`;
-  const itemsText = order.items
-    .map((item) => {
-      const code = item.productCode ? ` [${item.productCode}]` : "";
-      const color = item.colorName ? ` (${item.colorName})` : "";
-      const discount = item.discount > 0 ? ` (dcto. S/.${item.discount.toFixed(2)})` : "";
-      return `- ${item.productName}${code}${color} x${item.quantity}${discount}: S/.${item.subtotal.toFixed(2)}`;
-    })
-    .join("\n");
   const message = renderMessageTemplate(template, {
     cliente: customer.firstName,
     pedido: String(order.id),
     fecha: formatDateTime(order.createdAt),
-    items: itemsText,
+    items: buildOrderItemsText(order),
     total: order.total.toFixed(2),
     estado_texto: buildOrderStatusText(order),
   });
