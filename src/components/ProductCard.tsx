@@ -66,7 +66,8 @@ const ProductCard = ({ product, isNew = false }: { product: Product; isNew?: boo
                 e.preventDefault();
                 e.stopPropagation();
                 if (!CART_ENABLED) return;
-                addToCart({ ...product, image: colors[selectedColor]?.image ?? product.image });
+                const color = colors[selectedColor];
+                addToCart({ ...product, image: color?.image ?? product.image }, color?.name, color?.stock);
               }}
               disabled={!CART_ENABLED}
               className={`absolute bottom-4 right-4 bg-foreground text-background p-3 rounded-full opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300 ${

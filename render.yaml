@@ -18,6 +18,14 @@ services:
         generateValue: true
       - key: DATABASE_URL
         sync: false
+      - key: IZIPAY_USERNAME
+        sync: false
+      - key: IZIPAY_PASSWORD
+        sync: false
+      - key: IZIPAY_PUBLIC_KEY
+        sync: false
+      - key: IZIPAY_HMAC_KEY
+        sync: false
     disk:
       name: product-images
       mountPath: /opt/render/project/src/public/product-images

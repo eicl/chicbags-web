@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { LogIn } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -10,6 +10,10 @@ import { useCustomerAuth } from "@/context/CustomerAuthContext";
 
 const CustomerLogin = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  // Si llegó acá desde el checkout (sesión exigida para pagar), vuelve ahí
+  // después de iniciar sesión en vez de mandarlo siempre al inicio.
+  const from = (location.state as { from?: string } | null)?.from ?? "/";
   const { login } = useCustomerAuth();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -25,7 +29,7 @@ const CustomerLogin = () => {
     try {
       await login(identifier.trim(), password);
       toast.success("Sesión iniciada");
-      navigate("/");
+      navigate(from);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo iniciar sesión");
     } finally {
@@ -57,7 +61,10 @@ const CustomerLogin = () => {
             <LogIn className="w-4 h-4" /> {isSubmitting ? "Ingresando..." : "Ingresar"}
           </Button>
           <p className="text-sm text-muted-foreground text-center">
-            ¿Todavía no tienes cuenta? <Link to="/mi-cuenta/registro" className="text-primary hover:underline">Regístrate aquí</Link>
+            ¿Todavía no tienes cuenta?{" "}
+            <Link to="/mi-cuenta/registro" state={{ from }} className="text-primary hover:underline">
+              Regístrate aquí
+            </Link>
           </p>
         </form>
       </div>

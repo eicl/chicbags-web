@@ -1,114 +1,191 @@
-import { useState } from "react";
-import { useCart } from "@/context/CartContext";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, CreditCard, Truck, ShieldCheck, Smartphone, Building2, Banknote, CheckCircle2 } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowLeft, CheckCircle2, CreditCard, Banknote, MessageCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { placeholderImage } from "@/lib/placeholder";
-import { productImageUrl } from "@/lib/images";
 import Header from "@/components/Header";
+import { useCart, cartLineKey } from "@/context/CartContext";
+import { useCustomerAuth } from "@/context/CustomerAuthContext";
+import { productImageUrl } from "@/lib/images";
+import { registerOrder, fetchSellers, fetchMessageTemplates, ChargeType, Order } from "@/lib/api";
+import { DEFAULT_MESSAGE_TEMPLATES } from "@/lib/messageTemplates";
+import { buildOrderWhatsAppLink } from "@/lib/orderMessages";
+import { isLimaMetroProvince } from "@/lib/peru-locations";
 
-const yapeQr = placeholderImage("Yape QR", 400, 400, "#5c2d91", "#ffffff");
+// Mismas listas que OrderRegister.tsx: quién puede elegir pagar contra
+// entrega en vez de con tarjeta.
+const CHARGE_TYPE_NATIONWIDE_DELIVERY_TYPES = ["Shalom", "Olva", "Marvisur"];
+const CHARGE_TYPE_LIMA_ONLY_DELIVERY_TYPES = ["Motorizado Delivery", "Motorizado Cliente"];
 
-type PaymentMethod = "yape" | "plin" | "transferencia" | "contra_entrega" | "tarjeta";
+// Vendedor fijo para los pedidos armados solo desde el carrito público (sin
+// que un vendedor real intervenga) — se crea una sola vez en Admin > Usuarios.
+const ONLINE_SELLER_USERNAME = "Tienda Online";
 
-const paymentMethods: { id: PaymentMethod; label: string; icon: React.ReactNode; description: string }[] = [
-  { id: "yape", label: "Yape", icon: <Smartphone className="w-5 h-5" />, description: "Escanea el QR y paga con tu app Yape" },
-  { id: "plin", label: "Plin", icon: <Smartphone className="w-5 h-5" />, description: "Paga con tu app Plin al número 992 398 675" },
-  { id: "transferencia", label: "Transferencia bancaria", icon: <Building2 className="w-5 h-5" />, description: "Deposita a nuestra cuenta BCP o Interbank" },
-  { id: "contra_entrega", label: "Contra entrega", icon: <Banknote className="w-5 h-5" />, description: "Paga en efectivo al recibir tu pedido (solo Lima)" },
-  { id: "tarjeta", label: "Tarjeta de crédito/débito", icon: <CreditCard className="w-5 h-5" />, description: "Visa, Mastercard" },
-];
+const IZIPAY_SDK_URL = "https://checkout.izipay.pe/payments/v1/js/index.js";
 
-const formatCardNumber = (value: string) => {
-  const digits = value.replace(/\D/g, "").slice(0, 16);
-  return digits.replace(/(\d{4})(?=\d)/g, "$1 ");
-};
+// Tipado mínimo del SDK de Izipay (no trae sus propios tipos). La forma
+// exacta de "config" y del contenedor del formulario se confirma recién con
+// credenciales reales — ver nota en handlePay.
+interface IzipayCheckoutInstance {
+  LoadForm: (options: {
+    authorization: string;
+    keyRSA: string;
+    callbackResponse: (response: Record<string, unknown>) => void;
+  }) => void;
+}
+declare global {
+  interface Window {
+    Izipay?: new (options: { config: Record<string, unknown> }) => IzipayCheckoutInstance;
+  }
+}
 
-const formatExpiry = (value: string) => {
-  const digits = value.replace(/\D/g, "").slice(0, 4);
-  if (digits.length >= 3) return digits.slice(0, 2) + "/" + digits.slice(2);
-  return digits;
-};
+const loadIzipayScript = () =>
+  new Promise<void>((resolve, reject) => {
+    if (window.Izipay) {
+      resolve();
+      return;
+    }
+    const existing = document.querySelector(`script[src="${IZIPAY_SDK_URL}"]`);
+    if (existing) {
+      existing.addEventListener("load", () => resolve());
+      existing.addEventListener("error", () => reject(new Error("No se pudo cargar el formulario de pago")));
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = IZIPAY_SDK_URL;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("No se pudo cargar el formulario de pago"));
+    document.head.appendChild(script);
+  });
+
+type Stage = "form" | "loading-card-form" | "confirming" | "success" | "pending" | "cod-success";
 
 const Checkout = () => {
-  const { items, totalPrice, clearCart } = useCart();
   const navigate = useNavigate();
-  const [form, setForm] = useState({
-    nombre: "", apellido: "", email: "", telefono: "",
-    direccion: "", distrito: "", ciudad: "", notas: "",
-  });
-  const [selectedPayment, setSelectedPayment] = useState<PaymentMethod | null>(null);
-  const [processing, setProcessing] = useState(false);
-  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
+  const { items, totalPrice, clearCart } = useCart();
+  const { customer, isLoading: isLoadingCustomer } = useCustomerAuth();
+  const { data: messageTemplates = [] } = useQuery({ queryKey: ["messageTemplates"], queryFn: fetchMessageTemplates });
+  const orderRegistrationTemplate =
+    messageTemplates.find((t) => t.key === "order_registration")?.template ?? DEFAULT_MESSAGE_TEMPLATES.order_registration;
 
-  // Card fields
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardName, setCardName] = useState("");
-  const [cardExpiry, setCardExpiry] = useState("");
-  const [cardCvv, setCardCvv] = useState("");
+  const [chargeType, setChargeType] = useState<ChargeType>("Normal");
+  const [submitting, setSubmitting] = useState(false);
+  const [stage, setStage] = useState<Stage>("form");
+  const [order, setOrder] = useState<Order | null>(null);
 
-  const shipping = totalPrice > 500 ? 0 : 15;
-  const total = totalPrice + shipping;
-
-  const handleChange = (field: string, value: string) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const resetPaymentState = () => {
-    setPaymentConfirmed(false);
-    setCardNumber("");
-    setCardName("");
-    setCardExpiry("");
-    setCardCvv("");
-  };
-
-  const handleSelectPayment = (id: PaymentMethod) => {
-    setSelectedPayment(id);
-    resetPaymentState();
-  };
-
-  const isCardValid = () => {
-    return cardNumber.replace(/\s/g, "").length === 16 &&
-      cardName.trim().length > 2 &&
-      cardExpiry.length === 5 &&
-      cardCvv.length >= 3;
-  };
-
-  const isPaymentReady = () => {
-    if (!selectedPayment) return false;
-    if (selectedPayment === "tarjeta") return isCardValid();
-    if (selectedPayment === "yape" || selectedPayment === "plin") return paymentConfirmed;
-    if (selectedPayment === "transferencia") return paymentConfirmed;
-    if (selectedPayment === "contra_entrega") return true;
-    return false;
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.nombre.trim() || !form.apellido.trim() || !form.email.trim() || !form.telefono.trim() || !form.direccion.trim() || !form.distrito.trim() || !form.ciudad.trim()) {
-      toast.error("Completa todos los campos obligatorios");
-      return;
+  // El checkout exige sesión de "Mi cuenta" — sin cuenta no hay a quién
+  // asociarle el pedido (documento, tipo de entrega, dirección/agencia ya
+  // guardados). Si no hay sesión, se manda a iniciar sesión/crear cuenta y
+  // se vuelve acá después (ver CustomerLogin.tsx / CustomerAccountRegister.tsx).
+  useEffect(() => {
+    if (!isLoadingCustomer && !customer) {
+      navigate("/mi-cuenta/ingresar", { state: { from: "/checkout" } });
     }
-    if (!selectedPayment) {
-      toast.error("Selecciona un método de pago");
-      return;
-    }
-    if (!isPaymentReady()) {
-      toast.error("Completa los datos de pago antes de continuar");
-      return;
-    }
-    setProcessing(true);
-    setTimeout(() => {
-      toast.success("¡Pedido realizado con éxito! Te contactaremos pronto.");
+  }, [isLoadingCustomer, customer, navigate]);
+
+  const canPickContraentrega = Boolean(
+    customer &&
+      (CHARGE_TYPE_NATIONWIDE_DELIVERY_TYPES.includes(customer.deliveryType) ||
+        (isLimaMetroProvince(customer.province) && CHARGE_TYPE_LIMA_ONLY_DELIVERY_TYPES.includes(customer.deliveryType)))
+  );
+
+  const pollOrderStatus = (orderId: number, total: number) => {
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      attempts += 1;
+      try {
+        const res = await fetch(`/api/orders/${orderId}/status`);
+        if (res.ok) {
+          const body = await res.json();
+          if (body.paid >= total) {
+            clearInterval(interval);
+            setStage("success");
+            return;
+          }
+        }
+      } catch {
+        // sigue reintentando hasta agotar los intentos
+      }
+      if (attempts >= 8) {
+        clearInterval(interval);
+        setStage("pending");
+      }
+    }, 2000);
+  };
+
+  const handlePay = async () => {
+    if (!customer || items.length === 0) return;
+    setSubmitting(true);
+    try {
+      const sellers = await fetchSellers();
+      const onlineSeller = sellers.find((s) => s.username === ONLINE_SELLER_USERNAME);
+      if (!onlineSeller) {
+        toast.error("La tienda no está lista para recibir pedidos en línea todavía. Escríbenos por WhatsApp.");
+        return;
+      }
+      const createdOrder = await registerOrder({
+        customerId: customer.id,
+        sellerId: onlineSeller.id,
+        items: items.map((item) => ({ productId: item.id, colorName: item.colorName, quantity: item.quantity })),
+        chargeType,
+      });
+      setOrder(createdOrder);
       clearCart();
-      navigate("/");
-      setProcessing(false);
-    }, 1500);
+
+      if (chargeType === "Contraentrega") {
+        setStage("cod-success");
+        return;
+      }
+
+      setStage("loading-card-form");
+      await loadIzipayScript();
+      const tokenRes = await fetch("/api/izipay/formtoken", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: createdOrder.id }),
+      });
+      const tokenBody = await tokenRes.json();
+      if (!tokenRes.ok) throw new Error(tokenBody.error ?? "No se pudo iniciar el pago con tarjeta");
+      if (!window.Izipay) throw new Error("No se pudo cargar el formulario de pago");
+
+      const checkout = new window.Izipay({
+        config: {
+          transactionId: String(createdOrder.id),
+          action: "pay",
+          merchantCode: tokenBody.merchantCode,
+          order: { orderNumber: String(createdOrder.id), currency: "PEN", amount: createdOrder.total, processType: "AT" },
+        },
+      });
+      checkout.LoadForm({
+        authorization: tokenBody.formToken,
+        keyRSA: tokenBody.publicKey,
+        callbackResponse: () => {
+          // La respuesta que llega acá es solo para la UX inmediata — la
+          // confirmación real viene del IPN server-to-server (ver
+          // POST /api/izipay/ipn en server/index.js), por eso se hace
+          // polling del estado real del pedido en vez de confiar en esto.
+          setStage("confirming");
+          pollOrderStatus(createdOrder.id, createdOrder.total);
+        },
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo procesar el pago");
+      setStage("form");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  if (items.length === 0) {
+  if (isLoadingCustomer || !customer) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">Cargando...</p>
+      </div>
+    );
+  }
+
+  if (stage === "form" && items.length === 0) {
     return (
       <div className="min-h-screen bg-background">
         <Header />
@@ -125,10 +202,53 @@ const Checkout = () => {
     );
   }
 
+  if (stage === "cod-success" || stage === "success" || stage === "pending") {
+    const whatsappLink = order && customer ? buildOrderWhatsAppLink(order, customer, orderRegistrationTemplate) : null;
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="container mx-auto px-4 md:px-8 py-16 md:py-24 flex flex-col items-center text-center gap-6 max-w-lg">
+          <CheckCircle2 className="w-14 h-14 text-primary" />
+          <h1 className="text-2xl md:text-3xl font-medium" style={{ fontFamily: "var(--font-display)" }}>
+            {stage === "pending" ? "Estamos confirmando tu pago" : "¡Pedido registrado!"}
+          </h1>
+          <p className="text-muted-foreground">
+            {stage === "cod-success" && "Pagas en efectivo al recibir tu pedido. Te contactaremos para coordinar la entrega."}
+            {stage === "success" && "Tu pago con tarjeta fue confirmado."}
+            {stage === "pending" &&
+              "Tu tarjeta fue procesada, pero la confirmación está demorando más de lo normal. Te avisaremos apenas se confirme — también puedes escribirnos."}
+          </p>
+          {order && (
+            <span className="inline-block px-4 py-2 rounded-md bg-primary/10 text-primary font-semibold text-lg tracking-wide">
+              Pedido #{order.id}
+            </span>
+          )}
+          <div className="flex flex-wrap justify-center gap-3">
+            {whatsappLink && (
+              <a
+                href={whatsappLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-md text-white font-medium transition-transform hover:scale-105"
+                style={{ backgroundColor: "#25D366" }}
+              >
+                <MessageCircle className="w-5 h-5" fill="white" />
+                Ver detalle por WhatsApp
+              </a>
+            )}
+            <Button variant="outline" onClick={() => navigate("/")}>
+              Ir al inicio
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <div className="container mx-auto px-4 md:px-8 py-8 md:py-12">
+      <div className="container mx-auto px-4 md:px-8 py-8 md:py-12 max-w-4xl">
         <div className="flex items-center gap-4 mb-8">
           <button onClick={() => navigate("/")} className="p-2 hover:bg-muted rounded-full transition-colors">
             <ArrowLeft className="w-5 h-5" />
@@ -139,262 +259,94 @@ const Checkout = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 lg:gap-12">
-          <form onSubmit={handleSubmit} className="lg:col-span-3 space-y-6">
-            {/* Datos personales */}
+          <div className="lg:col-span-3 space-y-6">
             <div className="border border-border rounded-lg p-6 space-y-4">
-              <h2 className="text-lg font-medium flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-primary" /> Datos personales
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm text-muted-foreground mb-1 block">Nombre *</label>
-                  <Input value={form.nombre} onChange={(e) => handleChange("nombre", e.target.value)} placeholder="Tu nombre" maxLength={100} />
-                </div>
-                <div>
-                  <label className="text-sm text-muted-foreground mb-1 block">Apellido *</label>
-                  <Input value={form.apellido} onChange={(e) => handleChange("apellido", e.target.value)} placeholder="Tu apellido" maxLength={100} />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm text-muted-foreground mb-1 block">Email *</label>
-                  <Input type="email" value={form.email} onChange={(e) => handleChange("email", e.target.value)} placeholder="tu@gmail.com" maxLength={255} />
-                </div>
-                <div>
-                  <label className="text-sm text-muted-foreground mb-1 block">Teléfono *</label>
-                  <Input value={form.telefono} onChange={(e) => handleChange("telefono", e.target.value)} placeholder="+51 999 999 999" maxLength={20} />
-                </div>
-              </div>
+              <h2 className="text-lg font-medium">Tus datos de entrega</h2>
+              <p className="text-sm text-muted-foreground">
+                {customer.firstName} {customer.paternalSurname} · {customer.mobile}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {customer.deliveryType}
+                {customer.agency && ` — ${customer.agency}`}
+                {customer.address && ` — ${customer.address}`}
+                {" · "}
+                {customer.district}, {customer.province}, {customer.department}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                ¿Necesitas actualizar estos datos? Escríbenos por WhatsApp antes de pagar.
+              </p>
             </div>
 
-            {/* Dirección de envío */}
             <div className="border border-border rounded-lg p-6 space-y-4">
-              <h2 className="text-lg font-medium flex items-center gap-2">
-                <Truck className="w-5 h-5 text-primary" /> Dirección de envío
-              </h2>
-              <div>
-                <label className="text-sm text-muted-foreground mb-1 block">Dirección *</label>
-                <Input value={form.direccion} onChange={(e) => handleChange("direccion", e.target.value)} placeholder="Av. / Jr. / Calle, número" maxLength={200} />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm text-muted-foreground mb-1 block">Distrito *</label>
-                  <Input value={form.distrito} onChange={(e) => handleChange("distrito", e.target.value)} placeholder="Tu distrito" maxLength={100} />
-                </div>
-                <div>
-                  <label className="text-sm text-muted-foreground mb-1 block">Ciudad *</label>
-                  <Input value={form.ciudad} onChange={(e) => handleChange("ciudad", e.target.value)} placeholder="Lima" maxLength={100} />
-                </div>
-              </div>
-              <div>
-                <label className="text-sm text-muted-foreground mb-1 block">Notas del pedido</label>
-                <textarea value={form.notas} onChange={(e) => handleChange("notas", e.target.value)} placeholder="Instrucciones adicionales (opcional)" maxLength={500} rows={3} className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none" />
-              </div>
-            </div>
-
-            {/* Método de pago */}
-            <div className="border border-border rounded-lg p-6 space-y-4">
-              <h2 className="text-lg font-medium flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-primary" /> Método de pago
-              </h2>
-              <div className="space-y-3">
-                {paymentMethods.map((method) => (
+              <h2 className="text-lg font-medium">Método de pago</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setChargeType("Normal")}
+                  className={`flex items-center gap-3 p-4 rounded-md border text-left transition-colors ${
+                    chargeType === "Normal" ? "border-primary bg-primary/10" : "border-input hover:border-muted-foreground/50"
+                  }`}
+                >
+                  <CreditCard className="w-5 h-5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium">Tarjeta</p>
+                    <p className="text-xs text-muted-foreground">Visa, Mastercard — vía Izipay</p>
+                  </div>
+                </button>
+                {canPickContraentrega && (
                   <button
-                    key={method.id}
                     type="button"
-                    onClick={() => handleSelectPayment(method.id)}
-                    className={`w-full flex items-center gap-4 p-4 rounded-lg border transition-all text-left ${
-                      selectedPayment === method.id
-                        ? "border-primary bg-primary/5 ring-1 ring-primary"
-                        : "border-border hover:border-muted-foreground/30"
+                    onClick={() => setChargeType("Contraentrega")}
+                    className={`flex items-center gap-3 p-4 rounded-md border text-left transition-colors ${
+                      chargeType === "Contraentrega" ? "border-primary bg-primary/10" : "border-input hover:border-muted-foreground/50"
                     }`}
                   >
-                    <div className={`p-2 rounded-full ${selectedPayment === method.id ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
-                      {method.icon}
+                    <Banknote className="w-5 h-5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Contra entrega</p>
+                      <p className="text-xs text-muted-foreground">Pagas en efectivo al recibir</p>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{method.label}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{method.description}</p>
-                    </div>
-                    {selectedPayment === method.id && (
-                      <CheckCircle2 className="w-5 h-5 text-primary shrink-0" />
-                    )}
                   </button>
-                ))}
+                )}
               </div>
-
-              {/* Tarjeta de crédito/débito */}
-              {selectedPayment === "tarjeta" && (
-                <div className="bg-muted/50 rounded-lg p-5 space-y-4">
-                  <p className="text-sm font-medium">💳 Datos de la tarjeta</p>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Número de tarjeta</label>
-                    <Input
-                      value={cardNumber}
-                      onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
-                      placeholder="1234 5678 9012 3456"
-                      maxLength={19}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Nombre del titular</label>
-                    <Input
-                      value={cardName}
-                      onChange={(e) => setCardName(e.target.value)}
-                      placeholder="Como aparece en la tarjeta"
-                      maxLength={100}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">Fecha de expiración</label>
-                      <Input
-                        value={cardExpiry}
-                        onChange={(e) => setCardExpiry(formatExpiry(e.target.value))}
-                        placeholder="MM/AA"
-                        maxLength={5}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">CVV</label>
-                      <Input
-                        type="password"
-                        value={cardCvv}
-                        onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                        placeholder="***"
-                        maxLength={4}
-                      />
-                    </div>
-                  </div>
-                  {isCardValid() && (
-                    <p className="text-xs text-primary flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Datos de tarjeta completos</p>
-                  )}
-                </div>
-              )}
-
-              {/* Yape con QR */}
-              {selectedPayment === "yape" && (
-                <div className="bg-muted/50 rounded-lg p-5 space-y-4">
-                  <p className="text-sm font-medium">📱 Paga con Yape</p>
-                  <div className="flex flex-col items-center gap-3">
-                    <img src={yapeQr} alt="QR de Yape para pago" className="w-48 h-48 rounded-lg border border-border" loading="lazy" width={192} height={192} />
-                    <p className="text-sm text-muted-foreground text-center">Escanea el QR con tu app Yape o paga al número <span className="text-foreground font-medium">992 398 675</span></p>
-                    <p className="text-sm font-medium">Monto: S/ {total.toFixed(2)}</p>
-                  </div>
-                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={paymentConfirmed}
-                      onChange={(e) => setPaymentConfirmed(e.target.checked)}
-                      className="w-4 h-4 accent-primary"
-                    />
-                    <span className="text-sm">Ya realicé el pago por Yape</span>
-                  </label>
-                </div>
-              )}
-
-              {/* Plin */}
-              {selectedPayment === "plin" && (
-                <div className="bg-muted/50 rounded-lg p-5 space-y-4">
-                  <p className="text-sm font-medium">📱 Datos para Plin:</p>
-                  <p className="text-sm text-muted-foreground">Número: <span className="text-foreground font-medium">992 398 675</span></p>
-                  <p className="text-sm text-muted-foreground">Titular: <span className="text-foreground font-medium">ChicBags</span></p>
-                  <p className="text-sm font-medium">Monto: S/ {total.toFixed(2)}</p>
-                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={paymentConfirmed}
-                      onChange={(e) => setPaymentConfirmed(e.target.checked)}
-                      className="w-4 h-4 accent-primary"
-                    />
-                    <span className="text-sm">Ya realicé el pago por Plin</span>
-                  </label>
-                </div>
-              )}
-
-              {/* Transferencia */}
-              {selectedPayment === "transferencia" && (
-                <div className="bg-muted/50 rounded-lg p-5 space-y-3">
-                  <p className="text-sm font-medium">🏦 Datos bancarios:</p>
-                  <div className="space-y-1">
-                    <p className="text-sm text-muted-foreground">BCP Cuenta Ahorros:</p>
-                    <p className="text-sm text-foreground font-medium font-mono">XXX-XXXXXXX-X-XX</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm text-muted-foreground">CCI Interbancario:</p>
-                    <p className="text-sm text-foreground font-medium font-mono">XXX-XXX-XXXXXXX-X-XX</p>
-                  </div>
-                  <p className="text-sm text-muted-foreground">Titular: <span className="text-foreground font-medium">ChicBags</span></p>
-                  <p className="text-sm font-medium">Monto: S/ {total.toFixed(2)}</p>
-                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={paymentConfirmed}
-                      onChange={(e) => setPaymentConfirmed(e.target.checked)}
-                      className="w-4 h-4 accent-primary"
-                    />
-                    <span className="text-sm">Ya realicé la transferencia</span>
-                  </label>
-                </div>
-              )}
-
-              {/* Contra entrega */}
-              {selectedPayment === "contra_entrega" && (
-                <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                  <p className="text-sm font-medium">💵 Contra entrega:</p>
-                  <p className="text-sm text-muted-foreground">Paga en efectivo cuando recibas tu pedido. Disponible solo para <span className="text-foreground font-medium">Lima Metropolitana</span>.</p>
-                  <p className="text-xs text-muted-foreground">El repartidor te entregará una boleta de venta.</p>
-                </div>
-              )}
             </div>
 
-            <Button
-              type="submit"
-              disabled={processing || !isPaymentReady()}
-              className="w-full py-6 text-sm tracking-widest uppercase gap-2"
-            >
-              <CreditCard className="w-4 h-4" />
-              {processing ? "Procesando..." : `Confirmar Pedido — S/ ${total.toFixed(2)}`}
-            </Button>
-          </form>
+            {stage === "loading-card-form" && (
+              <div className="border border-border rounded-lg p-6 flex items-center gap-3 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" /> Cargando el formulario de pago...
+              </div>
+            )}
+            {stage === "confirming" && (
+              <div className="border border-border rounded-lg p-6 flex items-center gap-3 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" /> Confirmando tu pago...
+              </div>
+            )}
+          </div>
 
-          {/* Resumen del pedido */}
+          {/* Resumen */}
           <div className="lg:col-span-2">
-            <div className="border border-border rounded-lg p-6 space-y-6 lg:sticky lg:top-8">
+            <div className="border border-border rounded-lg p-6 sticky top-24 space-y-4">
               <h2 className="text-lg font-medium">Resumen del pedido</h2>
               <div className="space-y-4 max-h-80 overflow-y-auto">
                 {items.map((item) => (
-                  <div key={item.id} className="flex gap-3">
-                    <img src={productImageUrl(item.image)} alt={item.name} className="w-16 h-16 object-cover rounded-sm bg-muted" loading="lazy" />
+                  <div key={cartLineKey(item.id, item.colorName)} className="flex gap-3">
+                    <img src={productImageUrl(item.image)} alt={item.name} className="w-14 h-16 object-cover rounded-sm bg-muted" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{item.name}</p>
-                      <p className="text-xs text-muted-foreground">Cant: {item.quantity}</p>
+                      {item.colorName && <p className="text-xs text-muted-foreground">{item.colorName}</p>}
+                      <p className="text-xs text-muted-foreground">x{item.quantity}</p>
                     </div>
-                    <p className="text-sm font-medium">S/ {(item.price * item.quantity).toFixed(2)}</p>
+                    <p className="text-sm font-medium">S/.{(item.price * item.quantity).toFixed(2)}</p>
                   </div>
                 ))}
               </div>
-              <div className="border-t border-border pt-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span>S/ {totalPrice.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Envío</span>
-                  <span>{shipping === 0 ? "Gratis" : `S/ ${shipping.toFixed(2)}`}</span>
-                </div>
-                {shipping === 0 && <p className="text-xs text-primary">🎉 ¡Envío gratis en compras mayores a S/ 500!</p>}
-                {selectedPayment && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Pago</span>
-                    <span>{paymentMethods.find(m => m.id === selectedPayment)?.label}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-lg font-medium pt-2 border-t border-border">
-                  <span>Total</span>
-                  <span>S/ {total.toFixed(2)}</span>
-                </div>
+              <div className="border-t border-border pt-4 flex justify-between text-lg font-medium">
+                <span>Total</span>
+                <span>S/.{totalPrice.toFixed(2)}</span>
               </div>
+              <Button onClick={handlePay} disabled={submitting || stage !== "form"} className="w-full py-6 text-sm tracking-widest uppercase gap-2">
+                {submitting ? "Procesando..." : "Confirmar pedido"}
+              </Button>
             </div>
           </div>
         </div>

@@ -11,8 +11,8 @@ import { useAuth } from "@/context/AuthContext";
 import { Product, ProductColor } from "@/context/CartContext";
 import { lookupCustomer, registerOrder, uploadPaymentProof, fetchSellers, fetchSettings, fetchServices, fetchMessageTemplates, ChargeType, Customer, Order, Service } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
-import { buildOrderItemsText, buildOrderStatusText } from "@/lib/orderMessages";
-import { DEFAULT_MESSAGE_TEMPLATES, renderMessageTemplate } from "@/lib/messageTemplates";
+import { buildOrderWhatsAppLink } from "@/lib/orderMessages";
+import { DEFAULT_MESSAGE_TEMPLATES } from "@/lib/messageTemplates";
 import { isLimaMetroProvince } from "@/lib/peru-locations";
 import ProductOrderPicker from "@/components/ProductOrderPicker";
 import ServiceOrderPicker from "@/components/ServiceOrderPicker";
@@ -76,23 +76,6 @@ const formatDateOnly = (iso: string) =>
 const todayDate = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-};
-
-// Lleva la conversación de WhatsApp al celular del cliente con el número
-// de pedido y el resumen ya redactados — solo falta darle Enviar. El texto
-// sale de la plantilla configurable (Admin > Mensajes de WhatsApp).
-const buildOrderWhatsAppLink = (order: Order, customer: Customer, template: string) => {
-  const digits = customer.mobile.replace(/\D/g, "");
-  const phone = digits.startsWith("51") ? digits : `51${digits}`;
-  const message = renderMessageTemplate(template, {
-    cliente: customer.firstName,
-    pedido: String(order.id),
-    fecha: formatDateTime(order.createdAt),
-    items: buildOrderItemsText(order),
-    total: order.total.toFixed(2),
-    estado_texto: buildOrderStatusText(order),
-  });
-  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 };
 
 const OrderRegister = () => {

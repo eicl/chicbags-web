@@ -1,5 +1,5 @@
 import { X, Minus, Plus, ShoppingBag } from "lucide-react";
-import { useCart } from "@/context/CartContext";
+import { useCart, cartLineKey } from "@/context/CartContext";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { productImageUrl } from "@/lib/images";
@@ -44,22 +44,33 @@ const CartDrawer = () => {
               <>
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
                   {items.map((item) => (
-                    <div key={item.id} className="flex gap-4">
+                    <div key={cartLineKey(item.id, item.colorName)} className="flex gap-4">
                       <img src={productImageUrl(item.image)} alt={item.name} className="w-20 h-24 object-cover rounded-sm bg-muted" />
                       <div className="flex-1 min-w-0">
                         <h3 className="font-medium text-sm truncate">{item.name}</h3>
+                        {item.colorName && <p className="text-xs text-muted-foreground">{item.colorName}</p>}
                         <p className="text-sm text-muted-foreground mt-1">S/.{item.price.toFixed(2)}</p>
                         <div className="flex items-center gap-3 mt-3">
-                          <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="p-1 hover:bg-muted rounded transition-colors">
+                          <button
+                            onClick={() => updateQuantity(item.id, item.colorName, item.quantity - 1)}
+                            className="p-1 hover:bg-muted rounded transition-colors"
+                          >
                             <Minus className="w-3 h-3" />
                           </button>
                           <span className="text-sm font-medium w-6 text-center">{item.quantity}</span>
-                          <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="p-1 hover:bg-muted rounded transition-colors">
+                          <button
+                            onClick={() => updateQuantity(item.id, item.colorName, item.quantity + 1)}
+                            disabled={item.quantity >= item.colorStock}
+                            className="p-1 hover:bg-muted rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
                             <Plus className="w-3 h-3" />
                           </button>
                         </div>
                       </div>
-                      <button onClick={() => removeFromCart(item.id)} className="self-start p-1 text-muted-foreground hover:text-foreground transition-colors">
+                      <button
+                        onClick={() => removeFromCart(item.id, item.colorName)}
+                        className="self-start p-1 text-muted-foreground hover:text-foreground transition-colors"
+                      >
                         <X className="w-4 h-4" />
                       </button>
                     </div>

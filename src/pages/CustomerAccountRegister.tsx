@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { CheckCircle2, Info, Save } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -69,6 +69,10 @@ const REQUIRED_FIELD_LABELS: Record<string, string> = {
 
 const CustomerAccountRegister = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  // Si llegó acá desde el checkout (sesión exigida para pagar), vuelve ahí
+  // después de crear la cuenta en vez de mandarlo siempre al inicio.
+  const from = (location.state as { from?: string } | null)?.from ?? "/";
   const { register, customer } = useCustomerAuth();
   const [form, setForm] = useState<CustomerInput>(emptyForm);
   const [password, setPassword] = useState("");
@@ -169,10 +173,11 @@ const CustomerAccountRegister = () => {
             ¡Cuenta creada!
           </h1>
           <p className="text-muted-foreground">
-            Gracias, {customer.firstName}. Ya iniciaste sesión — ahora puedes dejar tu valoración desde la página de inicio.
+            Gracias, {customer.firstName}. Ya iniciaste sesión
+            {from === "/checkout" ? " — retomemos tu compra." : " — ahora puedes dejar tu valoración desde la página de inicio."}
           </p>
           <div className="flex gap-3">
-            <Button onClick={() => navigate("/")}>Ir al inicio</Button>
+            <Button onClick={() => navigate(from)}>{from === "/checkout" ? "Continuar con mi compra" : "Ir al inicio"}</Button>
           </div>
         </div>
       </div>
@@ -191,7 +196,10 @@ const CustomerAccountRegister = () => {
             Completa tus datos y elige una contraseña para iniciar sesión y dejar tus valoraciones.
           </p>
           <p className="text-sm text-muted-foreground mt-2">
-            ¿Ya tienes cuenta? <Link to="/mi-cuenta/ingresar" className="text-primary hover:underline">Inicia sesión aquí</Link>
+            ¿Ya tienes cuenta?{" "}
+            <Link to="/mi-cuenta/ingresar" state={{ from }} className="text-primary hover:underline">
+              Inicia sesión aquí
+            </Link>
           </p>
         </div>
 

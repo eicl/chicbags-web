@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { createHmac } from "crypto";
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -52,6 +53,8 @@ await bootstrapAdminUser();
 const app = express();
 app.use(cors());
 app.use(express.json());
+// El IPN de Izipay llega como application/x-www-form-urlencoded, no JSON.
+app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use("/product-images", express.static(IMAGES_DIR));
 
@@ -1180,7 +1183,7 @@ const validatePaymentInput = ({ amount, source, proofImage, date }) => {
 // caller decide el alcance — sola (registerPaymentTx) o junto con la
 // creación del pedido, en la misma transacción, cuando el pago se carga al
 // mismo tiempo que los productos.
-const applyPayment = async (client, orderId, total, currentDeadline, { amount, source, proofImage, registeredBy, date }, separationDays) => {
+const applyPayment = async (client, orderId, total, currentDeadline, { amount, source, proofImage, registeredBy, date, operationNumber }, separationDays) => {
   // "date" llega como fecha sin hora ("YYYY-MM-DD", del selector de fecha
   // del formulario) pensada como día calendario en Lima. new Date(date) a
   // secas la interpreta como medianoche UTC, que en Lima (UTC-5) todavía es
@@ -1188,9 +1191,9 @@ const applyPayment = async (client, orderId, total, currentDeadline, { amount, s
   // de Lima acá, para que el día quede donde el usuario lo eligió.
   const paidAt = date ? new Date(`${date}T00:00:00-05:00`) : new Date();
   await client.query(
-    `INSERT INTO payments (order_id, amount, source, proof_image, registered_by, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [orderId, amount, source.trim(), proofImage.trim(), registeredBy, paidAt]
+    `INSERT INTO payments (order_id, amount, source, proof_image, registered_by, created_at, operation_number)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [orderId, amount, source.trim(), proofImage.trim(), registeredBy, paidAt, (operationNumber ?? "").trim()]
   );
   const { rows: paidRows } = await client.query(
     "SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE order_id = $1",
@@ -1242,6 +1245,162 @@ const registerPaymentTx = async (orderId, paymentData) => {
     client.release();
   }
 };
+
+// Credenciales del Back Office de Izipay (plataforma Lyra "Micuentaweb").
+// Mismo endpoint para test y producción — el ambiente lo determina qué par
+// de credenciales se usa acá, no la URL.
+const IZIPAY_USERNAME = process.env.IZIPAY_USERNAME;
+const IZIPAY_PASSWORD = process.env.IZIPAY_PASSWORD;
+const IZIPAY_PUBLIC_KEY = process.env.IZIPAY_PUBLIC_KEY;
+// IZIPAY_HMAC_KEY (HMACSHA256 del Back Office) no se usa server-side en
+// este flujo: la respuesta que recibe el navegador no es la fuente de
+// verdad (el IPN, validado con PASSWORD, sí lo es) — se documenta en
+// .env.example por si más adelante hace falta validar esa respuesta también.
+const IZIPAY_API_URL = "https://api.micuentaweb.pe/api-payment/V4/Charge/CreatePayment";
+
+// Pide un formToken para cargar el formulario de pago con tarjeta en el
+// checkout. Cobra exactamente el saldo pendiente del pedido (nunca un monto
+// que mande el cliente) — así no importa si el navegador manipula el pedido.
+app.post("/api/izipay/formtoken", async (req, res) => {
+  const orderId = Number(req.body.orderId);
+  if (!Number.isInteger(orderId)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  if (!IZIPAY_USERNAME || !IZIPAY_PASSWORD || !IZIPAY_PUBLIC_KEY) {
+    return res.status(500).json({ error: "Los pagos con tarjeta todavía no están configurados" });
+  }
+  const { rows: orderRows } = await pool.query("SELECT id, total FROM orders WHERE id = $1", [orderId]);
+  if (orderRows.length === 0) {
+    return res.status(404).json({ error: "Pedido no encontrado" });
+  }
+  const { rows: paidRows } = await pool.query("SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE order_id = $1", [orderId]);
+  const remaining = Number(orderRows[0].total) - Number(paidRows[0].paid);
+  if (remaining <= 0) {
+    return res.status(400).json({ error: "Este pedido ya está pagado" });
+  }
+  try {
+    const auth = Buffer.from(`${IZIPAY_USERNAME}:${IZIPAY_PASSWORD}`).toString("base64");
+    const response = await fetch(IZIPAY_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Basic ${auth}` },
+      body: JSON.stringify({
+        // Izipay recibe el monto en la unidad menor de la moneda (céntimos).
+        amount: Math.round(remaining * 100),
+        currency: "PEN",
+        orderId: String(orderId),
+        // No se guarda correo de cliente (se quitó de esa tabla hace
+        // tiempo) — Izipay igual pide uno sintáctico, no se usa para nada.
+        customer: { email: `pedido-${orderId}@chicbags.pe` },
+      }),
+    });
+    const body = await response.json();
+    if (body.status !== "SUCCESS") {
+      console.error("Izipay CreatePayment respondió con error:", body);
+      return res.status(502).json({ error: "No se pudo iniciar el pago con tarjeta" });
+    }
+    res.json({ formToken: body.answer.formToken, publicKey: IZIPAY_PUBLIC_KEY, merchantCode: IZIPAY_USERNAME });
+  } catch (err) {
+    console.error("Izipay CreatePayment falló:", err);
+    res.status(502).json({ error: "No se pudo conectar con la pasarela de pago" });
+  }
+});
+
+// Notificación server-to-server de Izipay (IPN) — es la fuente de verdad
+// real del pago, a diferencia de la respuesta que recibe el navegador (que
+// se puede perder si el cliente cierra la pestaña antes de tiempo). Izipay
+// reintenta hasta recibir 200, así que siempre se responde 200 una vez que
+// la firma es válida, aunque no haya nada que hacer (pago no aprobado, o ya
+// procesado antes).
+app.post("/api/izipay/ipn", async (req, res) => {
+  const answer = req.body["kr-answer"];
+  const hash = req.body["kr-hash"];
+  if (!answer || !hash || !IZIPAY_PASSWORD) {
+    return res.status(400).json({ error: "Notificación inválida" });
+  }
+  // Para el IPN la firma se valida con PASSWORD (no con HMACSHA256, esa es
+  // solo para la respuesta que recibe el navegador).
+  const expectedHash = createHmac("sha256", IZIPAY_PASSWORD).update(answer).digest("hex");
+  if (expectedHash !== hash) {
+    console.error("Izipay IPN: firma inválida");
+    return res.status(400).json({ error: "Firma inválida" });
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(answer);
+  } catch {
+    return res.status(400).json({ error: "kr-answer no es JSON válido" });
+  }
+  if (parsed.orderStatus !== "PAID") {
+    return res.status(200).json({ received: true });
+  }
+  const orderId = Number(parsed.orderDetails?.orderId ?? parsed.orderId);
+  const operationNumber = String(
+    parsed.transactions?.[0]?.uuid ?? parsed.transactions?.[0]?.transactionId ?? parsed.orderCycle ?? ""
+  );
+  if (!Number.isInteger(orderId)) {
+    return res.status(400).json({ error: "orderId inválido en la notificación" });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: orderRows } = await client.query(
+      "SELECT id, total, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
+      [orderId]
+    );
+    if (orderRows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Pedido no encontrado" });
+    }
+    if (operationNumber) {
+      const { rows: dupeRows } = await client.query(
+        "SELECT 1 FROM payments WHERE order_id = $1 AND operation_number = $2",
+        [orderId, operationNumber]
+      );
+      if (dupeRows.length > 0) {
+        await client.query("COMMIT");
+        return res.status(200).json({ received: true, duplicate: true });
+      }
+    }
+    const order = orderRows[0];
+    const { rows: paidRows } = await client.query("SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE order_id = $1", [orderId]);
+    const remaining = Number(order.total) - Number(paidRows[0].paid);
+    if (remaining > 0) {
+      const settings = await getSettings();
+      await applyPayment(
+        client,
+        orderId,
+        Number(order.total),
+        order.separation_deadline,
+        { amount: remaining, source: "Tarjeta (Izipay)", proofImage: "", registeredBy: "Izipay (automático)", operationNumber },
+        settings.separationDays
+      );
+    }
+    await client.query("COMMIT");
+    res.status(200).json({ received: true });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("Izipay IPN: error procesando la notificación:", err);
+    res.status(500).json({ error: "Error procesando la notificación" });
+  } finally {
+    client.release();
+  }
+});
+
+// Estado mínimo de un pedido, sin datos del cliente (el id es adivinable) —
+// lo usa el checkout para confirmar un pago con tarjeta después de que
+// Izipay redirige de vuelta, mientras llega (o no) el IPN.
+app.get("/api/orders/:id/status", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  const { rows } = await pool.query("SELECT id, status, total FROM orders WHERE id = $1", [id]);
+  if (rows.length === 0) {
+    return res.status(404).json({ error: "Pedido no encontrado" });
+  }
+  const { rows: paidRows } = await pool.query("SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE order_id = $1", [id]);
+  res.json({ id: rows[0].id, status: rows[0].status, total: Number(rows[0].total), paid: Number(paidRows[0].paid) });
+});
 
 app.get("/api/orders", requireAuth, async (req, res) => {
   // Los items y los pagos se agregan cada uno en su propio subquery LATERAL

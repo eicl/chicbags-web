@@ -1,4 +1,8 @@
-import { Order } from "@/lib/api";
+import { Order, Customer } from "@/lib/api";
+import { renderMessageTemplate } from "@/lib/messageTemplates";
+
+const formatDateTime = (iso: string) =>
+  new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
 
 // Detalle de cada ítem del pedido (nombre, código, color, descuento y
 // subtotal), una línea por ítem — el mismo formato que se manda al
@@ -45,4 +49,21 @@ export const buildOrderStatusText = (order: Order) => {
     text += `\n\nTienes 15 días calendario para cancelar tu pedido. Fecha límite: ${formatDeadlineDate(order.separationDeadline)}.`;
   }
   return text;
+};
+
+// Lleva la conversación de WhatsApp al celular del cliente con el número de
+// pedido y el resumen ya redactados — solo falta darle Enviar. El texto sale
+// de la plantilla configurable (Admin > Mensajes de WhatsApp).
+export const buildOrderWhatsAppLink = (order: Order, customer: Customer, template: string) => {
+  const digits = customer.mobile.replace(/\D/g, "");
+  const phone = digits.startsWith("51") ? digits : `51${digits}`;
+  const message = renderMessageTemplate(template, {
+    cliente: customer.firstName,
+    pedido: String(order.id),
+    fecha: formatDateTime(order.createdAt),
+    items: buildOrderItemsText(order),
+    total: order.total.toFixed(2),
+    estado_texto: buildOrderStatusText(order),
+  });
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 };

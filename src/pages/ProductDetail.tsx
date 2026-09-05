@@ -84,10 +84,15 @@ const ProductDetail = () => {
       toast.error("Ese color está agotado");
       return;
     }
-    addToCart({
-      ...product,
-      image: displayImage,
-    });
+    const color = colors[selectedColor];
+    addToCart(
+      {
+        ...product,
+        image: displayImage,
+      },
+      color?.name,
+      color?.stock
+    );
     toast.success("Agregado al carrito");
   };
 

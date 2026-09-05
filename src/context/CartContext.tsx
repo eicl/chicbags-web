@@ -29,15 +29,24 @@ export interface Product {
   visible: boolean;
 }
 
-interface CartItem extends Product {
+export interface CartItem extends Product {
   quantity: number;
+  // Color elegido al agregar (vacío si el producto no tiene colores) — el
+  // pedido real exige un color por ítem, así que dos colores del mismo
+  // producto deben ser líneas distintas, no una sola cantidad sumada.
+  colorName: string;
+  colorStock: number;
 }
+
+// Identidad de una línea del carrito: mismo patrón que lineKey() en
+// OrderRegister.tsx, para que dos colores del mismo producto no colisionen.
+export const cartLineKey = (id: number, colorName: string) => `${id}::${colorName}`;
 
 interface CartContextType {
   items: CartItem[];
-  addToCart: (product: Product) => void;
-  removeFromCart: (id: number) => void;
-  updateQuantity: (id: number, quantity: number) => void;
+  addToCart: (product: Product, colorName?: string, colorStock?: number) => void;
+  removeFromCart: (id: number, colorName: string) => void;
+  updateQuantity: (id: number, colorName: string, quantity: number) => void;
   clearCart: () => void;
   isCartOpen: boolean;
   setIsCartOpen: (open: boolean) => void;
@@ -51,27 +60,30 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   const [items, setItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
 
-  const addToCart = (product: Product) => {
+  const addToCart = (product: Product, colorName = "", colorStock = Infinity) => {
     setItems((prev) => {
-      const existing = prev.find((item) => item.id === product.id);
+      const existing = prev.find((item) => item.id === product.id && item.colorName === colorName);
       if (existing) {
+        if (existing.quantity >= existing.colorStock) return prev;
         return prev.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          item.id === product.id && item.colorName === colorName ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
-      return [...prev, { ...product, quantity: 1 }];
+      return [...prev, { ...product, colorName, colorStock, quantity: 1 }];
     });
     setIsCartOpen(true);
   };
 
-  const removeFromCart = (id: number) => {
-    setItems((prev) => prev.filter((item) => item.id !== id));
+  const removeFromCart = (id: number, colorName: string) => {
+    setItems((prev) => prev.filter((item) => !(item.id === id && item.colorName === colorName)));
   };
 
-  const updateQuantity = (id: number, quantity: number) => {
-    if (quantity <= 0) return removeFromCart(id);
+  const updateQuantity = (id: number, colorName: string, quantity: number) => {
+    if (quantity <= 0) return removeFromCart(id, colorName);
     setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, quantity } : item))
+      prev.map((item) =>
+        item.id === id && item.colorName === colorName ? { ...item, quantity: Math.min(quantity, item.colorStock) } : item
+      )
     );
   };
 
