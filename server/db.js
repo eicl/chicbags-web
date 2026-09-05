@@ -150,6 +150,17 @@ export const initSchema = async () => {
   // este campo.
   await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS location_lat DOUBLE PRECISION;`);
   await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS location_lng DOUBLE PRECISION;`);
+  // Si el envío lo recibe una persona distinta al cliente (portería,
+  // familiar, etc.), se guardan sus datos para poder identificarla al
+  // momento de la entrega. differentReceiver=false deja los demás campos
+  // vacíos.
+  await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS different_receiver BOOLEAN NOT NULL DEFAULT false;`);
+  await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS receiver_document_type TEXT NOT NULL DEFAULT '';`);
+  await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS receiver_document_number TEXT NOT NULL DEFAULT '';`);
+  await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS receiver_first_name TEXT NOT NULL DEFAULT '';`);
+  await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS receiver_paternal_surname TEXT NOT NULL DEFAULT '';`);
+  await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS receiver_maternal_surname TEXT NOT NULL DEFAULT '';`);
+  await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS receiver_mobile TEXT NOT NULL DEFAULT '';`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS reviews (
       id SERIAL PRIMARY KEY,

@@ -42,6 +42,13 @@ const emptyForm: CustomerInput = {
   address: "",
   locationLat: null,
   locationLng: null,
+  differentReceiver: false,
+  receiverDocumentType: "DNI",
+  receiverDocumentNumber: "",
+  receiverFirstName: "",
+  receiverPaternalSurname: "",
+  receiverMaternalSurname: "",
+  receiverMobile: "",
 };
 
 // Lleva al cliente de vuelta al chat de WhatsApp de la empresa con su
@@ -71,6 +78,10 @@ const REQUIRED_FIELD_LABELS: Record<string, string> = {
   deliveryMode: "Vía de envío (terrestre/aéreo)",
   agency: "Sede",
   address: "Dirección",
+  receiverDocumentNumber: "Número de documento de quién recepciona",
+  receiverFirstName: "Nombres de quién recepciona",
+  receiverPaternalSurname: "Apellido paterno de quién recepciona",
+  receiverMobile: "Celular de quién recepciona",
 };
 
 const CustomerRegister = () => {
@@ -150,6 +161,12 @@ const CustomerRegister = () => {
     if (needsDeliveryMode && !form.deliveryMode) missing.push("deliveryMode");
     if (needsAgency && !form.agency.trim()) missing.push("agency");
     if (needsAddress && !form.address.trim()) missing.push("address");
+    if (form.differentReceiver) {
+      if (!form.receiverDocumentNumber.trim()) missing.push("receiverDocumentNumber");
+      if (!form.receiverFirstName.trim()) missing.push("receiverFirstName");
+      if (!form.receiverPaternalSurname.trim()) missing.push("receiverPaternalSurname");
+      if (!form.receiverMobile.trim()) missing.push("receiverMobile");
+    }
     return missing;
   };
 
@@ -171,6 +188,12 @@ const CustomerRegister = () => {
       address: needsAddress ? form.address.trim() : "",
       locationLat: needsAddress ? form.locationLat : null,
       locationLng: needsAddress ? form.locationLng : null,
+      receiverDocumentType: form.differentReceiver ? form.receiverDocumentType : "",
+      receiverDocumentNumber: form.differentReceiver ? form.receiverDocumentNumber.trim() : "",
+      receiverFirstName: form.differentReceiver ? form.receiverFirstName.trim() : "",
+      receiverPaternalSurname: form.differentReceiver ? form.receiverPaternalSurname.trim() : "",
+      receiverMaternalSurname: form.differentReceiver ? form.receiverMaternalSurname.trim() : "",
+      receiverMobile: form.differentReceiver ? form.receiverMobile.trim() : "",
     };
     registerMutation.mutate(payload);
   };
@@ -285,6 +308,79 @@ const CustomerRegister = () => {
                 className={errorInputClass(hasError("mobile"))}
               />
             </div>
+
+            <div className="md:col-span-2 pt-2 border-t border-border">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.differentReceiver}
+                  onChange={(e) => setForm({ ...form, differentReceiver: e.target.checked })}
+                  className="w-4 h-4 rounded border-input"
+                />
+                ¿Otra persona recepcionará el envío?
+              </label>
+            </div>
+            {form.differentReceiver && (
+              <>
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1 block">Tipo de documento de quién recepciona</label>
+                  <select
+                    value={form.receiverDocumentType}
+                    onChange={(e) => setForm({ ...form, receiverDocumentType: e.target.value })}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    {DOCUMENT_TYPES.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={errorLabelClass(hasError("receiverDocumentNumber"))}>Número de documento de quién recepciona *</label>
+                  <Input
+                    value={form.receiverDocumentNumber}
+                    onChange={(e) => setForm({ ...form, receiverDocumentNumber: e.target.value })}
+                    placeholder="12345678"
+                    className={errorInputClass(hasError("receiverDocumentNumber"))}
+                  />
+                </div>
+                <div>
+                  <label className={errorLabelClass(hasError("receiverFirstName"))}>Nombres de quién recepciona *</label>
+                  <Input
+                    value={form.receiverFirstName}
+                    onChange={(e) => setForm({ ...form, receiverFirstName: e.target.value })}
+                    placeholder="Juan Carlos"
+                    className={errorInputClass(hasError("receiverFirstName"))}
+                  />
+                </div>
+                <div>
+                  <label className={errorLabelClass(hasError("receiverPaternalSurname"))}>Apellido paterno de quién recepciona *</label>
+                  <Input
+                    value={form.receiverPaternalSurname}
+                    onChange={(e) => setForm({ ...form, receiverPaternalSurname: e.target.value })}
+                    placeholder="Pérez"
+                    className={errorInputClass(hasError("receiverPaternalSurname"))}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1 block">Apellido materno de quién recepciona</label>
+                  <Input
+                    value={form.receiverMaternalSurname}
+                    onChange={(e) => setForm({ ...form, receiverMaternalSurname: e.target.value })}
+                    placeholder="Ramos"
+                  />
+                </div>
+                <div>
+                  <label className={errorLabelClass(hasError("receiverMobile"))}>Celular de quién recepciona *</label>
+                  <Input
+                    value={form.receiverMobile}
+                    onChange={(e) => setForm({ ...form, receiverMobile: e.target.value })}
+                    placeholder="987654321"
+                    className={errorInputClass(hasError("receiverMobile"))}
+                  />
+                </div>
+              </>
+            )}
+
             <div>
               <label className={errorLabelClass(hasError("department"))}>Departamento *</label>
               <select

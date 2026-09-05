@@ -205,6 +205,16 @@ export interface Customer {
   // (panel admin, regularización, cuenta de cliente) y no la capturan.
   locationLat?: number | null;
   locationLng?: number | null;
+  // Si el envío lo recibe una persona distinta al cliente (portería,
+  // familiar, etc.), differentReceiver activa los datos de abajo para
+  // poder identificarla al momento de la entrega.
+  differentReceiver: boolean;
+  receiverDocumentType: string;
+  receiverDocumentNumber: string;
+  receiverFirstName: string;
+  receiverPaternalSurname: string;
+  receiverMaternalSurname: string;
+  receiverMobile: string;
 }
 
 export type CustomerInput = Omit<Customer, "id" | "country">;

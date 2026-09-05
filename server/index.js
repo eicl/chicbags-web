@@ -681,6 +681,13 @@ const mapCustomer = (row) => ({
   address: row.address,
   locationLat: row.location_lat === null || row.location_lat === undefined ? null : Number(row.location_lat),
   locationLng: row.location_lng === null || row.location_lng === undefined ? null : Number(row.location_lng),
+  differentReceiver: row.different_receiver,
+  receiverDocumentType: row.receiver_document_type,
+  receiverDocumentNumber: row.receiver_document_number,
+  receiverFirstName: row.receiver_first_name,
+  receiverPaternalSurname: row.receiver_paternal_surname,
+  receiverMaternalSurname: row.receiver_maternal_surname,
+  receiverMobile: row.receiver_mobile,
 });
 
 const validateCustomer = (body) => {
@@ -700,6 +707,12 @@ const validateCustomer = (body) => {
   if (ADDRESS_REQUIRED.includes(deliveryType) && !address?.trim()) {
     return "Ingresa la dirección de entrega";
   }
+  if (body.differentReceiver) {
+    const { receiverDocumentType, receiverDocumentNumber, receiverFirstName, receiverPaternalSurname, receiverMobile } = body;
+    if (!receiverDocumentType?.trim() || !receiverDocumentNumber?.trim() || !receiverFirstName?.trim() || !receiverPaternalSurname?.trim() || !receiverMobile?.trim()) {
+      return "Completa todos los datos obligatorios de quién recepciona el envío";
+    }
+  }
   return null;
 };
 
@@ -714,18 +727,29 @@ const insertCustomer = async (body, passwordHash = null) => {
   const {
     documentType, documentNumber, firstName, paternalSurname, maternalSurname,
     mobile, department, province, district, deliveryType, deliveryMode, agency, address,
-    locationLat, locationLng,
+    locationLat, locationLng, differentReceiver,
+    receiverDocumentType, receiverDocumentNumber, receiverFirstName, receiverPaternalSurname, receiverMaternalSurname, receiverMobile,
   } = body;
   const deliveryModeValue = DELIVERY_MODE_REQUIRED.includes(deliveryType) ? deliveryMode : null;
   const agencyValue = AGENCY_REQUIRED.includes(deliveryType) ? (agency ?? "").trim() : "";
   const addressValue = ADDRESS_REQUIRED.includes(deliveryType) ? (address ?? "").trim() : "";
   const locationLatValue = ADDRESS_REQUIRED.includes(deliveryType) && isFiniteNumber(locationLat) ? locationLat : null;
   const locationLngValue = ADDRESS_REQUIRED.includes(deliveryType) && isFiniteNumber(locationLng) ? locationLng : null;
+  const differentReceiverValue = Boolean(differentReceiver);
+  const receiverDocumentTypeValue = differentReceiverValue ? (receiverDocumentType ?? "").trim() : "";
+  const receiverDocumentNumberValue = differentReceiverValue ? (receiverDocumentNumber ?? "").trim() : "";
+  const receiverFirstNameValue = differentReceiverValue ? (receiverFirstName ?? "").trim() : "";
+  const receiverPaternalSurnameValue = differentReceiverValue ? (receiverPaternalSurname ?? "").trim() : "";
+  const receiverMaternalSurnameValue = differentReceiverValue ? (receiverMaternalSurname ?? "").trim() : "";
+  const receiverMobileValue = differentReceiverValue ? (receiverMobile ?? "").trim() : "";
   await ensureDistrictExists(province, district);
   const { rows } = await pool.query(
-    `INSERT INTO customers (document_type, document_number, first_name, paternal_surname, maternal_surname, mobile, country, department, province, district, delivery_type, delivery_mode, agency, address, password_hash, location_lat, location_lng)
-     VALUES ($1, $2, $3, $4, $5, $6, 'Perú', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
-    [documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue, agencyValue, addressValue, passwordHash, locationLatValue, locationLngValue]
+    `INSERT INTO customers (document_type, document_number, first_name, paternal_surname, maternal_surname, mobile, country, department, province, district, delivery_type, delivery_mode, agency, address, password_hash, location_lat, location_lng, different_receiver, receiver_document_type, receiver_document_number, receiver_first_name, receiver_paternal_surname, receiver_maternal_surname, receiver_mobile)
+     VALUES ($1, $2, $3, $4, $5, $6, 'Perú', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23) RETURNING *`,
+    [
+      documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue, agencyValue, addressValue, passwordHash, locationLatValue, locationLngValue,
+      differentReceiverValue, receiverDocumentTypeValue, receiverDocumentNumberValue, receiverFirstNameValue, receiverPaternalSurnameValue, receiverMaternalSurnameValue, receiverMobileValue,
+    ]
   );
   return rows[0];
 };
@@ -838,7 +862,8 @@ app.put("/api/customers/:id", requireAuth, async (req, res) => {
   const {
     documentType, documentNumber, firstName, paternalSurname, maternalSurname,
     mobile, department, province, district, deliveryType, deliveryMode, agency, address,
-    locationLat, locationLng,
+    locationLat, locationLng, differentReceiver,
+    receiverDocumentType, receiverDocumentNumber, receiverFirstName, receiverPaternalSurname, receiverMaternalSurname, receiverMobile,
   } = req.body;
   const deliveryModeValue = DELIVERY_MODE_REQUIRED.includes(deliveryType) ? deliveryMode : null;
   const agencyValue = AGENCY_REQUIRED.includes(deliveryType) ? (agency ?? "").trim() : "";
@@ -847,14 +872,25 @@ app.put("/api/customers/:id", requireAuth, async (req, res) => {
   // body se conserva la que ya tuviera el cliente.
   const locationLatParam = isFiniteNumber(locationLat) ? locationLat : null;
   const locationLngParam = isFiniteNumber(locationLng) ? locationLng : null;
+  const differentReceiverValue = Boolean(differentReceiver);
+  const receiverDocumentTypeValue = differentReceiverValue ? (receiverDocumentType ?? "").trim() : "";
+  const receiverDocumentNumberValue = differentReceiverValue ? (receiverDocumentNumber ?? "").trim() : "";
+  const receiverFirstNameValue = differentReceiverValue ? (receiverFirstName ?? "").trim() : "";
+  const receiverPaternalSurnameValue = differentReceiverValue ? (receiverPaternalSurname ?? "").trim() : "";
+  const receiverMaternalSurnameValue = differentReceiverValue ? (receiverMaternalSurname ?? "").trim() : "";
+  const receiverMobileValue = differentReceiverValue ? (receiverMobile ?? "").trim() : "";
   await ensureDistrictExists(province, district);
   try {
     const { rows } = await pool.query(
       `UPDATE customers SET document_type = $1, document_number = $2, first_name = $3, paternal_surname = $4,
          maternal_surname = $5, mobile = $6, department = $7, province = $8, district = $9, delivery_type = $10, delivery_mode = $11, agency = $12, address = $13,
-         location_lat = COALESCE($15, location_lat), location_lng = COALESCE($16, location_lng)
+         location_lat = COALESCE($15, location_lat), location_lng = COALESCE($16, location_lng),
+         different_receiver = $17, receiver_document_type = $18, receiver_document_number = $19, receiver_first_name = $20, receiver_paternal_surname = $21, receiver_maternal_surname = $22, receiver_mobile = $23
        WHERE id = $14 RETURNING *`,
-      [documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue, agencyValue, addressValue, id, locationLatParam, locationLngParam]
+      [
+        documentType, documentNumber.trim(), firstName.trim(), paternalSurname.trim(), (maternalSurname ?? "").trim(), mobile.trim(), department, province, district.trim(), deliveryType, deliveryModeValue, agencyValue, addressValue, id, locationLatParam, locationLngParam,
+        differentReceiverValue, receiverDocumentTypeValue, receiverDocumentNumberValue, receiverFirstNameValue, receiverPaternalSurnameValue, receiverMaternalSurnameValue, receiverMobileValue,
+      ]
     );
     if (rows.length === 0) return res.status(404).json({ error: "Cliente no encontrado" });
     res.json(mapCustomer(rows[0]));

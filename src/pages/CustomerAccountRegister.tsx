@@ -38,6 +38,13 @@ const emptyForm: CustomerInput = {
   deliveryMode: null,
   agency: "",
   address: "",
+  differentReceiver: false,
+  receiverDocumentType: "",
+  receiverDocumentNumber: "",
+  receiverFirstName: "",
+  receiverPaternalSurname: "",
+  receiverMaternalSurname: "",
+  receiverMobile: "",
 };
 
 const REQUIRED_FIELD_LABELS: Record<string, string> = {

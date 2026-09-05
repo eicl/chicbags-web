@@ -47,6 +47,13 @@ const emptyCustomerForm: CustomerInput = {
   deliveryMode: null,
   agency: "",
   address: "",
+  differentReceiver: false,
+  receiverDocumentType: "",
+  receiverDocumentNumber: "",
+  receiverFirstName: "",
+  receiverPaternalSurname: "",
+  receiverMaternalSurname: "",
+  receiverMobile: "",
 };
 
 // A diferencia del registro de cliente normal, acá solo el nombre y el
