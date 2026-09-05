@@ -1257,6 +1257,81 @@ const IZIPAY_PUBLIC_KEY = process.env.IZIPAY_PUBLIC_KEY;
 // verdad (el IPN, validado con PASSWORD, sí lo es) — se documenta en
 // .env.example por si más adelante hace falta validar esa respuesta también.
 const IZIPAY_API_URL = "https://api.micuentaweb.pe/api-payment/V4/Charge/CreatePayment";
+const IZIPAY_ORDER_GET_URL = "https://api.micuentaweb.pe/api-payment/V4/Order/Get";
+
+// Aplica un pago de Izipay de forma idempotente (por operationNumber) — la
+// usan tanto el IPN como reconcileIzipayOrder (la consulta directa de
+// respaldo). Devuelve true si el pago quedó aplicado (o ya lo estaba antes).
+const recordIzipayPayment = async (orderId, operationNumber) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: orderRows } = await client.query(
+      "SELECT id, total, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
+      [orderId]
+    );
+    if (orderRows.length === 0) {
+      await client.query("ROLLBACK");
+      return false;
+    }
+    if (operationNumber) {
+      const { rows: dupeRows } = await client.query(
+        "SELECT 1 FROM payments WHERE order_id = $1 AND operation_number = $2",
+        [orderId, operationNumber]
+      );
+      if (dupeRows.length > 0) {
+        await client.query("COMMIT");
+        return true;
+      }
+    }
+    const order = orderRows[0];
+    const { rows: paidRows } = await client.query("SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE order_id = $1", [orderId]);
+    const remaining = Number(order.total) - Number(paidRows[0].paid);
+    if (remaining > 0) {
+      const settings = await getSettings();
+      await applyPayment(
+        client,
+        orderId,
+        Number(order.total),
+        order.separation_deadline,
+        { amount: remaining, source: "Tarjeta (Izipay)", proofImage: "", registeredBy: "Izipay (automático)", operationNumber },
+        settings.separationDays
+      );
+    }
+    await client.query("COMMIT");
+    return true;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("Izipay: error registrando el pago:", err);
+    return false;
+  } finally {
+    client.release();
+  }
+};
+
+// Respaldo del IPN: le pregunta directamente a Izipay si el pedido ya se
+// pagó (Order/Get). No necesita URL pública porque la llamada sale hacia
+// afuera desde nuestro servidor — sirve para probar en localhost (donde
+// Izipay nunca podría alcanzarnos con el IPN) y como red de seguridad en
+// producción si el IPN se demora o se pierde.
+const reconcileIzipayOrder = async (orderId) => {
+  if (!IZIPAY_USERNAME || !IZIPAY_PASSWORD) return;
+  try {
+    const auth = Buffer.from(`${IZIPAY_USERNAME}:${IZIPAY_PASSWORD}`).toString("base64");
+    const response = await fetch(IZIPAY_ORDER_GET_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Basic ${auth}` },
+      body: JSON.stringify({ orderId: String(orderId) }),
+    });
+    const body = await response.json();
+    if (body.status !== "SUCCESS") return;
+    const paidTransaction = (body.answer?.transactions ?? []).find((t) => t.status === "PAID");
+    if (!paidTransaction) return;
+    await recordIzipayPayment(orderId, paidTransaction.uuid);
+  } catch (err) {
+    console.error("Izipay: no se pudo consultar Order/Get:", err);
+  }
+};
 
 // Pide un formToken para cargar el formulario de pago con tarjeta en el
 // checkout. Cobra exactamente el saldo pendiente del pedido (nunca un monto
@@ -1340,55 +1415,16 @@ app.post("/api/izipay/ipn", async (req, res) => {
   if (!Number.isInteger(orderId)) {
     return res.status(400).json({ error: "orderId inválido en la notificación" });
   }
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const { rows: orderRows } = await client.query(
-      "SELECT id, total, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
-      [orderId]
-    );
-    if (orderRows.length === 0) {
-      await client.query("ROLLBACK");
-      return res.status(404).json({ error: "Pedido no encontrado" });
-    }
-    if (operationNumber) {
-      const { rows: dupeRows } = await client.query(
-        "SELECT 1 FROM payments WHERE order_id = $1 AND operation_number = $2",
-        [orderId, operationNumber]
-      );
-      if (dupeRows.length > 0) {
-        await client.query("COMMIT");
-        return res.status(200).json({ received: true, duplicate: true });
-      }
-    }
-    const order = orderRows[0];
-    const { rows: paidRows } = await client.query("SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE order_id = $1", [orderId]);
-    const remaining = Number(order.total) - Number(paidRows[0].paid);
-    if (remaining > 0) {
-      const settings = await getSettings();
-      await applyPayment(
-        client,
-        orderId,
-        Number(order.total),
-        order.separation_deadline,
-        { amount: remaining, source: "Tarjeta (Izipay)", proofImage: "", registeredBy: "Izipay (automático)", operationNumber },
-        settings.separationDays
-      );
-    }
-    await client.query("COMMIT");
-    res.status(200).json({ received: true });
-  } catch (err) {
-    await client.query("ROLLBACK");
-    console.error("Izipay IPN: error procesando la notificación:", err);
-    res.status(500).json({ error: "Error procesando la notificación" });
-  } finally {
-    client.release();
-  }
+  const applied = await recordIzipayPayment(orderId, operationNumber);
+  if (!applied) return res.status(404).json({ error: "Pedido no encontrado" });
+  res.status(200).json({ received: true });
 });
 
 // Estado mínimo de un pedido, sin datos del cliente (el id es adivinable) —
 // lo usa el checkout para confirmar un pago con tarjeta después de que
-// Izipay redirige de vuelta, mientras llega (o no) el IPN.
+// Izipay redirige de vuelta. Si todavía no figura pagado, de paso consulta
+// a Izipay directamente (reconcileIzipayOrder) — así funciona aunque el IPN
+// nunca pueda llegarnos (ej. probando en localhost).
 app.get("/api/orders/:id/status", async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
@@ -1398,7 +1434,11 @@ app.get("/api/orders/:id/status", async (req, res) => {
   if (rows.length === 0) {
     return res.status(404).json({ error: "Pedido no encontrado" });
   }
-  const { rows: paidRows } = await pool.query("SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE order_id = $1", [id]);
+  let paidRows = (await pool.query("SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE order_id = $1", [id])).rows;
+  if (Number(paidRows[0].paid) < Number(rows[0].total)) {
+    await reconcileIzipayOrder(id);
+    paidRows = (await pool.query("SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE order_id = $1", [id])).rows;
+  }
   res.json({ id: rows[0].id, status: rows[0].status, total: Number(rows[0].total), paid: Number(paidRows[0].paid) });
 });
 

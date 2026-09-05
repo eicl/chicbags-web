@@ -89,11 +89,26 @@ const Checkout = () => {
         await KR.setFormConfig({ formToken: cardPayment.formToken, "kr-language": "es-ES" });
         const { KR: KR2, result } = await KR.renderElements(`#${KR_FORM_WRAPPER_ID}`);
         await KR2.showForm(result.formId);
-        await KR2.onSubmit(() => {
+        await KR2.onSubmit((response) => {
+          const orderStatus = response.clientAnswer?.orderStatus;
+          if (orderStatus !== "PAID") {
+            // Rechazo inmediato (ej. tarjeta inválida, fondos insuficientes)
+            // — no tiene sentido esperar una confirmación que nunca va a
+            // llegar. El detalle del error viene dentro de la transacción.
+            const transaction = response.clientAnswer?.transactions?.[0] as
+              | { errorMessage?: string; detailedErrorMessage?: string }
+              | undefined;
+            const reason = transaction?.errorMessage || transaction?.detailedErrorMessage;
+            toast.error(reason ? `Tu tarjeta fue rechazada: ${reason}` : "Tu tarjeta fue rechazada. Intenta con otra.");
+            setStage("form");
+            return;
+          }
           // La respuesta que llega acá es solo para la UX inmediata — la
-          // confirmación real viene del IPN server-to-server (ver
-          // POST /api/izipay/ipn en server/index.js), por eso se hace
-          // polling del estado real del pedido en vez de confiar en esto.
+          // confirmación real viene del IPN server-to-server, o si no llega
+          // (ej. probando en localhost), de la consulta directa a Izipay
+          // que hace GET /api/orders/:id/status (ver reconcileIzipayOrder
+          // en server/index.js) — por eso se hace polling en vez de confiar
+          // solo en esta respuesta.
           setStage("confirming");
           pollOrderStatus(cardPayment.orderId, cardPayment.total);
         });
