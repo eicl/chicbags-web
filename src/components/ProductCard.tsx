@@ -79,8 +79,14 @@ const ProductCard = ({ product, isNew = false }: { product: Product; isNew?: boo
             </button>
           )}
 
+          {colors[activeColor] && (
+            <span className="absolute bottom-3 left-3 z-10 bg-background/85 backdrop-blur-sm text-foreground text-[10px] font-medium tracking-widest uppercase px-2.5 py-1 rounded-sm">
+              {colors[activeColor].name}
+            </span>
+          )}
+
           {colors.length > 1 && (
-            <div className="absolute bottom-4 left-4 flex gap-2 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+            <div className="absolute bottom-11 left-4 flex gap-2 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
               {colors.map((color, index) => (
                 <button
                   key={color.name}
