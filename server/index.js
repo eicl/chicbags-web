@@ -690,10 +690,17 @@ const mapCustomer = (row) => ({
   receiverMobile: row.receiver_mobile,
 });
 
+// El DNI peruano siempre tiene 8 dígitos — a diferencia de Carné de
+// Extranjería/Pasaporte/RUC, que no tienen un formato fijo acá.
+const DNI_REGEX = /^\d{8}$/;
+
 const validateCustomer = (body) => {
   const { documentType, documentNumber, firstName, paternalSurname, mobile, department, province, district, deliveryType, deliveryMode, agency, address } = body;
   if (!documentType?.trim() || !documentNumber?.trim() || !firstName?.trim() || !paternalSurname?.trim() || !mobile?.trim() || !department?.trim() || !province?.trim() || !district?.trim()) {
     return "Completa todos los campos requeridos";
+  }
+  if (documentType === "DNI" && !DNI_REGEX.test(documentNumber.trim())) {
+    return "El DNI debe tener 8 dígitos";
   }
   if (!DELIVERY_TYPES.includes(deliveryType)) {
     return "Tipo de delivery inválido";
@@ -711,6 +718,9 @@ const validateCustomer = (body) => {
     const { receiverDocumentType, receiverDocumentNumber, receiverFirstName, receiverPaternalSurname, receiverMobile } = body;
     if (!receiverDocumentType?.trim() || !receiverDocumentNumber?.trim() || !receiverFirstName?.trim() || !receiverPaternalSurname?.trim() || !receiverMobile?.trim()) {
       return "Completa todos los datos obligatorios de quién recepciona el envío";
+    }
+    if (receiverDocumentType === "DNI" && !DNI_REGEX.test(receiverDocumentNumber.trim())) {
+      return "El DNI de quién recepciona debe tener 8 dígitos";
     }
   }
   return null;

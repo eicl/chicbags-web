@@ -36,6 +36,11 @@ const DELIVERY_MODES: DeliveryMode[] = ["Terrestre", "Aéreo"];
 const AGENCY_REQUIRED: DeliveryType[] = ["Shalom"];
 // Los tipos "motorizado" reparten a domicilio, así que piden dirección.
 const ADDRESS_REQUIRED: DeliveryType[] = ["Motorizado Express", "Motorizado Delivery"];
+// El DNI peruano siempre tiene 8 dígitos — a diferencia de Carné de
+// Extranjería/Pasaporte/RUC, que no tienen un formato fijo acá.
+const DNI_REGEX = /^\d{8}$/;
+const isInvalidDni = (documentType: string, documentNumber: string) =>
+  documentType === "DNI" && documentNumber.trim() !== "" && !DNI_REGEX.test(documentNumber.trim());
 
 const emptyForm: CustomerInput = {
   documentType: "DNI",
@@ -202,13 +207,26 @@ const AdminCustomers = () => {
   };
 
   const missingFields = attemptedSubmit ? getMissingFields() : [];
-  const hasError = (field: string) => missingFields.includes(field);
+  const hasError = (field: string) =>
+    missingFields.includes(field) ||
+    (attemptedSubmit && field === "documentNumber" && isInvalidDni(form.documentType, form.documentNumber)) ||
+    (attemptedSubmit && field === "receiverDocumentNumber" && isInvalidDni(form.receiverDocumentType, form.receiverDocumentNumber));
 
   const handleSave = () => {
     const missing = getMissingFields();
     if (missing.length > 0) {
       setAttemptedSubmit(true);
       toast.error(`Faltan campos obligatorios: ${missing.map((f) => REQUIRED_FIELD_LABELS[f]).join(", ")}`);
+      return;
+    }
+    if (isInvalidDni(form.documentType, form.documentNumber)) {
+      setAttemptedSubmit(true);
+      toast.error("El DNI debe tener 8 dígitos");
+      return;
+    }
+    if (form.differentReceiver && isInvalidDni(form.receiverDocumentType, form.receiverDocumentNumber)) {
+      setAttemptedSubmit(true);
+      toast.error("El DNI de quién recepciona debe tener 8 dígitos");
       return;
     }
     const payload: CustomerInput = {

@@ -23,6 +23,11 @@ const DELIVERY_MODE_REQUIRED: DeliveryType[] = ["Shalom", "Olva"];
 const DELIVERY_MODES: DeliveryMode[] = ["Terrestre", "Aéreo"];
 const AGENCY_REQUIRED: DeliveryType[] = ["Shalom"];
 const ADDRESS_REQUIRED: DeliveryType[] = ["Motorizado Express", "Motorizado Delivery"];
+// El DNI peruano siempre tiene 8 dígitos — a diferencia de Carné de
+// Extranjería/Pasaporte/RUC, que no tienen un formato fijo acá.
+const DNI_REGEX = /^\d{8}$/;
+const isInvalidDni = (documentType: string, documentNumber: string) =>
+  documentType === "DNI" && documentNumber.trim() !== "" && !DNI_REGEX.test(documentNumber.trim());
 
 const emptyForm: CustomerInput = {
   documentType: "DNI",
@@ -114,7 +119,8 @@ const CustomerAccountRegister = () => {
   };
 
   const missingFields = attemptedSubmit ? getMissingFields() : [];
-  const hasError = (field: string) => missingFields.includes(field);
+  const hasError = (field: string) =>
+    missingFields.includes(field) || (attemptedSubmit && field === "documentNumber" && isInvalidDni(form.documentType, form.documentNumber));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,6 +134,11 @@ const CustomerAccountRegister = () => {
       } else {
         toast.error(`Faltan campos obligatorios: ${missing.map((f) => REQUIRED_FIELD_LABELS[f]).join(", ")}`);
       }
+      return;
+    }
+    if (isInvalidDni(form.documentType, form.documentNumber)) {
+      setAttemptedSubmit(true);
+      toast.error("El DNI debe tener 8 dígitos");
       return;
     }
     const payload = {
