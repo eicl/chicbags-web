@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import KRGlue from "@lyracom/embedded-form-glue";
+import KRGlueImport from "@lyracom/embedded-form-glue";
+
+// El paquete hace su propio interop de CommonJS a ESM (exports.default = ...)
+// y el bundler de Vite lo envuelve una vez más al pre-empaquetarlo, dejando
+// el objeto real un nivel más adentro de lo que indican sus propios tipos
+// (KRGlue.loadLibrary no existe, pero KRGlue.default.loadLibrary sí) — se
+// desenvuelve a mano para que funcione sin importar si el bundler lo envuelve
+// una vez o dos.
+const KRGlue = (KRGlueImport as unknown as { default?: typeof KRGlueImport }).default ?? KRGlueImport;
 import { ArrowLeft, CheckCircle2, CreditCard, Banknote, MessageCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -129,22 +137,28 @@ const Checkout = () => {
     if (!customer || items.length === 0) return;
     setSubmitting(true);
     try {
-      const sellers = await fetchSellers();
-      const onlineSeller = sellers.find((s) => s.username === ONLINE_SELLER_USERNAME);
-      if (!onlineSeller) {
-        toast.error("La tienda no está lista para recibir pedidos en línea todavía. Escríbenos por WhatsApp.");
-        return;
+      // Si un intento anterior ya creó el pedido (ej. el paso de la tarjeta
+      // falló después) se reusa ese mismo pedido en vez de crear uno nuevo
+      // — evita duplicar el pedido si el cliente reintenta.
+      let currentOrder = order;
+      if (!currentOrder) {
+        const sellers = await fetchSellers();
+        const onlineSeller = sellers.find((s) => s.username === ONLINE_SELLER_USERNAME);
+        if (!onlineSeller) {
+          toast.error("La tienda no está lista para recibir pedidos en línea todavía. Escríbenos por WhatsApp.");
+          return;
+        }
+        currentOrder = await registerOrder({
+          customerId: customer.id,
+          sellerId: onlineSeller.id,
+          items: items.map((item) => ({ productId: item.id, colorName: item.colorName, quantity: item.quantity })),
+          chargeType,
+        });
+        setOrder(currentOrder);
       }
-      const createdOrder = await registerOrder({
-        customerId: customer.id,
-        sellerId: onlineSeller.id,
-        items: items.map((item) => ({ productId: item.id, colorName: item.colorName, quantity: item.quantity })),
-        chargeType,
-      });
-      setOrder(createdOrder);
-      clearCart();
 
       if (chargeType === "Contraentrega") {
+        clearCart();
         setStage("cod-success");
         return;
       }
@@ -153,15 +167,20 @@ const Checkout = () => {
       const tokenRes = await fetch("/api/izipay/formtoken", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: createdOrder.id }),
+        body: JSON.stringify({ orderId: currentOrder.id }),
       });
       const tokenBody = await tokenRes.json();
       if (!tokenRes.ok) throw new Error(tokenBody.error ?? "No se pudo iniciar el pago con tarjeta");
+      // Recién acá se limpia el carrito: el pedido ya existe y el
+      // formulario de pago va a poder cargar. Si se limpiara antes y este
+      // paso fallara, el cliente quedaría viendo "carrito vacío" sin poder
+      // reintentar el pago.
+      clearCart();
       // El formulario en sí se carga en el useEffect de arriba, una vez que
       // este estado hace que se renderice el contenedor que necesita.
       setCardPayment({
-        orderId: createdOrder.id,
-        total: createdOrder.total,
+        orderId: currentOrder.id,
+        total: currentOrder.total,
         formToken: tokenBody.formToken,
         publicKey: tokenBody.publicKey,
       });
@@ -278,7 +297,10 @@ const Checkout = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => setChargeType("Normal")}
+                  onClick={() => {
+                    setChargeType("Normal");
+                    setOrder(null);
+                  }}
                   className={`flex items-center gap-3 p-4 rounded-md border text-left transition-colors ${
                     chargeType === "Normal" ? "border-primary bg-primary/10" : "border-input hover:border-muted-foreground/50"
                   }`}
@@ -292,7 +314,10 @@ const Checkout = () => {
                 {canPickContraentrega && (
                   <button
                     type="button"
-                    onClick={() => setChargeType("Contraentrega")}
+                    onClick={() => {
+                      setChargeType("Contraentrega");
+                      setOrder(null);
+                    }}
                     className={`flex items-center gap-3 p-4 rounded-md border text-left transition-colors ${
                       chargeType === "Contraentrega" ? "border-primary bg-primary/10" : "border-input hover:border-muted-foreground/50"
                     }`}
