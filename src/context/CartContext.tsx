@@ -23,6 +23,10 @@ export interface Product {
   extraDescription?: string;
   sortOrder?: number;
   cost?: number | null;
+  // Oculta el producto del catálogo público y su página de detalle sin
+  // borrarlo — sigue existiendo para pedidos ya hechos y se le puede
+  // seguir vendiendo a mano desde el panel admin.
+  visible: boolean;
 }
 
 interface CartItem extends Product {

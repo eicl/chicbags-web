@@ -19,7 +19,10 @@ const ProductDetail = () => {
   const { products, isLoading, isError } = useProducts();
   const { addToCart } = useCart();
 
-  const product = products.find((p) => p.id === Number(id));
+  // Un producto oculto no debe tener página de detalle pública, ni
+  // siquiera por link directo — se trata igual que "no encontrado" (el
+  // panel admin sigue viéndolo y editándolo desde Admin > Productos).
+  const product = products.find((p) => p.id === Number(id) && p.visible);
 
   const [selectedColor, setSelectedColor] = useState(0);
   // Cuando se hace click en una foto o video adicional, se muestra en el

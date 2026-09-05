@@ -11,7 +11,7 @@ import { productImageUrl } from "@/lib/images";
 import { errorLabelClass, errorInputClass, cn } from "@/lib/utils";
 import Pagination from "@/components/admin/Pagination";
 
-const emptyForm = { name: "", price: 0, cost: "", description: "", code: "", brand: "", extraDescription: "", sortOrder: "" };
+const emptyForm = { name: "", price: 0, cost: "", description: "", code: "", brand: "", extraDescription: "", sortOrder: "", visible: true };
 const emptyColor: ProductColor = { name: "", hex: "#161616", image: "", stock: 0 };
 const MAX_PHOTOS = 5;
 const MAX_VIDEOS = 2;
@@ -84,6 +84,7 @@ const AdminProducts = () => {
       brand: product.brand ?? "",
       extraDescription: product.extraDescription ?? "",
       sortOrder: String(product.sortOrder ?? ""),
+      visible: product.visible,
     });
     setCategories(product.categories ?? []);
     setCategoryInput("");
@@ -408,6 +409,17 @@ const AdminProducts = () => {
                 onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
                 placeholder="Automático (al final)"
               />
+            </div>
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.visible}
+                  onChange={(e) => setForm({ ...form, visible: e.target.checked })}
+                  className="w-4 h-4 rounded border-input"
+                />
+                Visible en el catálogo
+              </label>
             </div>
             <div>
               <label className={errorLabelClass(brandError)}>Marca *</label>
@@ -749,6 +761,7 @@ const AdminProducts = () => {
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Precio</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Costo</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Stock total</th>
+                <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Visible</th>
                 <th className="text-right text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Acciones</th>
               </tr>
             </thead>
@@ -782,6 +795,15 @@ const AdminProducts = () => {
                         </span>
                       </td>
                       <td className="py-3 px-4">
+                        <span
+                          className={`text-[10px] font-medium tracking-widest uppercase px-2.5 py-1 rounded-sm ${
+                            product.visible ? "bg-emerald-500/10 text-emerald-600" : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {product.visible ? "Visible" : "Oculto"}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
                         <div className="flex items-center gap-2 justify-end">
                           <Button
                             variant="ghost"
@@ -804,7 +826,7 @@ const AdminProducts = () => {
                     </tr>
                     {isExpanded && (
                       <tr className="border-b border-border last:border-0 bg-muted/20">
-                        <td colSpan={10} className="px-4 py-4">
+                        <td colSpan={11} className="px-4 py-4">
                           {renderForm()}
                         </td>
                       </tr>
@@ -814,21 +836,21 @@ const AdminProducts = () => {
               })}
               {isLoading && (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-muted-foreground">
+                  <td colSpan={11} className="py-12 text-center text-muted-foreground">
                     Cargando productos...
                   </td>
                 </tr>
               )}
               {isError && (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-destructive">
+                  <td colSpan={11} className="py-12 text-center text-destructive">
                     No se pudo conectar con la API.
                   </td>
                 </tr>
               )}
               {!isLoading && !isError && filteredProducts.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-muted-foreground">
+                  <td colSpan={11} className="py-12 text-center text-muted-foreground">
                     {products.length === 0 ? "No hay productos. Agrega uno nuevo." : "Ningún producto coincide con la búsqueda."}
                   </td>
                 </tr>

@@ -58,6 +58,12 @@ export const initSchema = async () => {
   await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS videos JSONB NOT NULL DEFAULT '[]';`);
   await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS extra_description TEXT NOT NULL DEFAULT '';`);
   await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS sort_order INTEGER;`);
+  // Deja ocultar un producto del catálogo público (y de su página de
+  // detalle) sin borrarlo — sigue existiendo para pedidos/reportes ya
+  // hechos y se le puede seguir vendiendo a mano desde el panel admin.
+  // DEFAULT true: todo producto ya creado, o creado sin especificarlo,
+  // queda visible.
+  await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS visible BOOLEAN NOT NULL DEFAULT true;`);
   // Los productos que todavía no tienen un orden manual asignado se ordenan
   // por su id, para no romper el orden actual del catálogo.
   await pool.query(`UPDATE products SET sort_order = id WHERE sort_order IS NULL;`);

@@ -8,9 +8,15 @@ const totalStock = (product: { colors?: { stock: number }[] }) =>
   (product.colors ?? []).reduce((sum, c) => sum + c.stock, 0);
 
 const ProductCatalog = () => {
-  const { products, categories, isLoading, isError } = useProducts();
+  const { products: allProducts, isLoading, isError } = useProducts();
   const [activeCategory, setActiveCategory] = useState("Todos");
 
+  // El contexto trae todos los productos cuando hay sesión de admin (para
+  // poder gestionar los ocultos desde el panel) — el catálogo público
+  // igual solo debe mostrar los visibles, sesión o no, así que las
+  // categorías también se recalculan solo a partir de esos.
+  const products = allProducts.filter((p) => p.visible);
+  const categories = ["Todos", ...Array.from(new Set(products.flatMap((p) => p.categories))).sort()];
   const filtered = (activeCategory === "Todos" ? products : products.filter((p) => p.categories.includes(activeCategory)))
     .slice()
     .sort((a, b) => totalStock(b) - totalStock(a));

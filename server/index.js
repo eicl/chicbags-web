@@ -219,6 +219,7 @@ const mapProduct = (row, includeCost) => ({
   videos: row.videos,
   extraDescription: row.extra_description,
   sortOrder: row.sort_order,
+  visible: row.visible,
   ...(includeCost ? { cost: row.cost === null ? null : Number(row.cost) } : {}),
 });
 
@@ -249,10 +250,16 @@ const validateColors = (colors) => {
   return null;
 };
 
+// Sin sesión de admin solo se listan los productos visibles (catálogo
+// público); con sesión se listan todos, para poder gestionar los ocultos
+// desde el panel y seguir vendiéndolos a mano en un pedido.
 app.get("/api/products", async (req, res) => {
-  const includeCost = isAuthenticated(req);
-  const { rows } = await pool.query(`${PRODUCTS_SELECT} ORDER BY p.sort_order, p.id`);
-  res.json(rows.map((row) => mapProduct(row, includeCost)));
+  const isAdmin = isAuthenticated(req);
+  const query = isAdmin
+    ? `${PRODUCTS_SELECT} ORDER BY p.sort_order, p.id`
+    : `${PRODUCTS_SELECT} WHERE p.visible = true ORDER BY p.sort_order, p.id`;
+  const { rows } = await pool.query(query);
+  res.json(rows.map((row) => mapProduct(row, isAdmin)));
 });
 
 app.get("/api/categories", async (req, res) => {
@@ -1036,14 +1043,14 @@ app.post("/api/reviews", requireCustomerAuth, async (req, res) => {
 });
 
 app.get("/api/products/:id", async (req, res) => {
-  const includeCost = isAuthenticated(req);
+  const isAdmin = isAuthenticated(req);
   const { rows } = await pool.query(`${PRODUCTS_SELECT} WHERE p.id = $1`, [Number(req.params.id)]);
-  if (rows.length === 0) return res.status(404).json({ error: "Producto no encontrado" });
-  res.json(mapProduct(rows[0], includeCost));
+  if (rows.length === 0 || (!isAdmin && !rows[0].visible)) return res.status(404).json({ error: "Producto no encontrado" });
+  res.json(mapProduct(rows[0], isAdmin));
 });
 
 app.post("/api/products", requireAuth, async (req, res) => {
-  const { name, price, categories, description, image, colors, code, brand, photos, videos, extraDescription, sortOrder, cost } = req.body;
+  const { name, price, categories, description, image, colors, code, brand, photos, videos, extraDescription, sortOrder, cost, visible } = req.body;
   const mediaError = validateMedia(photos, videos);
   if (mediaError) return res.status(400).json({ error: mediaError });
   const colorsError = validateColors(colors);
@@ -1056,12 +1063,12 @@ app.post("/api/products", requireAuth, async (req, res) => {
   const brandId = await getOrCreateBrandId(brand);
   for (const c of categories) await ensureCategoryExists(c);
   const { rows: inserted } = await pool.query(
-    `INSERT INTO products (id, name, price, categories, description, image, colors, code, brand_id, photos, videos, extra_description, sort_order, cost)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+    `INSERT INTO products (id, name, price, categories, description, image, colors, code, brand_id, photos, videos, extra_description, sort_order, cost, visible)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
     [
       id, name, price, JSON.stringify(categories), description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null,
       brandId, JSON.stringify(photos ?? []), JSON.stringify(videos ?? []), extraDescription ?? "",
-      Number.isFinite(sortOrder) ? sortOrder : id, Number.isFinite(cost) ? cost : null,
+      Number.isFinite(sortOrder) ? sortOrder : id, Number.isFinite(cost) ? cost : null, visible !== false,
     ]
   );
   const { rows: fetched } = await pool.query(`${PRODUCTS_SELECT} WHERE p.id = $1`, [inserted[0].id]);
@@ -1070,7 +1077,7 @@ app.post("/api/products", requireAuth, async (req, res) => {
 
 app.put("/api/products/:id", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
-  const { name, price, categories, description, image, colors, code, brand, photos, videos, extraDescription, sortOrder, cost } = req.body;
+  const { name, price, categories, description, image, colors, code, brand, photos, videos, extraDescription, sortOrder, cost, visible } = req.body;
   const mediaError = validateMedia(photos, videos);
   if (mediaError) return res.status(400).json({ error: mediaError });
   const colorsError = validateColors(colors);
@@ -1081,12 +1088,12 @@ app.put("/api/products/:id", requireAuth, async (req, res) => {
   const brandId = await getOrCreateBrandId(brand);
   for (const c of categories) await ensureCategoryExists(c);
   const { rows } = await pool.query(
-    `UPDATE products SET name = $1, price = $2, categories = $3, description = $4, image = $5, colors = $6, code = $7, brand_id = $8, photos = $9, videos = $10, extra_description = $11, sort_order = $12, cost = $13
+    `UPDATE products SET name = $1, price = $2, categories = $3, description = $4, image = $5, colors = $6, code = $7, brand_id = $8, photos = $9, videos = $10, extra_description = $11, sort_order = $12, cost = $13, visible = $15
      WHERE id = $14 RETURNING id`,
     [
       name, price, JSON.stringify(categories), description ?? "", image ?? "", JSON.stringify(colors ?? []), code ?? null,
       brandId, JSON.stringify(photos ?? []), JSON.stringify(videos ?? []), extraDescription ?? "",
-      Number.isFinite(sortOrder) ? sortOrder : id, Number.isFinite(cost) ? cost : null, id,
+      Number.isFinite(sortOrder) ? sortOrder : id, Number.isFinite(cost) ? cost : null, id, visible !== false,
     ]
   );
   if (rows.length === 0) return res.status(404).json({ error: "Producto no encontrado" });
