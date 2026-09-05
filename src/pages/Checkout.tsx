@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import KRGlue from "@lyracom/embedded-form-glue";
 import { ArrowLeft, CheckCircle2, CreditCard, Banknote, MessageCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -22,42 +23,18 @@ const CHARGE_TYPE_LIMA_ONLY_DELIVERY_TYPES = ["Motorizado Delivery", "Motorizado
 // que un vendedor real intervenga) — se crea una sola vez en Admin > Usuarios.
 const ONLINE_SELLER_USERNAME = "Tienda Online";
 
-const IZIPAY_SDK_URL = "https://checkout.izipay.pe/payments/v1/js/index.js";
+// Cliente "Krypton" de Izipay (@lyracom/embedded-form-glue, mismo paquete
+// que usa el ejemplo oficial izipay-pe/Embedded-PaymentForm-React) — carga
+// el formulario embebido de tarjeta dentro de KR_FORM_WRAPPER_ID.
+const IZIPAY_ENDPOINT = "https://static.micuentaweb.pe";
+const KR_FORM_WRAPPER_ID = "micuentawebstd_rest_wrapper";
 
-// Tipado mínimo del SDK de Izipay (no trae sus propios tipos). La forma
-// exacta de "config" y del contenedor del formulario se confirma recién con
-// credenciales reales — ver nota en handlePay.
-interface IzipayCheckoutInstance {
-  LoadForm: (options: {
-    authorization: string;
-    keyRSA: string;
-    callbackResponse: (response: Record<string, unknown>) => void;
-  }) => void;
+interface CardPaymentInfo {
+  orderId: number;
+  total: number;
+  formToken: string;
+  publicKey: string;
 }
-declare global {
-  interface Window {
-    Izipay?: new (options: { config: Record<string, unknown> }) => IzipayCheckoutInstance;
-  }
-}
-
-const loadIzipayScript = () =>
-  new Promise<void>((resolve, reject) => {
-    if (window.Izipay) {
-      resolve();
-      return;
-    }
-    const existing = document.querySelector(`script[src="${IZIPAY_SDK_URL}"]`);
-    if (existing) {
-      existing.addEventListener("load", () => resolve());
-      existing.addEventListener("error", () => reject(new Error("No se pudo cargar el formulario de pago")));
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = IZIPAY_SDK_URL;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("No se pudo cargar el formulario de pago"));
-    document.head.appendChild(script);
-  });
 
 type Stage = "form" | "loading-card-form" | "confirming" | "success" | "pending" | "cod-success";
 
@@ -73,6 +50,7 @@ const Checkout = () => {
   const [submitting, setSubmitting] = useState(false);
   const [stage, setStage] = useState<Stage>("form");
   const [order, setOrder] = useState<Order | null>(null);
+  const [cardPayment, setCardPayment] = useState<CardPaymentInfo | null>(null);
 
   // El checkout exige sesión de "Mi cuenta" — sin cuenta no hay a quién
   // asociarle el pedido (documento, tipo de entrega, dirección/agencia ya
@@ -89,6 +67,39 @@ const Checkout = () => {
       (CHARGE_TYPE_NATIONWIDE_DELIVERY_TYPES.includes(customer.deliveryType) ||
         (isLimaMetroProvince(customer.province) && CHARGE_TYPE_LIMA_ONLY_DELIVERY_TYPES.includes(customer.deliveryType)))
   );
+
+  // Carga el formulario de tarjeta de Izipay una vez que el contenedor
+  // (#micuentawebstd_rest_wrapper, renderizado más abajo en stage
+  // "loading-card-form") ya está en el DOM.
+  useEffect(() => {
+    if (!cardPayment) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { KR } = await KRGlue.loadLibrary(IZIPAY_ENDPOINT, cardPayment.publicKey);
+        if (cancelled) return;
+        await KR.setFormConfig({ formToken: cardPayment.formToken, "kr-language": "es-ES" });
+        const { KR: KR2, result } = await KR.renderElements(`#${KR_FORM_WRAPPER_ID}`);
+        await KR2.showForm(result.formId);
+        await KR2.onSubmit(() => {
+          // La respuesta que llega acá es solo para la UX inmediata — la
+          // confirmación real viene del IPN server-to-server (ver
+          // POST /api/izipay/ipn en server/index.js), por eso se hace
+          // polling del estado real del pedido en vez de confiar en esto.
+          setStage("confirming");
+          pollOrderStatus(cardPayment.orderId, cardPayment.total);
+        });
+      } catch (err) {
+        if (cancelled) return;
+        toast.error(err instanceof Error ? err.message : "No se pudo cargar el formulario de pago");
+        setStage("form");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardPayment]);
 
   const pollOrderStatus = (orderId: number, total: number) => {
     let attempts = 0;
@@ -139,7 +150,6 @@ const Checkout = () => {
       }
 
       setStage("loading-card-form");
-      await loadIzipayScript();
       const tokenRes = await fetch("/api/izipay/formtoken", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -147,27 +157,13 @@ const Checkout = () => {
       });
       const tokenBody = await tokenRes.json();
       if (!tokenRes.ok) throw new Error(tokenBody.error ?? "No se pudo iniciar el pago con tarjeta");
-      if (!window.Izipay) throw new Error("No se pudo cargar el formulario de pago");
-
-      const checkout = new window.Izipay({
-        config: {
-          transactionId: String(createdOrder.id),
-          action: "pay",
-          merchantCode: tokenBody.merchantCode,
-          order: { orderNumber: String(createdOrder.id), currency: "PEN", amount: createdOrder.total, processType: "AT" },
-        },
-      });
-      checkout.LoadForm({
-        authorization: tokenBody.formToken,
-        keyRSA: tokenBody.publicKey,
-        callbackResponse: () => {
-          // La respuesta que llega acá es solo para la UX inmediata — la
-          // confirmación real viene del IPN server-to-server (ver
-          // POST /api/izipay/ipn en server/index.js), por eso se hace
-          // polling del estado real del pedido en vez de confiar en esto.
-          setStage("confirming");
-          pollOrderStatus(createdOrder.id, createdOrder.total);
-        },
+      // El formulario en sí se carga en el useEffect de arriba, una vez que
+      // este estado hace que se renderice el contenedor que necesita.
+      setCardPayment({
+        orderId: createdOrder.id,
+        total: createdOrder.total,
+        formToken: tokenBody.formToken,
+        publicKey: tokenBody.publicKey,
       });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo procesar el pago");
@@ -312,8 +308,15 @@ const Checkout = () => {
             </div>
 
             {stage === "loading-card-form" && (
-              <div className="border border-border rounded-lg p-6 flex items-center gap-3 text-sm text-muted-foreground">
-                <Loader2 className="w-4 h-4 animate-spin" /> Cargando el formulario de pago...
+              <div className="border border-border rounded-lg p-6 space-y-3">
+                {!cardPayment && (
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Iniciando el pago con tarjeta...
+                  </div>
+                )}
+                <div id={KR_FORM_WRAPPER_ID}>
+                  <div className="kr-embedded" />
+                </div>
               </div>
             )}
             {stage === "confirming" && (
