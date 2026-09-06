@@ -705,6 +705,13 @@ const mapCustomer = (row) => ({
 // Extranjería/Pasaporte/RUC, que no tienen un formato fijo acá.
 const DNI_REGEX = /^\d{8}$/;
 
+// Traduce una violación de las restricciones UNIQUE de customers (23505) al
+// mensaje correspondiente, según cuál de los dos índices la disparó.
+const customerConflictMessage = (err) =>
+  err.constraint === "customers_mobile_unique"
+    ? "Ya existe un cliente con ese número de celular"
+    : "Ya existe un cliente con ese tipo y número de documento";
+
 const validateCustomer = (body) => {
   const { documentType, documentNumber, firstName, paternalSurname, mobile, department, province, district, deliveryType, deliveryMode, agency, address } = body;
   if (!documentType?.trim() || !documentNumber?.trim() || !firstName?.trim() || !paternalSurname?.trim() || !mobile?.trim() || !department?.trim() || !province?.trim() || !district?.trim()) {
@@ -823,7 +830,7 @@ app.post("/api/customers", requireAuth, async (req, res) => {
     const row = await insertCustomer(req.body);
     res.status(201).json(mapCustomer(row));
   } catch (err) {
-    if (err.code === "23505") return res.status(409).json({ error: "Ya existe un cliente con ese tipo y número de documento" });
+    if (err.code === "23505") return res.status(409).json({ error: customerConflictMessage(err) });
     throw err;
   }
 });
@@ -842,7 +849,7 @@ app.post("/api/customers/register", async (req, res) => {
     // — sendCustomerRegistrationWhatsApp nunca lanza, así que esto es seguro.
     sendCustomerRegistrationWhatsApp(customer);
   } catch (err) {
-    if (err.code === "23505") return res.status(409).json({ error: "Ya existe un cliente con ese tipo y número de documento" });
+    if (err.code === "23505") return res.status(409).json({ error: customerConflictMessage(err) });
     throw err;
   }
 });
@@ -875,7 +882,7 @@ app.post("/api/customers/register-minimal", async (req, res) => {
     const row = await insertCustomer(body);
     res.status(201).json(mapCustomer(row));
   } catch (err) {
-    if (err.code === "23505") return res.status(409).json({ error: "Ya existe un cliente con ese tipo y número de documento" });
+    if (err.code === "23505") return res.status(409).json({ error: customerConflictMessage(err) });
     throw err;
   }
 });
@@ -920,7 +927,7 @@ app.put("/api/customers/:id", requireAuth, async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ error: "Cliente no encontrado" });
     res.json(mapCustomer(rows[0]));
   } catch (err) {
-    if (err.code === "23505") return res.status(409).json({ error: "Ya existe un cliente con ese tipo y número de documento" });
+    if (err.code === "23505") return res.status(409).json({ error: customerConflictMessage(err) });
     throw err;
   }
 });
@@ -972,7 +979,7 @@ app.post("/api/customers/register-account", async (req, res) => {
     if (err.message === "ACCOUNT_EXISTS") {
       return res.status(409).json({ error: "Ya existe una cuenta con ese documento. Inicia sesión." });
     }
-    if (err.code === "23505") return res.status(409).json({ error: "Ya existe un cliente con ese tipo y número de documento" });
+    if (err.code === "23505") return res.status(409).json({ error: customerConflictMessage(err) });
     throw err;
   }
 });

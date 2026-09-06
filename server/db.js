@@ -146,6 +146,13 @@ export const initSchema = async () => {
     ON customers (document_type, document_number)
     WHERE document_number <> '';
   `);
+  // El celular siempre es obligatorio (incluso en el registro mínimo de
+  // Regularización de Separaciones), así que a diferencia del documento no
+  // necesita un índice parcial: nunca hay valores vacíos que excluir.
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS customers_mobile_unique
+    ON customers (mobile);
+  `);
   // Le permite al cliente crear una cuenta (con contraseña) para iniciar
   // sesión en la tienda y dejar valoraciones. Null para los clientes que
   // solo existen porque un vendedor los registró — nunca se creó cuenta.
