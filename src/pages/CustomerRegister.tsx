@@ -335,7 +335,7 @@ const CustomerRegister = () => {
                   value={form.mobile}
                   onChange={(e) => setForm({ ...form, mobile: e.target.value })}
                   placeholder="987654321"
-                  className={errorInputClass(hasError("mobile"))}
+                  className={cn("max-w-[12rem]", errorInputClass(hasError("mobile")))}
                 />
                 {mobileVerified ? (
                   <span className="shrink-0 inline-flex items-center gap-1.5 px-3 rounded-md bg-primary/10 text-primary text-sm whitespace-nowrap">
