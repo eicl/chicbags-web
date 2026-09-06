@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
-  fetchCustomers, createCustomer, updateCustomer, deleteCustomer, fetchDistricts, createDistrict, fetchAgencies,
+  fetchCustomers, createCustomer, updateCustomer, deleteCustomer, fetchDistricts, createDistrict, fetchAgencies, lookupDni,
   Customer, CustomerInput, DeliveryType, DeliveryMode,
 } from "@/lib/api";
 import { PERU_DEPARTMENTS, PERU_LOCATIONS, isLimaMetroProvince } from "@/lib/peru-locations";
@@ -109,6 +109,20 @@ const AdminCustomers = () => {
     },
     onError,
   });
+
+  // Autocompletado de nombres por DNI: se dispara al salir del campo de
+  // documento (onBlur), solo para DNI. Si no encuentra nada, no bloquea —
+  // se puede seguir llenando a mano.
+  const dniLookupMutation = useMutation({
+    mutationFn: () => lookupDni(form.documentNumber.trim()),
+    onSuccess: (r) => setForm((f) => ({ ...f, firstName: r.firstName, paternalSurname: r.paternalSurname, maternalSurname: r.maternalSurname })),
+    onError: () => toast.error("No se encontró información para ese DNI, complétalo manualmente"),
+  });
+  const handleDocumentNumberBlur = () => {
+    if (form.documentType === "DNI" && DNI_REGEX.test(form.documentNumber.trim())) {
+      dniLookupMutation.mutate();
+    }
+  };
 
   const handleAdd = () => {
     setIsAdding(true);
@@ -337,6 +351,7 @@ const AdminCustomers = () => {
               <Input
                 value={form.documentNumber}
                 onChange={(e) => setForm({ ...form, documentNumber: e.target.value })}
+                onBlur={handleDocumentNumberBlur}
                 placeholder="12345678"
                 className={errorInputClass(hasError("documentNumber"))}
               />

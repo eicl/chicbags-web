@@ -306,6 +306,17 @@ export const confirmMobileVerification = (mobile: string, pin: string): Promise<
     body: JSON.stringify({ mobile, pin }),
   }).then((res) => handle<{ verified: boolean }>(res));
 
+// Autocompletado de nombres por DNI (vía migo.pe/RENIEC) — usado en el
+// registro público de cliente y en el panel admin de clientes.
+export interface DniLookupResult {
+  firstName: string;
+  paternalSurname: string;
+  maternalSurname: string;
+}
+
+export const lookupDni = (documentNumber: string): Promise<DniLookupResult> =>
+  fetch(`${API_URL}/document-lookup/dni/${documentNumber}`).then((res) => handle<DniLookupResult>(res));
+
 // Igual que registerCustomer, pero relajado: lo usa Regularización de
 // Separaciones, donde solo el nombre y el celular son obligatorios (el
 // resto queda vacío si no se llena).

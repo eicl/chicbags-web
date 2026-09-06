@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import Header from "@/components/Header";
 import {
-  registerCustomer, requestMobileVerification, confirmMobileVerification,
+  registerCustomer, requestMobileVerification, confirmMobileVerification, lookupDni,
   fetchDistricts, fetchAgencies, Customer, CustomerInput, DeliveryType, DeliveryMode,
 } from "@/lib/api";
 import { PERU_DEPARTMENTS, PERU_LOCATIONS, isLimaMetroProvince } from "@/lib/peru-locations";
@@ -123,6 +123,21 @@ const CustomerRegister = () => {
     },
     onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "Algo salió mal"),
   });
+
+  // Autocompletado de nombres por DNI: se dispara al salir del campo de
+  // documento (onBlur), solo para DNI (Carné/Pasaporte/RUC no calzan con
+  // este servicio). Si no encuentra nada, no bloquea — el cliente sigue
+  // pudiendo llenar los campos a mano.
+  const dniLookupMutation = useMutation({
+    mutationFn: () => lookupDni(form.documentNumber.trim()),
+    onSuccess: (r) => setForm((f) => ({ ...f, firstName: r.firstName, paternalSurname: r.paternalSurname, maternalSurname: r.maternalSurname })),
+    onError: () => toast.error("No se encontró información para ese DNI, complétalo manualmente"),
+  });
+  const handleDocumentNumberBlur = () => {
+    if (form.documentType === "DNI" && DNI_REGEX.test(form.documentNumber.trim())) {
+      dniLookupMutation.mutate();
+    }
+  };
 
   // Los tipos de delivery "motorizado" reparten a domicilio, así que además
   // de la dirección piden la ubicación GPS actual del cliente.
@@ -298,6 +313,7 @@ const CustomerRegister = () => {
               <Input
                 value={form.documentNumber}
                 onChange={(e) => setForm({ ...form, documentNumber: e.target.value })}
+                onBlur={handleDocumentNumberBlur}
                 placeholder="12345678"
                 className={errorInputClass(hasError("documentNumber"))}
               />

@@ -13,6 +13,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { pool, initSchema, getOrCreateBrandId, ensureCategoryExists, ensureDistrictExists } from "./db.js";
 import { sendCustomerRegistrationWhatsApp, sendOrderRegistrationWhatsApp, sendOrderStatusWhatsApp, sendMobileVerificationPin } from "./whatsapp.js";
+import { lookupDni } from "./migo.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Las imágenes viven dentro del frontend (carpeta public/) para que Vite
@@ -704,6 +705,15 @@ const mapCustomer = (row) => ({
 // El DNI peruano siempre tiene 8 dígitos — a diferencia de Carné de
 // Extranjería/Pasaporte/RUC, que no tienen un formato fijo acá.
 const DNI_REGEX = /^\d{8}$/;
+
+// Autocompletado de nombres por DNI (registro público de cliente y panel
+// admin). Público — es la misma info consultable en cualquier web de RENIEC.
+app.get("/api/document-lookup/dni/:number", async (req, res) => {
+  if (!DNI_REGEX.test(req.params.number)) return res.status(400).json({ error: "DNI inválido" });
+  const result = await lookupDni(req.params.number);
+  if (!result) return res.status(404).json({ error: "No se encontró información para ese DNI" });
+  res.json(result);
+});
 
 // Traduce una violación de las restricciones UNIQUE de customers (23505) al
 // mensaje correspondiente, según cuál de los dos índices la disparó.
