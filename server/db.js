@@ -153,6 +153,23 @@ export const initSchema = async () => {
     CREATE UNIQUE INDEX IF NOT EXISTS customers_mobile_unique
     ON customers (mobile);
   `);
+  // PIN de verificación de celular para el registro público de clientes.
+  // Una sola fila por celular (se sobrescribe en cada solicitud nueva).
+  // request_count/window_start limitan cuántos PIN puede pedir un mismo
+  // celular por hora — es un endpoint público que dispara un WhatsApp real,
+  // así que necesita ese freno de abuso.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS mobile_verifications (
+      mobile TEXT PRIMARY KEY,
+      pin TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      verified BOOLEAN NOT NULL DEFAULT false,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      request_count INTEGER NOT NULL DEFAULT 0,
+      window_start TIMESTAMPTZ NOT NULL DEFAULT now(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
   // Le permite al cliente crear una cuenta (con contraseña) para iniciar
   // sesión en la tienda y dejar valoraciones. Null para los clientes que
   // solo existen porque un vendedor los registró — nunca se creó cuenta.
