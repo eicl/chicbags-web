@@ -4,13 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, ArchiveRestore, Check, ChevronDown, ChevronUp, Flag, MessageCircle, Loader2, PackageCheck, Pencil, Plus, Printer, Search, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
 import {
   AdminOrder, ChargeType, DeliveryType, OrderItem, OrderStatus, PaymentInput, Service,
-  addOrderItem, deleteOrder, deleteOrderItem, fetchMessageTemplates, fetchOrders, fetchServices, fetchSettings, markOrderAccumulating,
+  addOrderItem, deleteOrder, deleteOrderItem, fetchOrders, fetchServices, fetchSettings, markOrderAccumulating,
   markOrderDelivered, markOrderReadyForDelivery, markOrderWarehouseSeparated, registerPayment, releaseOrderAccumulating,
-  updateOrderChargeType, updateOrderItemColor, updateOrderItemDiscount, updateOrderReceipt, updateOrderServiceItem,
+  sendOrderStatusWhatsApp, updateOrderChargeType, updateOrderItemColor, updateOrderItemDiscount, updateOrderReceipt, updateOrderServiceItem,
   uploadImage,
 } from "@/lib/api";
-import { buildOrderItemsText, buildOrderStatusText } from "@/lib/orderMessages";
-import { DEFAULT_MESSAGE_TEMPLATES, renderMessageTemplate } from "@/lib/messageTemplates";
 import { productImageUrl } from "@/lib/images";
 import { useProducts } from "@/context/ProductContext";
 import { Product, ProductColor } from "@/context/CartContext";
@@ -112,22 +110,6 @@ const ORDER_STATUSES: OrderStatus[] = [
   "Listo para delivery",
   "Entregado a delivery",
 ];
-
-// Lleva la conversación de WhatsApp al celular del cliente con el estado
-// actual del pedido (y, si está en Separación, el plazo para cancelar), más
-// el mismo detalle de ítems que se manda al registrar el pedido. El texto
-// sale de la plantilla configurable (Admin > Mensajes de WhatsApp).
-const buildStatusWhatsAppLink = (order: AdminOrder, template: string) => {
-  const digits = order.customerMobile.replace(/\D/g, "");
-  const phone = digits.startsWith("51") ? digits : `51${digits}`;
-  const message = renderMessageTemplate(template, {
-    cliente: order.customerName,
-    pedido: String(order.id),
-    items: buildOrderItemsText(order),
-    estado_texto: buildOrderStatusText(order),
-  });
-  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-};
 
 // Solo estos tipos de delivery piden vía de envío (terrestre/aéreo) — misma
 // regla que en el registro de cliente/pedido.
@@ -819,6 +801,29 @@ const ChargeTypeSelector = ({ order }: { order: AdminOrder }) => {
   );
 };
 
+// Manda el estado actual del pedido por WhatsApp — antes era un link wa.me
+// que había que abrir y darle "Enviar" a mano; ahora lo manda el propio
+// servidor (vía la API de migo.pe) con un solo clic.
+const SendStatusWhatsAppButton = ({ orderId }: { orderId: number }) => {
+  const mutation = useMutation({
+    mutationFn: () => sendOrderStatusWhatsApp(orderId),
+    onSuccess: () => toast.success("Estado enviado por WhatsApp"),
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo enviar el mensaje"),
+  });
+
+  return (
+    <Button
+      onClick={() => mutation.mutate()}
+      disabled={mutation.isPending}
+      className="gap-2 text-white hover:opacity-90"
+      style={{ backgroundColor: "#25D366" }}
+    >
+      <MessageCircle className="w-4 h-4" fill="white" />
+      {mutation.isPending ? "Enviando..." : "Enviar estado por WhatsApp"}
+    </Button>
+  );
+};
+
 // Deja agregar productos a un pedido que ya existe, sin importar el tipo de
 // delivery. Agregar servicios sigue solo para "Motorizado Delivery" (el
 // motorizado puede volver a pasar por más mercadería antes de entregar).
@@ -865,9 +870,6 @@ const AdminOrders = () => {
   const queryClient = useQueryClient();
   const { data: orders = [], isLoading, isError } = useQuery({ queryKey: ["orders"], queryFn: fetchOrders });
   const { products } = useProducts();
-  const { data: messageTemplates = [] } = useQuery({ queryKey: ["messageTemplates"], queryFn: fetchMessageTemplates });
-  const statusUpdateTemplate =
-    messageTemplates.find((t) => t.key === "order_status_update")?.template ?? DEFAULT_MESSAGE_TEMPLATES.order_status_update;
   const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
   const nearSeparationDeadlineDays = settings?.nearSeparationDeadlineDays ?? FALLBACK_NEAR_SEPARATION_DEADLINE_DAYS;
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -1246,16 +1248,7 @@ const AdminOrders = () => {
                           {COURIER_DELIVERY_TYPES.includes(order.customerDeliveryType) && <ReceiptForm order={order} />}
 
                           <div className="flex flex-wrap items-center gap-3">
-                            <a
-                              href={buildStatusWhatsAppLink(order, statusUpdateTemplate)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-white font-medium text-sm transition-transform hover:scale-105"
-                              style={{ backgroundColor: "#25D366" }}
-                            >
-                              <MessageCircle className="w-4 h-4" fill="white" />
-                              Enviar estado por WhatsApp
-                            </a>
+                            <SendStatusWhatsAppButton orderId={order.id} />
                             <Button
                               variant="outline"
                               size="sm"

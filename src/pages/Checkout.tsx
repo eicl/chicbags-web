@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
 import KRGlueImport from "@lyracom/embedded-form-glue";
 
 // El paquete hace su propio interop de CommonJS a ESM (exports.default = ...)
@@ -10,16 +9,14 @@ import KRGlueImport from "@lyracom/embedded-form-glue";
 // desenvuelve a mano para que funcione sin importar si el bundler lo envuelve
 // una vez o dos.
 const KRGlue = (KRGlueImport as unknown as { default?: typeof KRGlueImport }).default ?? KRGlueImport;
-import { ArrowLeft, CheckCircle2, CreditCard, Banknote, MessageCircle, Loader2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CreditCard, Banknote, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import Header from "@/components/Header";
 import { useCart, cartLineKey } from "@/context/CartContext";
 import { useCustomerAuth } from "@/context/CustomerAuthContext";
 import { productImageUrl } from "@/lib/images";
-import { registerOrder, fetchSellers, fetchMessageTemplates, ChargeType, Order } from "@/lib/api";
-import { DEFAULT_MESSAGE_TEMPLATES } from "@/lib/messageTemplates";
-import { buildOrderWhatsAppLink } from "@/lib/orderMessages";
+import { registerOrder, fetchSellers, ChargeType, Order } from "@/lib/api";
 import { isLimaMetroProvince } from "@/lib/peru-locations";
 
 // Mismas listas que OrderRegister.tsx: quién puede elegir pagar contra
@@ -50,9 +47,6 @@ const Checkout = () => {
   const navigate = useNavigate();
   const { items, totalPrice, clearCart } = useCart();
   const { customer, isLoading: isLoadingCustomer } = useCustomerAuth();
-  const { data: messageTemplates = [] } = useQuery({ queryKey: ["messageTemplates"], queryFn: fetchMessageTemplates });
-  const orderRegistrationTemplate =
-    messageTemplates.find((t) => t.key === "order_registration")?.template ?? DEFAULT_MESSAGE_TEMPLATES.order_registration;
 
   const [chargeType, setChargeType] = useState<ChargeType>("Normal");
   const [submitting, setSubmitting] = useState(false);
@@ -233,7 +227,6 @@ const Checkout = () => {
   }
 
   if (stage === "cod-success" || stage === "success" || stage === "pending") {
-    const whatsappLink = order && customer ? buildOrderWhatsAppLink(order, customer, orderRegistrationTemplate) : null;
     return (
       <div className="min-h-screen bg-background">
         <Header />
@@ -253,19 +246,12 @@ const Checkout = () => {
               Pedido #{order.id}
             </span>
           )}
+          {order && customer && (
+            <p className="text-sm text-muted-foreground">
+              Le enviamos el detalle del pedido por WhatsApp a {customer.firstName}.
+            </p>
+          )}
           <div className="flex flex-wrap justify-center gap-3">
-            {whatsappLink && (
-              <a
-                href={whatsappLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-md text-white font-medium transition-transform hover:scale-105"
-                style={{ backgroundColor: "#25D366" }}
-              >
-                <MessageCircle className="w-5 h-5" fill="white" />
-                Ver detalle por WhatsApp
-              </a>
-            )}
             <Button variant="outline" onClick={() => navigate("/")}>
               Ir al inicio
             </Button>

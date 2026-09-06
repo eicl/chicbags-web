@@ -1,23 +1,4 @@
-import { Order, Customer } from "@/lib/api";
-import { renderMessageTemplate } from "@/lib/messageTemplates";
-
-const formatDateTime = (iso: string) =>
-  new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
-
-// Detalle de cada ítem del pedido (nombre, código, color, descuento y
-// subtotal), una línea por ítem — el mismo formato que se manda al
-// registrar el pedido, reusado también al enviar una actualización de
-// estado por WhatsApp para que el cliente tenga siempre a la vista qué
-// incluye su pedido.
-export const buildOrderItemsText = (order: Order) =>
-  order.items
-    .map((item) => {
-      const code = item.productCode ? ` [${item.productCode}]` : "";
-      const color = item.colorName ? ` (${item.colorName})` : "";
-      const discount = item.discount > 0 ? ` (dcto. S/.${item.discount.toFixed(2)})` : "";
-      return `- ${item.productName}${code}${color} x${item.quantity}${discount}: S/.${item.subtotal.toFixed(2)}`;
-    })
-    .join("\n");
+import { Order } from "@/lib/api";
 
 // El plazo es una fecha de calendario (no un momento con hora), y se guarda
 // en UTC medianoche — hay que mostrarla también en UTC para que no se corra
@@ -49,21 +30,4 @@ export const buildOrderStatusText = (order: Order) => {
     text += `\n\nTienes 15 días calendario para cancelar tu pedido. Fecha límite: ${formatDeadlineDate(order.separationDeadline)}.`;
   }
   return text;
-};
-
-// Lleva la conversación de WhatsApp al celular del cliente con el número de
-// pedido y el resumen ya redactados — solo falta darle Enviar. El texto sale
-// de la plantilla configurable (Admin > Mensajes de WhatsApp).
-export const buildOrderWhatsAppLink = (order: Order, customer: Customer, template: string) => {
-  const digits = customer.mobile.replace(/\D/g, "");
-  const phone = digits.startsWith("51") ? digits : `51${digits}`;
-  const message = renderMessageTemplate(template, {
-    cliente: customer.firstName,
-    pedido: String(order.id),
-    fecha: formatDateTime(order.createdAt),
-    items: buildOrderItemsText(order),
-    total: order.total.toFixed(2),
-    estado_texto: buildOrderStatusText(order),
-  });
-  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 };

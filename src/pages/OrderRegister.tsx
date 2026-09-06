@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { CheckCircle2, Loader2, Minus, MessageCircle, Plus, Search, Trash2, Upload, X } from "lucide-react";
+import { CheckCircle2, Loader2, Minus, Plus, Search, Trash2, Upload, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -9,10 +9,8 @@ import Header from "@/components/Header";
 import { useProducts } from "@/context/ProductContext";
 import { useAuth } from "@/context/AuthContext";
 import { Product, ProductColor } from "@/context/CartContext";
-import { lookupCustomer, registerOrder, uploadPaymentProof, fetchSellers, fetchSettings, fetchServices, fetchMessageTemplates, ChargeType, Customer, Order, Service } from "@/lib/api";
+import { lookupCustomer, registerOrder, uploadPaymentProof, fetchSellers, fetchSettings, fetchServices, ChargeType, Customer, Order, Service } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
-import { buildOrderWhatsAppLink } from "@/lib/orderMessages";
-import { DEFAULT_MESSAGE_TEMPLATES } from "@/lib/messageTemplates";
 import { isLimaMetroProvince } from "@/lib/peru-locations";
 import ProductOrderPicker from "@/components/ProductOrderPicker";
 import ServiceOrderPicker from "@/components/ServiceOrderPicker";
@@ -87,10 +85,6 @@ const OrderRegister = () => {
   const maxItemDiscount = user
     ? settings?.maxItemDiscountAdmin ?? FALLBACK_ADMIN_MAX_ITEM_DISCOUNT
     : settings?.maxItemDiscountPublic ?? FALLBACK_PUBLIC_MAX_ITEM_DISCOUNT;
-  const { data: messageTemplates = [] } = useQuery({ queryKey: ["messageTemplates"], queryFn: fetchMessageTemplates });
-  const orderRegistrationTemplate =
-    messageTemplates.find((t) => t.key === "order_registration")?.template ?? DEFAULT_MESSAGE_TEMPLATES.order_registration;
-
   const [code, setCode] = useState("");
   const [documentNumber, setDocumentNumber] = useState("");
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -384,16 +378,9 @@ const OrderRegister = () => {
           )}
 
           {customer && (
-            <a
-              href={buildOrderWhatsAppLink(order, customer, orderRegistrationTemplate)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-md text-white font-medium transition-transform hover:scale-105"
-              style={{ backgroundColor: "#25D366" }}
-            >
-              <MessageCircle className="w-5 h-5" fill="white" />
-              Volver al chat de WhatsApp
-            </a>
+            <p className="text-sm text-muted-foreground">
+              Le enviamos la confirmación del pedido por WhatsApp a {customer.firstName}.
+            </p>
           )}
           <div className="flex gap-3">
             <Button onClick={handleNewOrder}>Registrar otro pedido</Button>

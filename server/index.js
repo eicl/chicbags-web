@@ -12,6 +12,7 @@ import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { pool, initSchema, getOrCreateBrandId, ensureCategoryExists, ensureDistrictExists } from "./db.js";
+import { sendCustomerRegistrationWhatsApp, sendOrderRegistrationWhatsApp, sendOrderStatusWhatsApp } from "./whatsapp.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Las imágenes viven dentro del frontend (carpeta public/) para que Vite
@@ -835,7 +836,11 @@ app.post("/api/customers/register", async (req, res) => {
   if (error) return res.status(400).json({ error });
   try {
     const row = await insertCustomer(req.body);
-    res.status(201).json(mapCustomer(row));
+    const customer = mapCustomer(row);
+    res.status(201).json(customer);
+    // No se espera la respuesta de WhatsApp para no atrasar la del registro
+    // — sendCustomerRegistrationWhatsApp nunca lanza, así que esto es seguro.
+    sendCustomerRegistrationWhatsApp(customer);
   } catch (err) {
     if (err.code === "23505") return res.status(409).json({ error: "Ya existe un cliente con ese tipo y número de documento" });
     throw err;
@@ -959,8 +964,10 @@ app.post("/api/customers/register-account", async (req, res) => {
   try {
     const passwordHash = await bcrypt.hash(password, 10);
     const row = await claimOrCreateCustomerAccount(req.body, passwordHash);
+    const customer = mapCustomer(row);
     setCustomerAuthCookie(res, signCustomerToken(row.id));
-    res.status(201).json(mapCustomer(row));
+    res.status(201).json(customer);
+    sendCustomerRegistrationWhatsApp(customer);
   } catch (err) {
     if (err.message === "ACCOUNT_EXISTS") {
       return res.status(409).json({ error: "Ya existe una cuenta con ese documento. Inicia sesión." });
@@ -1939,7 +1946,10 @@ app.post("/api/orders/register", async (req, res) => {
   try {
     await client.query("BEGIN");
 
-    const { rows: customerRows } = await client.query("SELECT id, delivery_type FROM customers WHERE id = $1", [customerId]);
+    const { rows: customerRows } = await client.query(
+      "SELECT id, delivery_type, first_name, mobile FROM customers WHERE id = $1",
+      [customerId]
+    );
     if (customerRows.length === 0) {
       throw new Error("El cliente no existe");
     }
@@ -2055,13 +2065,42 @@ app.post("/api/orders/register", async (req, res) => {
     const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [order.id]);
 
     await client.query("COMMIT");
-    res.status(201).json(mapOrder(finalOrderRows[0], insertedItems, paymentRows));
+    const mappedOrder = mapOrder(finalOrderRows[0], insertedItems, paymentRows);
+    res.status(201).json(mappedOrder);
+    // No se espera la respuesta de WhatsApp para no atrasar la del pedido —
+    // sendOrderRegistrationWhatsApp nunca lanza, así que esto es seguro.
+    sendOrderRegistrationWhatsApp(mappedOrder, { firstName: customer.first_name, mobile: customer.mobile });
   } catch (err) {
     await client.query("ROLLBACK");
     res.status(400).json({ error: err.message });
   } finally {
     client.release();
   }
+});
+
+// Manda por WhatsApp el estado actual del pedido al cliente — reemplaza el
+// botón que antes abría un link wa.me para que alguien le diera "Enviar" a
+// mano (ver AdminOrders.tsx). Solo panel admin: quien decide cuándo avisar
+// sigue siendo el vendedor, pero ya no hace falta el segundo clic en WhatsApp.
+app.put("/api/orders/:id/send-status-whatsapp", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  const { rows: orderRows } = await pool.query("SELECT * FROM orders WHERE id = $1", [id]);
+  if (orderRows.length === 0) {
+    return res.status(404).json({ error: "Pedido no encontrado" });
+  }
+  const { rows: customerRows } = await pool.query("SELECT first_name, mobile FROM customers WHERE id = $1", [orderRows[0].customer_id]);
+  if (customerRows.length === 0) {
+    return res.status(404).json({ error: "Cliente no encontrado" });
+  }
+  const { rows: itemRows } = await pool.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [id]);
+  const { rows: paymentRows } = await pool.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [id]);
+  const order = mapOrder(orderRows[0], itemRows, paymentRows);
+  const sent = await sendOrderStatusWhatsApp(order, { firstName: customerRows[0].first_name, mobile: customerRows[0].mobile });
+  if (!sent) return res.status(502).json({ error: "No se pudo enviar el mensaje de WhatsApp" });
+  res.json({ sent: true });
 });
 
 // Regularización de Separaciones: registra pedidos históricos (fuera del

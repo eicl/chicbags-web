@@ -688,6 +688,14 @@ export const updateOrderChargeType = (orderId: number, chargeType: ChargeType): 
     body: JSON.stringify({ chargeType }),
   }).then((res) => handle<Order>(res));
 
+// Manda por WhatsApp el estado actual del pedido al cliente (vía la API de
+// migo.pe, del lado del servidor) — ya no abre un link wa.me a mano.
+export const sendOrderStatusWhatsApp = (orderId: number): Promise<{ sent: boolean }> =>
+  fetch(`${API_URL}/orders/${orderId}/send-status-whatsapp`, {
+    method: "PUT",
+    credentials: "include",
+  }).then((res) => handle<{ sent: boolean }>(res));
+
 // Recibo del envío (Shalom/Olva/Marvisur) + clave de rastreo opcional.
 export const updateOrderReceipt = (
   orderId: number,

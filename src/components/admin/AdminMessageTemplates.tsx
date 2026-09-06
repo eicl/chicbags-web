@@ -13,7 +13,7 @@ const TEMPLATE_META: { key: MessageTemplateKey; label: string; usage: string; va
   {
     key: "order_registration",
     label: "Confirmación de registro de pedido",
-    usage: "Se abre en WhatsApp justo después de registrar un pedido (registro público o desde el panel).",
+    usage: "Se envía automáticamente por WhatsApp justo después de registrar un pedido (registro público, checkout o desde el panel).",
     variables: [
       ["cliente", "Nombre del cliente"],
       ["pedido", "Número de pedido"],
@@ -26,7 +26,7 @@ const TEMPLATE_META: { key: MessageTemplateKey; label: string; usage: string; va
   {
     key: "order_status_update",
     label: "Actualización de estado del pedido",
-    usage: 'Se envía desde Admin > Pedidos al hacer clic en "Enviar estado por WhatsApp".',
+    usage: 'Se envía automáticamente por WhatsApp desde Admin > Pedidos al hacer clic en "Enviar estado por WhatsApp".',
     variables: [
       ["cliente", "Nombre del cliente"],
       ["pedido", "Número de pedido"],
@@ -37,7 +37,7 @@ const TEMPLATE_META: { key: MessageTemplateKey; label: string; usage: string; va
   {
     key: "customer_registration",
     label: "Confirmación de registro de cliente",
-    usage: "Se abre en WhatsApp justo después de que un cliente se registra.",
+    usage: "Se envía automáticamente por WhatsApp justo después de que un cliente se registra (a él, no a la empresa).",
     variables: [
       ["cliente", "Nombre del cliente"],
       ["apellido", "Apellido paterno del cliente"],
