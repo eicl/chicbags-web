@@ -28,6 +28,15 @@ services:
         sync: false
       - key: IZIPAY_HMAC_KEY
         sync: false
+      # No se conoce de antemano la URL que Render le asigne a este
+      # servicio de staging, así que a diferencia de "master" queda para
+      # completar a mano (Settings > Environment) una vez creado.
+      - key: SITE_URL
+        sync: false
+      - key: MIGO_WHATSAPP_INSTANCE
+        sync: false
+      - key: MIGO_WHATSAPP_APIKEY
+        sync: false
 
 databases:
   - name: chicbags-staging-db

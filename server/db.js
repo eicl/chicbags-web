@@ -420,7 +420,7 @@ Total: S/.{{total}}
 {{items}}
 
 {{estado_texto}}'),
-      ('customer_registration', 'Hola, soy {{cliente}} {{apellido}}, acabo de registrarme. Mi código de cliente es #{{codigo}}. Aquí está el link para registrar mi pedido: {{link}}')
+      ('customer_registration', 'Hola {{cliente}}, gracias por registrarte en ChicBags. Tu código de cliente es #{{codigo}}. Aquí tienes el link para registrar tu pedido: {{link}}')
     ON CONFLICT (template_key) DO NOTHING;
   `);
 };

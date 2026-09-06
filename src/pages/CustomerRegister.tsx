@@ -1,16 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { CheckCircle2, Info, MapPin, MessageCircle, Save } from "lucide-react";
+import { CheckCircle2, Info, MapPin, Save } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import Header from "@/components/Header";
 import {
-  registerCustomer, fetchDistricts, fetchAgencies, fetchMessageTemplates, Customer, CustomerInput, DeliveryType, DeliveryMode,
+  registerCustomer, fetchDistricts, fetchAgencies, Customer, CustomerInput, DeliveryType, DeliveryMode,
 } from "@/lib/api";
 import { PERU_DEPARTMENTS, PERU_LOCATIONS, isLimaMetroProvince } from "@/lib/peru-locations";
 import { errorLabelClass, errorInputClass, cn } from "@/lib/utils";
-import { DEFAULT_MESSAGE_TEMPLATES, renderMessageTemplate } from "@/lib/messageTemplates";
 import AgencyPicker from "@/components/AgencyPicker";
 
 const DOCUMENT_TYPES = ["DNI", "Carné de Extranjería", "Pasaporte", "RUC"];
@@ -56,22 +55,6 @@ const emptyForm: CustomerInput = {
   receiverMobile: "",
 };
 
-// Lleva al cliente de vuelta al chat de WhatsApp de la empresa con su
-// código y el link de registro de pedido ya redactados — solo debe darle
-// Enviar. Ese link trae el código de cliente, así que quien lo abra no
-// tiene que volver a buscarlo (aunque la búsqueda sigue disponible ahí).
-const COMPANY_WHATSAPP_NUMBER = "51914104629";
-const buildRegistrationWhatsAppLink = (customer: Customer, template: string) => {
-  const orderLink = `${window.location.origin}/registro-pedido/${customer.id}`;
-  const message = renderMessageTemplate(template, {
-    cliente: customer.firstName,
-    apellido: customer.paternalSurname,
-    codigo: String(customer.id),
-    link: orderLink,
-  });
-  return `https://wa.me/${COMPANY_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
-};
-
 const REQUIRED_FIELD_LABELS: Record<string, string> = {
   documentNumber: "Número de documento",
   firstName: "Nombres",
@@ -94,19 +77,6 @@ const CustomerRegister = () => {
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [registered, setRegistered] = useState<Customer | null>(null);
   const [locating, setLocating] = useState(false);
-  const autoOpenedRef = useRef(false);
-  const { data: messageTemplates = [] } = useQuery({ queryKey: ["messageTemplates"], queryFn: fetchMessageTemplates });
-  const registrationTemplate =
-    messageTemplates.find((t) => t.key === "customer_registration")?.template ?? DEFAULT_MESSAGE_TEMPLATES.customer_registration;
-
-  // En cuanto se registra, abre solo el chat de WhatsApp — el botón sigue
-  // visible por si el navegador bloquea la ventana emergente.
-  useEffect(() => {
-    if (registered && !autoOpenedRef.current) {
-      autoOpenedRef.current = true;
-      window.open(buildRegistrationWhatsAppLink(registered, registrationTemplate), "_blank", "noopener,noreferrer");
-    }
-  }, [registered, registrationTemplate]);
 
   // Los tipos de delivery "motorizado" reparten a domicilio, así que además
   // de la dirección piden la ubicación GPS actual del cliente.
@@ -242,16 +212,9 @@ const CustomerRegister = () => {
           <span className="inline-block px-4 py-2 rounded-md bg-primary/10 text-primary font-semibold text-lg tracking-wide">
             Código de cliente: #{registered.id}
           </span>
-          <a
-            href={buildRegistrationWhatsAppLink(registered, registrationTemplate)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-5 py-3 rounded-md text-white font-medium transition-transform hover:scale-105"
-            style={{ backgroundColor: "#25D366" }}
-          >
-            <MessageCircle className="w-5 h-5" fill="white" />
-            Volver al chat de WhatsApp
-          </a>
+          <p className="text-sm text-muted-foreground">
+            Te enviamos un WhatsApp de bienvenida con tu código y el link para registrar tu pedido.
+          </p>
         </div>
       </div>
     );
