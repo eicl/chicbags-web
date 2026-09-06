@@ -111,12 +111,16 @@ const AdminCustomers = () => {
   });
 
   // Autocompletado de nombres por DNI: se dispara al salir del campo de
-  // documento (onBlur), solo para DNI. Si no encuentra nada, no bloquea —
-  // se puede seguir llenando a mano.
+  // documento (onBlur), solo para DNI. Si no encuentra nada, limpia los 3
+  // campos — si venían llenos de una consulta anterior (para otro DNI),
+  // dejarlos puestos sugeriría falsamente que corresponden al número actual.
   const dniLookupMutation = useMutation({
     mutationFn: () => lookupDni(form.documentNumber.trim()),
     onSuccess: (r) => setForm((f) => ({ ...f, firstName: r.firstName, paternalSurname: r.paternalSurname, maternalSurname: r.maternalSurname })),
-    onError: () => toast.error("No se encontró información para ese DNI, complétalo manualmente"),
+    onError: () => {
+      toast.error("No se encontró información para ese DNI, complétalo manualmente");
+      setForm((f) => ({ ...f, firstName: "", paternalSurname: "", maternalSurname: "" }));
+    },
   });
   const handleDocumentNumberBlur = () => {
     if (form.documentType === "DNI" && DNI_REGEX.test(form.documentNumber.trim())) {
