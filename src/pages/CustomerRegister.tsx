@@ -98,6 +98,11 @@ const CustomerRegister = () => {
     return () => clearTimeout(timer);
   }, [resendSeconds]);
 
+  // Con DNI, nombres y apellidos se completan solo por la consulta a
+  // migo.pe/RENIEC (ver dniLookupMutation más abajo) — quedan de solo
+  // lectura para que no se desincronicen del documento. Con Carné de
+  // Extranjería/Pasaporte/RUC no hay ese servicio, así que siguen editables.
+  const isDniDocument = form.documentType === "DNI";
   const trimmedMobile = form.mobile.trim();
   const mobileVerified = verifiedMobile !== null && verifiedMobile === trimmedMobile;
   const codeSent = codeSentFor !== null && codeSentFor === trimmedMobile;
@@ -327,8 +332,9 @@ const CustomerRegister = () => {
               <Input
                 value={form.firstName}
                 onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                readOnly={isDniDocument}
                 placeholder="María José"
-                className={errorInputClass(hasError("firstName"))}
+                className={cn(errorInputClass(hasError("firstName")), isDniDocument && "bg-muted/50 cursor-not-allowed")}
               />
             </div>
             <div>
@@ -336,8 +342,9 @@ const CustomerRegister = () => {
               <Input
                 value={form.paternalSurname}
                 onChange={(e) => setForm({ ...form, paternalSurname: e.target.value })}
+                readOnly={isDniDocument}
                 placeholder="García"
-                className={errorInputClass(hasError("paternalSurname"))}
+                className={cn(errorInputClass(hasError("paternalSurname")), isDniDocument && "bg-muted/50 cursor-not-allowed")}
               />
             </div>
             <div>
@@ -345,8 +352,16 @@ const CustomerRegister = () => {
               <Input
                 value={form.maternalSurname}
                 onChange={(e) => setForm({ ...form, maternalSurname: e.target.value })}
+                readOnly={isDniDocument}
                 placeholder="López"
+                className={cn(isDniDocument && "bg-muted/50 cursor-not-allowed")}
               />
+              {isDniDocument && (
+                <p className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+                  <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  Se completan automáticamente al ingresar tu DNI.
+                </p>
+              )}
             </div>
             <div className="md:col-span-2">
               <label className={errorLabelClass(hasError("mobile"))}>Celular *</label>
