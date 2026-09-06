@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: chicbags-web
+    name: chicbags-web-staging
     runtime: node
     plan: starter
     buildCommand: npm install --include=dev && npm run build
@@ -17,7 +17,9 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: chicbags-staging-db
+          property: connectionString
       - key: IZIPAY_USERNAME
         sync: false
       - key: IZIPAY_PASSWORD
@@ -30,3 +32,9 @@ services:
       name: product-images
       mountPath: /opt/render/project/src/public/product-images
       sizeGB: 1
+
+databases:
+  - name: chicbags-staging-db
+    plan: free
+    databaseName: chicbags_staging
+    user: chicbags_staging
