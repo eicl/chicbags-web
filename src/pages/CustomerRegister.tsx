@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { CheckCircle2, Info, MapPin, Save } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -134,9 +134,13 @@ const CustomerRegister = () => {
   // este servicio). Si no encuentra nada, limpia los 3 campos — si venían
   // llenos de una consulta anterior (para otro DNI), dejarlos puestos
   // sugeriría falsamente que corresponden al número actual.
+  const mobileInputRef = useRef<HTMLInputElement>(null);
   const dniLookupMutation = useMutation({
     mutationFn: () => lookupDni(form.documentNumber.trim()),
-    onSuccess: (r) => setForm((f) => ({ ...f, firstName: r.firstName, paternalSurname: r.paternalSurname, maternalSurname: r.maternalSurname })),
+    onSuccess: (r) => {
+      setForm((f) => ({ ...f, firstName: r.firstName, paternalSurname: r.paternalSurname, maternalSurname: r.maternalSurname }));
+      mobileInputRef.current?.focus();
+    },
     onError: () => {
       toast.error("No se encontró información para ese DNI, complétalo manualmente");
       setForm((f) => ({ ...f, firstName: "", paternalSurname: "", maternalSurname: "" }));
@@ -367,6 +371,7 @@ const CustomerRegister = () => {
               <label className={errorLabelClass(hasError("mobile"))}>Celular *</label>
               <div className="flex gap-2">
                 <Input
+                  ref={mobileInputRef}
                   value={form.mobile}
                   onChange={(e) => setForm({ ...form, mobile: e.target.value })}
                   placeholder="987654321"
