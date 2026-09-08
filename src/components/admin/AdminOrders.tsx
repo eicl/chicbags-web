@@ -733,7 +733,13 @@ const ReceiptForm = ({ order }: { order: AdminOrder }) => {
           </label>
         </div>
         {receiptImage && (
-          <img src={productImageUrl(receiptImage)} alt="Recibo del envío" className="w-9 h-9 rounded object-cover border border-border" />
+          <a href={productImageUrl(receiptImage)} target="_blank" rel="noopener noreferrer">
+            <img
+              src={productImageUrl(receiptImage)}
+              alt="Recibo del envío"
+              className="w-9 h-9 rounded object-cover border border-border hover:opacity-80 transition-opacity"
+            />
+          </a>
         )}
         <div>
           <label className="block text-xs text-muted-foreground mb-1">Clave (opcional)</label>

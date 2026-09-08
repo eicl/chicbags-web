@@ -35,6 +35,12 @@ export const sendWhatsAppMessage = async (phone, text) => {
   }
 };
 
+// A diferencia de los 3 mensajes de abajo, este no pasa por message_templates
+// (no es editable) — es un mensaje de seguridad del sistema, no de relación
+// con el cliente.
+export const sendMobileVerificationPin = async (mobile, pin) =>
+  sendWhatsAppMessage(mobile, `Tu código de verificación ChicBags es: ${pin}. Válido por 10 minutos.`);
+
 // --- Plantillas: puerto de src/lib/messageTemplates.ts + src/lib/orderMessages.ts
 // (duplicado a propósito — frontend y backend no comparten módulos en este
 // proyecto, mismo criterio de duplicación leve usado en todo el código). ---

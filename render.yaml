@@ -32,6 +32,8 @@ services:
         sync: false
       - key: MIGO_WHATSAPP_APIKEY
         sync: false
+      - key: MIGO_API_TOKEN
+        sync: false
     disk:
       name: product-images
       mountPath: /opt/render/project/src/public/product-images

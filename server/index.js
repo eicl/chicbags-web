@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { createHmac } from "crypto";
+import { createHmac, randomInt } from "crypto";
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -12,7 +12,8 @@ import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { pool, initSchema, getOrCreateBrandId, ensureCategoryExists, ensureDistrictExists } from "./db.js";
-import { sendCustomerRegistrationWhatsApp, sendOrderRegistrationWhatsApp, sendOrderStatusWhatsApp } from "./whatsapp.js";
+import { sendCustomerRegistrationWhatsApp, sendOrderRegistrationWhatsApp, sendOrderStatusWhatsApp, sendMobileVerificationPin } from "./whatsapp.js";
+import { lookupDni } from "./migo.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Las imágenes viven dentro del frontend (carpeta public/) para que Vite
@@ -705,6 +706,22 @@ const mapCustomer = (row) => ({
 // Extranjería/Pasaporte/RUC, que no tienen un formato fijo acá.
 const DNI_REGEX = /^\d{8}$/;
 
+// Autocompletado de nombres por DNI (registro público de cliente y panel
+// admin). Público — es la misma info consultable en cualquier web de RENIEC.
+app.get("/api/document-lookup/dni/:number", async (req, res) => {
+  if (!DNI_REGEX.test(req.params.number)) return res.status(400).json({ error: "DNI inválido" });
+  const result = await lookupDni(req.params.number);
+  if (!result) return res.status(404).json({ error: "No se encontró información para ese DNI" });
+  res.json(result);
+});
+
+// Traduce una violación de las restricciones UNIQUE de customers (23505) al
+// mensaje correspondiente, según cuál de los dos índices la disparó.
+const customerConflictMessage = (err) =>
+  err.constraint === "customers_mobile_unique"
+    ? "Ya existe un cliente con ese número de celular"
+    : "Ya existe un cliente con ese tipo y número de documento";
+
 const validateCustomer = (body) => {
   const { documentType, documentNumber, firstName, paternalSurname, mobile, department, province, district, deliveryType, deliveryMode, agency, address } = body;
   if (!documentType?.trim() || !documentNumber?.trim() || !firstName?.trim() || !paternalSurname?.trim() || !mobile?.trim() || !department?.trim() || !province?.trim() || !district?.trim()) {
@@ -823,9 +840,73 @@ app.post("/api/customers", requireAuth, async (req, res) => {
     const row = await insertCustomer(req.body);
     res.status(201).json(mapCustomer(row));
   } catch (err) {
-    if (err.code === "23505") return res.status(409).json({ error: "Ya existe un cliente con ese tipo y número de documento" });
+    if (err.code === "23505") return res.status(409).json({ error: customerConflictMessage(err) });
     throw err;
   }
+});
+
+// El celular peruano siempre tiene 9 dígitos y empieza en 9 — mismo formato
+// que ya se pide en el placeholder del campo Celular del formulario.
+const PERU_MOBILE_REGEX = /^9\d{8}$/;
+
+// Verificación de celular por PIN de WhatsApp, solo para el registro público
+// de clientes (ver /api/customers/register más abajo). Un endpoint público
+// que dispara un WhatsApp real hacia cualquier número necesita un freno de
+// abuso: máx. 1 solicitud cada 60s y 5 por hora, por celular.
+app.post("/api/customers/mobile-verification/request", async (req, res) => {
+  const mobile = (req.body.mobile ?? "").toString().trim();
+  if (!PERU_MOBILE_REGEX.test(mobile)) {
+    return res.status(400).json({ error: "Ingresa un celular peruano válido (9 dígitos, empieza en 9)" });
+  }
+  const { rows: existingRows } = await pool.query("SELECT * FROM mobile_verifications WHERE mobile = $1", [mobile]);
+  const existing = existingRows[0];
+  const now = new Date();
+  if (existing && now - new Date(existing.created_at) < 60_000) {
+    return res.status(429).json({ error: "Espera unos segundos antes de solicitar otro código" });
+  }
+  let windowStart = existing?.window_start ?? now;
+  let requestCount = existing?.request_count ?? 0;
+  if (!existing || now - new Date(existing.window_start) > 3_600_000) {
+    windowStart = now;
+    requestCount = 0;
+  }
+  if (requestCount >= 5) {
+    return res.status(429).json({ error: "Demasiados intentos, intenta en una hora" });
+  }
+  const pin = String(randomInt(1000, 10000));
+  const expiresAt = new Date(now.getTime() + 10 * 60_000);
+  await pool.query(
+    `INSERT INTO mobile_verifications (mobile, pin, expires_at, verified, attempts, request_count, window_start, created_at)
+     VALUES ($1, $2, $3, false, 0, $4, $5, $6)
+     ON CONFLICT (mobile) DO UPDATE SET pin = $2, expires_at = $3, verified = false, attempts = 0, request_count = $4, window_start = $5, created_at = $6`,
+    [mobile, pin, expiresAt, requestCount + 1, windowStart, now]
+  );
+  const sent = await sendMobileVerificationPin(mobile, pin);
+  if (!sent) {
+    return res.status(502).json({ error: "No se pudo enviar el código por WhatsApp. Intenta nuevamente." });
+  }
+  res.json({ sent: true });
+});
+
+app.post("/api/customers/mobile-verification/confirm", async (req, res) => {
+  const mobile = (req.body.mobile ?? "").toString().trim();
+  const pin = (req.body.pin ?? "").toString().trim();
+  if (!mobile || !pin) return res.status(400).json({ error: "Ingresa el código enviado por WhatsApp" });
+  const { rows } = await pool.query("SELECT * FROM mobile_verifications WHERE mobile = $1", [mobile]);
+  const record = rows[0];
+  if (!record) return res.status(400).json({ error: "Solicita el código primero" });
+  if (new Date() > new Date(record.expires_at)) {
+    return res.status(400).json({ error: "El código venció, solicita uno nuevo" });
+  }
+  if (record.attempts >= 5) {
+    return res.status(429).json({ error: "Demasiados intentos, solicita un nuevo código" });
+  }
+  if (record.pin !== pin) {
+    await pool.query("UPDATE mobile_verifications SET attempts = attempts + 1 WHERE mobile = $1", [mobile]);
+    return res.status(400).json({ error: "Código incorrecto" });
+  }
+  await pool.query("UPDATE mobile_verifications SET verified = true WHERE mobile = $1", [mobile]);
+  res.json({ verified: true });
 });
 
 // Registro público de clientes: pensado para un link fuera del panel admin
@@ -834,15 +915,21 @@ app.post("/api/customers", requireAuth, async (req, res) => {
 app.post("/api/customers/register", async (req, res) => {
   const error = validateCustomer(req.body);
   if (error) return res.status(400).json({ error });
+  const mobile = (req.body.mobile ?? "").toString().trim();
+  const { rows: verificationRows } = await pool.query("SELECT verified FROM mobile_verifications WHERE mobile = $1", [mobile]);
+  if (!verificationRows[0]?.verified) {
+    return res.status(400).json({ error: "Verifica tu celular con el código antes de registrarte" });
+  }
   try {
     const row = await insertCustomer(req.body);
     const customer = mapCustomer(row);
+    await pool.query("DELETE FROM mobile_verifications WHERE mobile = $1", [mobile]);
     res.status(201).json(customer);
     // No se espera la respuesta de WhatsApp para no atrasar la del registro
     // — sendCustomerRegistrationWhatsApp nunca lanza, así que esto es seguro.
     sendCustomerRegistrationWhatsApp(customer);
   } catch (err) {
-    if (err.code === "23505") return res.status(409).json({ error: "Ya existe un cliente con ese tipo y número de documento" });
+    if (err.code === "23505") return res.status(409).json({ error: customerConflictMessage(err) });
     throw err;
   }
 });
@@ -875,7 +962,7 @@ app.post("/api/customers/register-minimal", async (req, res) => {
     const row = await insertCustomer(body);
     res.status(201).json(mapCustomer(row));
   } catch (err) {
-    if (err.code === "23505") return res.status(409).json({ error: "Ya existe un cliente con ese tipo y número de documento" });
+    if (err.code === "23505") return res.status(409).json({ error: customerConflictMessage(err) });
     throw err;
   }
 });
@@ -920,7 +1007,7 @@ app.put("/api/customers/:id", requireAuth, async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ error: "Cliente no encontrado" });
     res.json(mapCustomer(rows[0]));
   } catch (err) {
-    if (err.code === "23505") return res.status(409).json({ error: "Ya existe un cliente con ese tipo y número de documento" });
+    if (err.code === "23505") return res.status(409).json({ error: customerConflictMessage(err) });
     throw err;
   }
 });
@@ -972,7 +1059,7 @@ app.post("/api/customers/register-account", async (req, res) => {
     if (err.message === "ACCOUNT_EXISTS") {
       return res.status(409).json({ error: "Ya existe una cuenta con ese documento. Inicia sesión." });
     }
-    if (err.code === "23505") return res.status(409).json({ error: "Ya existe un cliente con ese tipo y número de documento" });
+    if (err.code === "23505") return res.status(409).json({ error: customerConflictMessage(err) });
     throw err;
   }
 });

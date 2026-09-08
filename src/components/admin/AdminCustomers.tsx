@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
-  fetchCustomers, createCustomer, updateCustomer, deleteCustomer, fetchDistricts, createDistrict, fetchAgencies,
+  fetchCustomers, createCustomer, updateCustomer, deleteCustomer, fetchDistricts, createDistrict, fetchAgencies, lookupDni,
   Customer, CustomerInput, DeliveryType, DeliveryMode,
 } from "@/lib/api";
 import { PERU_DEPARTMENTS, PERU_LOCATIONS, isLimaMetroProvince } from "@/lib/peru-locations";
@@ -110,6 +110,24 @@ const AdminCustomers = () => {
     onError,
   });
 
+  // Autocompletado de nombres por DNI: se dispara al salir del campo de
+  // documento (onBlur), solo para DNI. Si no encuentra nada, limpia los 3
+  // campos — si venían llenos de una consulta anterior (para otro DNI),
+  // dejarlos puestos sugeriría falsamente que corresponden al número actual.
+  const dniLookupMutation = useMutation({
+    mutationFn: () => lookupDni(form.documentNumber.trim()),
+    onSuccess: (r) => setForm((f) => ({ ...f, firstName: r.firstName, paternalSurname: r.paternalSurname, maternalSurname: r.maternalSurname })),
+    onError: () => {
+      toast.error("No se encontró información para ese DNI, complétalo manualmente");
+      setForm((f) => ({ ...f, firstName: "", paternalSurname: "", maternalSurname: "" }));
+    },
+  });
+  const handleDocumentNumberBlur = () => {
+    if (form.documentType === "DNI" && DNI_REGEX.test(form.documentNumber.trim())) {
+      dniLookupMutation.mutate();
+    }
+  };
+
   const handleAdd = () => {
     setIsAdding(true);
     setEditingId(null);
@@ -152,6 +170,11 @@ const AdminCustomers = () => {
     setAttemptedSubmit(false);
   };
 
+  // Con DNI, nombres y apellidos se completan solo por la consulta a
+  // migo.pe/RENIEC — quedan de solo lectura para que no se desincronicen
+  // del documento. Con Carné de Extranjería/Pasaporte/RUC no hay ese
+  // servicio, así que siguen editables.
+  const isDniDocument = form.documentType === "DNI";
   const needsDeliveryMode = DELIVERY_MODE_REQUIRED.includes(form.deliveryType);
   const needsAgency = AGENCY_REQUIRED.includes(form.deliveryType);
   const needsAddress = ADDRESS_REQUIRED.includes(form.deliveryType);
@@ -337,6 +360,7 @@ const AdminCustomers = () => {
               <Input
                 value={form.documentNumber}
                 onChange={(e) => setForm({ ...form, documentNumber: e.target.value })}
+                onBlur={handleDocumentNumberBlur}
                 placeholder="12345678"
                 className={errorInputClass(hasError("documentNumber"))}
               />
@@ -346,8 +370,9 @@ const AdminCustomers = () => {
               <Input
                 value={form.firstName}
                 onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                readOnly={isDniDocument}
                 placeholder="María José"
-                className={errorInputClass(hasError("firstName"))}
+                className={cn(errorInputClass(hasError("firstName")), isDniDocument && "bg-muted/50 cursor-not-allowed")}
               />
             </div>
             <div>
@@ -355,13 +380,25 @@ const AdminCustomers = () => {
               <Input
                 value={form.paternalSurname}
                 onChange={(e) => setForm({ ...form, paternalSurname: e.target.value })}
+                readOnly={isDniDocument}
                 placeholder="García"
-                className={errorInputClass(hasError("paternalSurname"))}
+                className={cn(errorInputClass(hasError("paternalSurname")), isDniDocument && "bg-muted/50 cursor-not-allowed")}
               />
             </div>
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">Apellido materno</label>
-              <Input value={form.maternalSurname} onChange={(e) => setForm({ ...form, maternalSurname: e.target.value })} placeholder="López" />
+              <Input
+                value={form.maternalSurname}
+                onChange={(e) => setForm({ ...form, maternalSurname: e.target.value })}
+                readOnly={isDniDocument}
+                placeholder="López"
+                className={cn(isDniDocument && "bg-muted/50 cursor-not-allowed")}
+              />
+              {isDniDocument && (
+                <p className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+                  <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" /> Se completan automáticamente al ingresar el DNI.
+                </p>
+              )}
             </div>
             <div>
               <label className={errorLabelClass(hasError("mobile"))}>Celular *</label>
