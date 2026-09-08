@@ -61,6 +61,11 @@ const CustomerLogin = () => {
             <LogIn className="w-4 h-4" /> {isSubmitting ? "Ingresando..." : "Ingresar"}
           </Button>
           <p className="text-sm text-muted-foreground text-center">
+            <Link to="/mi-cuenta/olvide-contrasena" className="text-primary hover:underline">
+              ¿Olvidaste tu contraseña?
+            </Link>
+          </p>
+          <p className="text-sm text-muted-foreground text-center">
             ¿Todavía no tienes cuenta?{" "}
             <Link to="/mi-cuenta/registro" state={{ from }} className="text-primary hover:underline">
               Regístrate aquí

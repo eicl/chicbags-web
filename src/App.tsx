@@ -21,6 +21,8 @@ import OrderRegularization from "./pages/OrderRegularization.tsx";
 import CustomerAccount from "./pages/CustomerAccount.tsx";
 import CustomerAccountRegister from "./pages/CustomerAccountRegister.tsx";
 import CustomerLogin from "./pages/CustomerLogin.tsx";
+import CustomerForgotPassword from "./pages/CustomerForgotPassword.tsx";
+import CustomerResetPassword from "./pages/CustomerResetPassword.tsx";
 
 const queryClient = new QueryClient();
 
@@ -47,6 +49,8 @@ const App = () => (
                   <Route path="/mi-cuenta" element={<CustomerAccount />} />
                   <Route path="/mi-cuenta/registro" element={<CustomerAccountRegister />} />
                   <Route path="/mi-cuenta/ingresar" element={<CustomerLogin />} />
+                  <Route path="/mi-cuenta/olvide-contrasena" element={<CustomerForgotPassword />} />
+                  <Route path="/mi-cuenta/restablecer/:token" element={<CustomerResetPassword />} />
                   <Route
                     path="/admin"
                     element={

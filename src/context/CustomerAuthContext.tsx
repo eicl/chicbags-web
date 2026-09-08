@@ -1,7 +1,7 @@
 import { createContext, useContext, ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  loginCustomer, logoutCustomer as logoutCustomerApi, fetchCustomerMe, registerCustomerAccount,
+  loginCustomer, logoutCustomer as logoutCustomerApi, fetchCustomerMe, registerCustomerAccount, resetPassword as resetPasswordApi,
   Customer, CustomerInput,
 } from "@/lib/api";
 
@@ -10,6 +10,7 @@ interface CustomerAuthContextType {
   isLoading: boolean;
   login: (identifier: string, password: string) => Promise<void>;
   register: (data: CustomerInput & { password: string }) => Promise<Customer>;
+  resetPassword: (token: string, password: string) => Promise<Customer>;
   logout: () => void;
   loginError: string | null;
   isLoggingIn: boolean;
@@ -42,6 +43,13 @@ export const CustomerAuthProvider = ({ children }: { children: ReactNode }) => {
     },
   });
 
+  const resetPasswordMutation = useMutation({
+    mutationFn: ({ token, password }: { token: string; password: string }) => resetPasswordApi(token, password),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["customerMe"], data);
+    },
+  });
+
   const logoutMutation = useMutation({
     mutationFn: logoutCustomerApi,
     onSuccess: () => {
@@ -58,6 +66,7 @@ export const CustomerAuthProvider = ({ children }: { children: ReactNode }) => {
           await loginMutation.mutateAsync({ identifier, password });
         },
         register: (data) => registerMutation.mutateAsync(data),
+        resetPassword: (token, password) => resetPasswordMutation.mutateAsync({ token, password }),
         logout: () => logoutMutation.mutate(),
         loginError: loginMutation.error instanceof Error ? loginMutation.error.message : null,
         isLoggingIn: loginMutation.isPending,

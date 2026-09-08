@@ -41,6 +41,17 @@ export const sendWhatsAppMessage = async (phone, text) => {
 export const sendMobileVerificationPin = async (mobile, pin) =>
   sendWhatsAppMessage(mobile, `Tu código de verificación ChicBags es: ${pin}. Válido por 10 minutos.`);
 
+// Mismo criterio que sendMobileVerificationPin: mensaje fijo, no editable
+// por message_templates — es seguridad de la cuenta, no relación con el
+// cliente. El link se arma acá (no en index.js) por el mismo motivo que
+// sendCustomerRegistrationWhatsApp: SITE_URL no existe en el navegador, así
+// que este módulo lo resuelve una sola vez para todos los links que manda.
+export const sendPasswordResetWhatsApp = async (mobile, token) =>
+  sendWhatsAppMessage(
+    mobile,
+    `Para restablecer tu contraseña de ChicBags, entra a este link (válido por 30 minutos): ${SITE_URL}/mi-cuenta/restablecer/${token}`
+  );
+
 // --- Plantillas: puerto de src/lib/messageTemplates.ts + src/lib/orderMessages.ts
 // (duplicado a propósito — frontend y backend no comparten módulos en este
 // proyecto, mismo criterio de duplicación leve usado en todo el código). ---
