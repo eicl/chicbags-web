@@ -7,8 +7,9 @@ import { pool } from "./db.js";
 const MIGO_INSTANCE = process.env.MIGO_WHATSAPP_INSTANCE;
 const MIGO_APIKEY = process.env.MIGO_WHATSAPP_APIKEY;
 const MIGO_API_URL = "https://chat.migo.pe";
-// Para armar el link de registro de pedido en el mensaje de bienvenida —
-// en el navegador se arma con window.location.origin, que no existe acá.
+// Para armar links absolutos en los mensajes (link de registro de pedido,
+// link de restablecer contraseña) — en el navegador se arman con
+// window.location.origin, que no existe acá.
 const SITE_URL = process.env.SITE_URL || "";
 
 export const sendWhatsAppMessage = async (phone, text) => {

@@ -43,8 +43,8 @@ const App = () => (
                   <Route path="/producto/:id" element={<ProductDetail />} />
                   <Route path="/checkout" element={<Checkout />} />
                   <Route path="/registro-cliente" element={<CustomerRegister />} />
-                  <Route path="/registro-pedido" element={<OrderRegister />} />
-                  <Route path="/registro-pedido/:customerId" element={<OrderRegister />} />
+                  <Route path="/registro-pedido" element={<RequireAuth><OrderRegister /></RequireAuth>} />
+                  <Route path="/registro-pedido/:customerId" element={<RequireAuth><OrderRegister /></RequireAuth>} />
                   <Route path="/regularizacion-separaciones" element={<OrderRegularization />} />
                   <Route path="/mi-cuenta" element={<CustomerAccount />} />
                   <Route path="/mi-cuenta/registro" element={<CustomerAccountRegister />} />
