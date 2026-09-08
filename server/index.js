@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { createHmac, randomInt } from "crypto";
+import { createHmac, randomInt, randomBytes } from "crypto";
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -12,7 +12,7 @@ import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { pool, initSchema, getOrCreateBrandId, ensureCategoryExists, ensureDistrictExists } from "./db.js";
-import { sendCustomerRegistrationWhatsApp, sendOrderRegistrationWhatsApp, sendOrderStatusWhatsApp, sendMobileVerificationPin } from "./whatsapp.js";
+import { sendCustomerRegistrationWhatsApp, sendOrderRegistrationWhatsApp, sendOrderStatusWhatsApp, sendMobileVerificationPin, sendPasswordResetWhatsApp } from "./whatsapp.js";
 import { lookupDni } from "./migo.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1088,6 +1088,59 @@ app.post("/api/customers/login", async (req, res) => {
 app.post("/api/customers/logout", (req, res) => {
   res.clearCookie(CUSTOMER_COOKIE_NAME);
   res.status(204).end();
+});
+
+// Mensaje genérico: nunca revela si el identificador corresponde a una
+// cuenta real (evita que alguien use este endpoint para enumerar clientes).
+const FORGOT_PASSWORD_MESSAGE = "Si el dato coincide con una cuenta, te enviamos un WhatsApp con el link para restablecer tu contraseña";
+
+app.post("/api/customers/forgot-password", async (req, res) => {
+  const identifier = (req.body.identifier ?? "").toString().trim();
+  if (!identifier) return res.status(400).json({ error: "Ingresa tu documento, celular o código de cliente" });
+  const { rows } = await pool.query(
+    "SELECT id, mobile FROM customers WHERE password_hash IS NOT NULL AND (document_number = $1 OR mobile = $1 OR id::text = $1) LIMIT 1",
+    [identifier]
+  );
+  const customer = rows[0];
+  if (customer) {
+    const { rows: recentRows } = await pool.query(
+      "SELECT created_at FROM password_resets WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 1",
+      [customer.id]
+    );
+    const onCooldown = recentRows[0] && new Date() - new Date(recentRows[0].created_at) < 60_000;
+    if (!onCooldown) {
+      const token = randomBytes(32).toString("hex");
+      const expiresAt = new Date(Date.now() + 30 * 60_000);
+      await pool.query(
+        "INSERT INTO password_resets (token, customer_id, expires_at) VALUES ($1, $2, $3)",
+        [token, customer.id, expiresAt]
+      );
+      sendPasswordResetWhatsApp(customer.mobile, token);
+    }
+  }
+  res.json({ message: FORGOT_PASSWORD_MESSAGE });
+});
+
+app.post("/api/customers/reset-password", async (req, res) => {
+  const token = (req.body.token ?? "").toString().trim();
+  const { password } = req.body;
+  if (!password || password.length < 6) {
+    return res.status(400).json({ error: "La contraseña debe tener al menos 6 caracteres" });
+  }
+  const { rows } = await pool.query("SELECT * FROM password_resets WHERE token = $1", [token]);
+  const resetRow = rows[0];
+  if (!resetRow || resetRow.used || new Date() > new Date(resetRow.expires_at)) {
+    return res.status(400).json({ error: "El link venció o ya se usó, solicita uno nuevo" });
+  }
+  const passwordHash = await bcrypt.hash(password, 10);
+  const { rows: customerRows } = await pool.query(
+    "UPDATE customers SET password_hash = $1 WHERE id = $2 RETURNING *",
+    [passwordHash, resetRow.customer_id]
+  );
+  await pool.query("UPDATE password_resets SET used = true WHERE token = $1", [token]);
+  const customer = customerRows[0];
+  setCustomerAuthCookie(res, signCustomerToken(customer.id));
+  res.json(mapCustomer(customer));
 });
 
 app.get("/api/customers/me", requireCustomerAuth, async (req, res) => {

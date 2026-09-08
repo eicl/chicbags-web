@@ -170,6 +170,18 @@ export const initSchema = async () => {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+  // "Olvidé mi contraseña" del login de clientes: el token va por WhatsApp
+  // (ver sendPasswordResetWhatsApp), es la propia clave primaria — no hace
+  // falta buscarlo por otra columna.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS password_resets (
+      token TEXT PRIMARY KEY,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
   // Le permite al cliente crear una cuenta (con contraseña) para iniciar
   // sesión en la tienda y dejar valoraciones. Null para los clientes que
   // solo existen porque un vendedor los registró — nunca se creó cuenta.

@@ -366,6 +366,23 @@ export const logoutCustomer = (): Promise<void> =>
 export const fetchCustomerMe = (): Promise<Customer> =>
   fetch(`${API_URL}/customers/me`, { credentials: "include" }).then((res) => handle<Customer>(res));
 
+// "Olvidé mi contraseña": el mensaje de respuesta es siempre el mismo,
+// coincida o no el identificador con una cuenta (evita revelarlo).
+export const requestPasswordReset = (identifier: string): Promise<{ message: string }> =>
+  fetch(`${API_URL}/customers/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier }),
+  }).then((res) => handle<{ message: string }>(res));
+
+export const resetPassword = (token: string, password: string): Promise<Customer> =>
+  fetch(`${API_URL}/customers/reset-password`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, password }),
+  }).then((res) => handle<Customer>(res));
+
 // Valoraciones de la tienda (no de un producto en particular), visibles al
 // final de la página de inicio.
 export interface Review {
