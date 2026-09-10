@@ -357,6 +357,11 @@ const ProductDetail = () => {
             >
               <X className="w-5 h-5" />
             </button>
+            {!mediaOverride && colors[selectedColor] && (
+              <span className="fixed bottom-4 left-4 md:bottom-6 md:left-6 z-50 bg-background/85 backdrop-blur-sm text-foreground text-[10px] font-medium tracking-widest uppercase px-2.5 py-1 rounded-sm">
+                {colors[selectedColor].name}
+              </span>
+            )}
           </>
         )}
       </AnimatePresence>
