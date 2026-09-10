@@ -363,7 +363,14 @@ const Checkout = () => {
                 style={{ fontFamily: "Roboto, sans-serif", border: `1px solid ${IZIPAY_BRAND_COLOR}30`, borderTop: `3px solid ${IZIPAY_BRAND_COLOR}` }}
               >
                 <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <h2 className="text-lg font-medium">Tarjeta de crédito o débito</h2>
+                  {/* Color forzado a mano (no hsl(var(--primary)) ni
+                      heredado): la variable --kr-global-color-primary de
+                      Izipay resultó no aplicarse de forma confiable en
+                      producción (ver el bloque de estilo de abajo), así que
+                      este título no puede depender de que "algo" la
+                      resuelva bien — se fija explícito para que nunca
+                      salga con un color ajeno. */}
+                  <h2 className="text-lg font-medium" style={{ color: "hsl(25 20% 15%)" }}>Tarjeta de crédito o débito</h2>
                   {cardLogos.length > 0 && (
                     <div className="flex items-center gap-2">
                       {cardLogos.map((logo) => (
@@ -377,17 +384,21 @@ const Checkout = () => {
                     <Loader2 className="w-4 h-4 animate-spin" /> Iniciando el pago con tarjeta...
                   </div>
                 )}
-                {/* Estas son variables propias del tema de Izipay/Lyra
-                    (confirmadas contra su CSS real, classic-reset.css — no
-                    son una clase suelta adivinada): controlan el color de
-                    marca en todo el widget (botón, íconos, foco de los
-                    campos), a diferencia de forzar un solo botón con CSS
-                    ajeno. Se fijan al teal real de Izipay, no al color de
-                    ChicBags — a propósito, para que se note que es un
-                    formulario embebido de otra marca. Ajuste best-effort:
-                    Izipay no publica esto como API pública, así que puede
-                    cambiar en una actualización suya sin aviso; conviene
-                    confirmarlo visualmente de vez en cuando. */}
+                {/* Ajuste best-effort sobre el widget de Izipay — no son
+                    clases inventadas (confirmadas contra su CSS real,
+                    classic-reset.css), pero Izipay no las publica como API
+                    pública, así que pueden cambiar sin aviso.
+
+                    En producción se vio que las variables --kr-form-button-*
+                    sí se aplican (el botón "Pagar" ya sale teal), pero
+                    --kr-global-color-primary NO — el resto del widget
+                    (borde/foco de los campos) se queda con su azul por
+                    defecto (#293c7a, confirmado leyendo su CSS: así lo usan
+                    como valor de respaldo en decenas de reglas). Por eso acá
+                    abajo, además de dejar las variables, se fuerza también
+                    el borde/fondo/foco de los campos directo por clase
+                    (.kr-field-wrapper), sin depender de que la variable se
+                    resuelva. */}
                 <style>{`
                   .kr-embedded {
                     --kr-global-color-primary: ${IZIPAY_BRAND_COLOR} !important;
@@ -396,6 +407,16 @@ const Checkout = () => {
                     --kr-form-button-borderColor: ${IZIPAY_BRAND_COLOR} !important;
                     --kr-form-button-color: #ffffff !important;
                     --kr-global-focus-outlineColor: ${IZIPAY_BRAND_COLOR} !important;
+                  }
+                  .kr-embedded .kr-field-wrapper {
+                    background-color: #ffffff !important;
+                    border: 1px solid #d8d8d8 !important;
+                    border-radius: 6px !important;
+                    padding-left: 8px !important;
+                  }
+                  .kr-embedded .kr-field-wrapper:focus-within {
+                    border-color: ${IZIPAY_BRAND_COLOR} !important;
+                    box-shadow: 0 0 0 3px ${IZIPAY_BRAND_COLOR}26 !important;
                   }
                 `}</style>
                 <div id={KR_FORM_WRAPPER_ID}>
