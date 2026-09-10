@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { CheckCircle2, Info, Save } from "lucide-react";
@@ -8,7 +8,10 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import Header from "@/components/Header";
 import { useCustomerAuth } from "@/context/CustomerAuthContext";
-import { fetchDistricts, fetchAgencies, lookupDni, CustomerInput, DeliveryType, DeliveryMode } from "@/lib/api";
+import {
+  fetchDistricts, fetchAgencies, lookupDni, requestMobileVerification, confirmMobileVerification,
+  CustomerInput, DeliveryType, DeliveryMode,
+} from "@/lib/api";
 import { PERU_DEPARTMENTS, PERU_LOCATIONS, isLimaMetroProvince } from "@/lib/peru-locations";
 import { errorLabelClass, errorInputClass, cn } from "@/lib/utils";
 import AgencyPicker from "@/components/AgencyPicker";
@@ -28,6 +31,9 @@ const ADDRESS_REQUIRED: DeliveryType[] = ["Motorizado Express", "Motorizado Deli
 const DNI_REGEX = /^\d{8}$/;
 const isInvalidDni = (documentType: string, documentNumber: string) =>
   documentType === "DNI" && documentNumber.trim() !== "" && !DNI_REGEX.test(documentNumber.trim());
+// El celular peruano siempre tiene 9 dígitos y empieza en 9 — mismo formato
+// que ya se pide en el placeholder del campo Celular.
+const PERU_MOBILE_REGEX = /^9\d{8}$/;
 
 const emptyForm: CustomerInput = {
   documentType: "DNI",
@@ -65,6 +71,7 @@ const REQUIRED_FIELD_LABELS: Record<string, string> = {
   address: "Dirección",
   password: "Contraseña",
   confirmPassword: "Confirmar contraseña",
+  mobileVerification: "Verificación del celular (código de WhatsApp)",
 };
 
 const CustomerAccountRegister = () => {
@@ -80,6 +87,47 @@ const CustomerAccountRegister = () => {
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [registered, setRegistered] = useState(false);
+
+  // Verificación de celular por PIN de WhatsApp. verifiedMobile/codeSentFor
+  // guardan el celular exacto al que corresponden — si el cliente edita el
+  // campo después, dejan de calzar con trimmedMobile y el estado se
+  // considera automáticamente inválido (sin necesidad de resetearlo a mano).
+  const [verifiedMobile, setVerifiedMobile] = useState<string | null>(null);
+  const [codeSentFor, setCodeSentFor] = useState<string | null>(null);
+  const [pin, setPin] = useState("");
+  const [resendSeconds, setResendSeconds] = useState(0);
+
+  useEffect(() => {
+    if (resendSeconds <= 0) return;
+    const timer = setTimeout(() => setResendSeconds((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendSeconds]);
+
+  const trimmedMobile = form.mobile.trim();
+  const mobileVerified = verifiedMobile !== null && verifiedMobile === trimmedMobile;
+  const codeSent = codeSentFor !== null && codeSentFor === trimmedMobile;
+
+  const requestVerificationMutation = useMutation({
+    mutationFn: () => requestMobileVerification(trimmedMobile),
+    onSuccess: () => {
+      setCodeSentFor(trimmedMobile);
+      setPin("");
+      setResendSeconds(60);
+      toast.success("Te enviamos un código por WhatsApp");
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "Algo salió mal"),
+  });
+
+  const confirmVerificationMutation = useMutation({
+    mutationFn: () => confirmMobileVerification(trimmedMobile, pin),
+    onSuccess: () => {
+      setVerifiedMobile(trimmedMobile);
+      setCodeSentFor(null);
+      setPin("");
+      toast.success("Celular verificado");
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "Algo salió mal"),
+  });
 
   // Con DNI, nombres y apellidos se completan solo por la consulta a
   // migo.pe/RENIEC — quedan de solo lectura para que no se desincronicen
@@ -138,6 +186,7 @@ const CustomerAccountRegister = () => {
     if (!form.firstName.trim()) missing.push("firstName");
     if (!form.paternalSurname.trim()) missing.push("paternalSurname");
     if (!form.mobile.trim()) missing.push("mobile");
+    else if (!mobileVerified) missing.push("mobileVerification");
     if (!form.department) missing.push("department");
     if (!form.province) missing.push("province");
     if (!form.district.trim()) missing.push("district");
@@ -151,7 +200,9 @@ const CustomerAccountRegister = () => {
 
   const missingFields = attemptedSubmit ? getMissingFields() : [];
   const hasError = (field: string) =>
-    missingFields.includes(field) || (attemptedSubmit && field === "documentNumber" && isInvalidDni(form.documentType, form.documentNumber));
+    missingFields.includes(field) ||
+    (field === "mobile" && missingFields.includes("mobileVerification")) ||
+    (attemptedSubmit && field === "documentNumber" && isInvalidDni(form.documentType, form.documentNumber));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -290,15 +341,66 @@ const CustomerAccountRegister = () => {
                 </p>
               )}
             </div>
-            <div>
+            <div className="md:col-span-2">
               <label className={errorLabelClass(hasError("mobile"))}>Celular *</label>
-              <Input
-                ref={mobileInputRef}
-                value={form.mobile}
-                onChange={(e) => setForm({ ...form, mobile: e.target.value })}
-                placeholder="987654321"
-                className={errorInputClass(hasError("mobile"))}
-              />
+              <div className="flex gap-2">
+                <Input
+                  ref={mobileInputRef}
+                  value={form.mobile}
+                  onChange={(e) => setForm({ ...form, mobile: e.target.value })}
+                  placeholder="987654321"
+                  className={cn("max-w-[12rem]", errorInputClass(hasError("mobile")))}
+                />
+                {mobileVerified ? (
+                  <span className="shrink-0 inline-flex items-center gap-1.5 px-3 rounded-md bg-primary/10 text-primary text-sm whitespace-nowrap">
+                    <CheckCircle2 className="w-4 h-4" /> Verificado
+                  </span>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="shrink-0 whitespace-nowrap"
+                    disabled={
+                      !PERU_MOBILE_REGEX.test(trimmedMobile) ||
+                      requestVerificationMutation.isPending ||
+                      (codeSent && resendSeconds > 0)
+                    }
+                    onClick={() => requestVerificationMutation.mutate()}
+                  >
+                    {requestVerificationMutation.isPending
+                      ? "Enviando..."
+                      : !codeSent
+                      ? "Validar celular"
+                      : resendSeconds > 0
+                      ? `Reenviar (${resendSeconds}s)`
+                      : "Reenviar código"}
+                  </Button>
+                )}
+              </div>
+              {codeSent && !mobileVerified && (
+                <div className="mt-2 space-y-1.5">
+                  <p className="text-xs text-muted-foreground">
+                    Te enviamos un código de 4 dígitos por WhatsApp al {trimmedMobile}.
+                  </p>
+                  <div className="flex gap-2">
+                    <Input
+                      value={pin}
+                      onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      placeholder="Código"
+                      inputMode="numeric"
+                      className="max-w-[10rem]"
+                    />
+                    <Button
+                      type="button"
+                      className="shrink-0"
+                      disabled={pin.length !== 4 || confirmVerificationMutation.isPending}
+                      onClick={() => confirmVerificationMutation.mutate()}
+                    >
+                      {confirmVerificationMutation.isPending ? "Verificando..." : "Confirmar código"}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
             <div>
               <label className={errorLabelClass(hasError("department"))}>Departamento *</label>

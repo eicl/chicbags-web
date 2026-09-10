@@ -1048,10 +1048,16 @@ app.post("/api/customers/register-account", async (req, res) => {
   if (!password || password.length < 6) {
     return res.status(400).json({ error: "La contraseña debe tener al menos 6 caracteres" });
   }
+  const mobile = (req.body.mobile ?? "").toString().trim();
+  const { rows: verificationRows } = await pool.query("SELECT verified FROM mobile_verifications WHERE mobile = $1", [mobile]);
+  if (!verificationRows[0]?.verified) {
+    return res.status(400).json({ error: "Verifica tu celular con el código antes de registrarte" });
+  }
   try {
     const passwordHash = await bcrypt.hash(password, 10);
     const row = await claimOrCreateCustomerAccount(req.body, passwordHash);
     const customer = mapCustomer(row);
+    await pool.query("DELETE FROM mobile_verifications WHERE mobile = $1", [mobile]);
     setCustomerAuthCookie(res, signCustomerToken(row.id));
     res.status(201).json(customer);
     sendCustomerRegistrationWhatsApp(customer);
