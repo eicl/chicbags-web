@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 
 export interface ProductColor {
   name: string;
@@ -56,9 +56,34 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
+// Para que el carrito sobreviva a un refresh de página — se guarda en
+// localStorage (por navegador/dispositivo, no por cuenta: igual que la
+// mayoría de tiendas, se arma antes de necesitar sesión).
+const CART_STORAGE_KEY = "chicbags_cart";
+
+const loadStoredCart = (): CartItem[] => {
+  try {
+    const raw = localStorage.getItem(CART_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 export const CartProvider = ({ children }: { children: ReactNode }) => {
-  const [items, setItems] = useState<CartItem[]>([]);
+  const [items, setItems] = useState<CartItem[]>(loadStoredCart);
   const [isCartOpen, setIsCartOpen] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
+    } catch {
+      // localStorage lleno o no disponible (ej. modo incógnito estricto) —
+      // el carrito sigue funcionando en memoria, solo no persiste.
+    }
+  }, [items]);
 
   const addToCart = (product: Product, colorName = "", colorStock = Infinity) => {
     setItems((prev) => {
