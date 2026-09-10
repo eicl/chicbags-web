@@ -349,7 +349,13 @@ const Checkout = () => {
             </div>
 
             {stage === "loading-card-form" && (
-              <div className="border border-border rounded-lg p-6 space-y-4">
+              // El widget de Izipay (tema "classic") usa la tipografía
+              // Roboto en todo su formulario (confirmado contra su propio
+              // CSS, classic-reset.css) — el texto que agregamos alrededor
+              // usa la misma, para que combine en vez de mezclar con la
+              // tipografía del resto del sitio. Ya queda cargada por el
+              // propio widget, no hace falta importarla de nuevo acá.
+              <div className="border border-border rounded-lg p-6 space-y-4" style={{ fontFamily: "Roboto, sans-serif" }}>
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <h2 className="text-lg font-medium">Tarjeta de crédito o débito</h2>
                   {cardLogos.length > 0 && (
