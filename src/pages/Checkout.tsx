@@ -489,7 +489,7 @@ const Checkout = () => {
                   {settings?.paymentGatewayLogo && (
                     <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
                       Powered by
-                      <img src={productImageUrl(settings.paymentGatewayLogo)} alt="Izipay" className="h-4 w-auto object-contain" />
+                      <img src={productImageUrl(settings.paymentGatewayLogo)} alt="Izipay" className="h-12 w-auto object-contain" />
                     </p>
                   )}
                   <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
