@@ -647,7 +647,7 @@ export const updateRouteMeta = (key: string, data: { title: string; description:
 // aviso de estado, registro de cliente), editables desde el panel. Público
 // en GET porque las páginas que arman esos links (registro de pedido,
 // registro de cliente) no siempre tienen sesión de admin.
-export type MessageTemplateKey = "order_registration" | "order_status_update" | "customer_registration";
+export type MessageTemplateKey = "order_registration" | "order_status_update" | "customer_registration" | "customer_account_registration";
 
 export interface MessageTemplate {
   key: MessageTemplateKey;

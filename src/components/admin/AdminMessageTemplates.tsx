@@ -37,12 +37,22 @@ const TEMPLATE_META: { key: MessageTemplateKey; label: string; usage: string; va
   {
     key: "customer_registration",
     label: "Confirmación de registro de cliente",
-    usage: "Se envía automáticamente por WhatsApp justo después de que un cliente se registra (a él, no a la empresa).",
+    usage: "Se envía automáticamente por WhatsApp justo después de que un cliente se registra por el link público (a él, no a la empresa).",
     variables: [
       ["cliente", "Nombre del cliente"],
       ["apellido", "Apellido paterno del cliente"],
       ["codigo", "Código de cliente"],
       ["link", "Link para registrar su pedido"],
+    ],
+  },
+  {
+    key: "customer_account_registration",
+    label: "Confirmación de cuenta creada desde el catálogo",
+    usage: 'Se envía automáticamente por WhatsApp justo después de que un cliente crea su cuenta desde "Crea tu cuenta" en el catálogo — ya puede comprar directo por la web, así que este mensaje no incluye el link de registro de pedido.',
+    variables: [
+      ["cliente", "Nombre del cliente"],
+      ["apellido", "Apellido paterno del cliente"],
+      ["codigo", "Código de cliente"],
     ],
   },
 ];
