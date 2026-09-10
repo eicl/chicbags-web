@@ -523,22 +523,41 @@ const Checkout = () => {
           <div className="lg:col-span-2">
             <div className="border border-border rounded-lg p-6 sticky top-24 space-y-4">
               <h2 className="text-lg font-medium">Resumen del pedido</h2>
+              {/* Una vez que el pedido ya se registró (order != null), el
+                  carrito local se vacía (ver handlePay) — mostrar acá los
+                  ítems del carrito en ese punto dejaría el resumen en
+                  blanco mientras el cliente todavía está completando el
+                  pago con tarjeta, aunque el pedido en sí ya quedó bien
+                  registrado en el servidor. Por eso, con order ya creado,
+                  el resumen muestra una foto fija de order.items/order.total
+                  en vez del carrito en vivo. */}
               <div className="space-y-4 max-h-80 overflow-y-auto">
-                {items.map((item) => (
-                  <div key={cartLineKey(item.id, item.colorName)} className="flex gap-3">
-                    <img src={productImageUrl(item.image)} alt={item.name} className="w-14 h-16 object-cover rounded-sm bg-muted" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{item.name}</p>
-                      {item.colorName && <p className="text-xs text-muted-foreground">{item.colorName}</p>}
-                      <p className="text-xs text-muted-foreground">x{item.quantity}</p>
-                    </div>
-                    <p className="text-sm font-medium">S/.{(item.price * item.quantity).toFixed(2)}</p>
-                  </div>
-                ))}
+                {order
+                  ? order.items.map((item) => (
+                      <div key={item.id} className="flex gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{item.productName}</p>
+                          {item.colorName && <p className="text-xs text-muted-foreground">{item.colorName}</p>}
+                          <p className="text-xs text-muted-foreground">x{item.quantity}</p>
+                        </div>
+                        <p className="text-sm font-medium">S/.{item.subtotal.toFixed(2)}</p>
+                      </div>
+                    ))
+                  : items.map((item) => (
+                      <div key={cartLineKey(item.id, item.colorName)} className="flex gap-3">
+                        <img src={productImageUrl(item.image)} alt={item.name} className="w-14 h-16 object-cover rounded-sm bg-muted" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{item.name}</p>
+                          {item.colorName && <p className="text-xs text-muted-foreground">{item.colorName}</p>}
+                          <p className="text-xs text-muted-foreground">x{item.quantity}</p>
+                        </div>
+                        <p className="text-sm font-medium">S/.{(item.price * item.quantity).toFixed(2)}</p>
+                      </div>
+                    ))}
               </div>
               <div className="border-t border-border pt-4 flex justify-between text-lg font-medium">
                 <span>Total</span>
-                <span>S/.{totalPrice.toFixed(2)}</span>
+                <span>S/.{(order ? order.total : totalPrice).toFixed(2)}</span>
               </div>
               <Button onClick={handlePay} disabled={submitting || stage !== "form"} className="w-full py-6 text-sm tracking-widest uppercase gap-2">
                 {submitting ? "Procesando..." : "Confirmar pedido"}
