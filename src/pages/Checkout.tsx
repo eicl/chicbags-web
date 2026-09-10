@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import KRGlueImport from "@lyracom/embedded-form-glue";
 
 // El paquete hace su propio interop de CommonJS a ESM (exports.default = ...)
@@ -9,14 +10,14 @@ import KRGlueImport from "@lyracom/embedded-form-glue";
 // desenvuelve a mano para que funcione sin importar si el bundler lo envuelve
 // una vez o dos.
 const KRGlue = (KRGlueImport as unknown as { default?: typeof KRGlueImport }).default ?? KRGlueImport;
-import { ArrowLeft, CheckCircle2, CreditCard, Banknote, Loader2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CreditCard, Banknote, Loader2, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import Header from "@/components/Header";
 import { useCart, cartLineKey } from "@/context/CartContext";
 import { useCustomerAuth } from "@/context/CustomerAuthContext";
 import { productImageUrl } from "@/lib/images";
-import { registerOrder, fetchSellers, ChargeType, Order } from "@/lib/api";
+import { registerOrder, fetchSellers, fetchSettings, fetchPaymentCardLogos, ChargeType, Order } from "@/lib/api";
 import { isLimaMetroProvince } from "@/lib/peru-locations";
 
 // Mismas listas que OrderRegister.tsx: quién puede elegir pagar contra
@@ -53,6 +54,12 @@ const Checkout = () => {
   const [stage, setStage] = useState<Stage>("form");
   const [order, setOrder] = useState<Order | null>(null);
   const [cardPayment, setCardPayment] = useState<CardPaymentInfo | null>(null);
+
+  // Logos configurables desde Admin > Configuración — se muestran alrededor
+  // del formulario de tarjeta (los campos en sí los renderiza el widget de
+  // Izipay, no son HTML propio).
+  const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
+  const { data: cardLogos = [] } = useQuery({ queryKey: ["paymentCardLogos"], queryFn: fetchPaymentCardLogos });
 
   // El checkout exige sesión de "Mi cuenta" — sin cuenta no hay a quién
   // asociarle el pedido (documento, tipo de entrega, dirección/agencia ya
@@ -309,7 +316,15 @@ const Checkout = () => {
                   <CreditCard className="w-5 h-5 shrink-0" />
                   <div>
                     <p className="text-sm font-medium">Tarjeta</p>
-                    <p className="text-xs text-muted-foreground">Visa, Mastercard — vía Izipay</p>
+                    {cardLogos.length > 0 ? (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        {cardLogos.map((logo) => (
+                          <img key={logo.id} src={productImageUrl(logo.image)} alt="" className="h-4 w-auto object-contain" />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">vía Izipay</p>
+                    )}
                   </div>
                 </button>
                 {canPickContraentrega && (
@@ -334,14 +349,43 @@ const Checkout = () => {
             </div>
 
             {stage === "loading-card-form" && (
-              <div className="border border-border rounded-lg p-6 space-y-3">
+              <div className="border border-border rounded-lg p-6 space-y-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <h2 className="text-lg font-medium">Tarjeta de crédito o débito</h2>
+                  {cardLogos.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      {cardLogos.map((logo) => (
+                        <img key={logo.id} src={productImageUrl(logo.image)} alt="" className="h-6 w-auto object-contain" />
+                      ))}
+                    </div>
+                  )}
+                </div>
                 {!cardPayment && (
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <Loader2 className="w-4 h-4 animate-spin" /> Iniciando el pago con tarjeta...
                   </div>
                 )}
+                {/* El color del botón "Pagar" es el único aspecto que se
+                    toca acá (texto y funcionalidad son 100% de Izipay) —
+                    .kr-payment-button es la clase que documenta Lyra para
+                    esto. Es un ajuste best-effort: puede no calzar igual en
+                    todos los navegadores/temas de Izipay, conviene
+                    confirmarlo visualmente. */}
+                <style>{`.kr-embedded .kr-payment-button { background-color: hsl(var(--primary)) !important; }`}</style>
                 <div id={KR_FORM_WRAPPER_ID}>
                   <div className="kr-embedded" />
+                </div>
+                <div className="flex items-center justify-between gap-3 flex-wrap pt-3 border-t border-border">
+                  {settings?.paymentGatewayLogo && (
+                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      Transacciones realizadas vía
+                      <img src={productImageUrl(settings.paymentGatewayLogo)} alt="Pasarela de pago" className="h-4 w-auto object-contain" />
+                    </p>
+                  )}
+                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Lock className="w-3.5 h-3.5 text-primary shrink-0" />
+                    Tus pagos se realizan de forma segura con encriptación de 256 bits
+                  </p>
                 </div>
               </div>
             )}

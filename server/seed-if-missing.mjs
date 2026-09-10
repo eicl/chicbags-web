@@ -1,10 +1,11 @@
 import "dotenv/config";
 import { pool, initSchema } from "./db.js";
-import { buildProducts, IMAGES_DIR } from "./seed-data.mjs";
+import { buildProducts, writePaymentLogoAssets, IMAGES_DIR } from "./seed-data.mjs";
 
 // El filesystem de Render es efímero: en cada deploy hay que regenerar los
 // archivos de imagen aunque la base de datos ya tenga productos guardados.
 const products = buildProducts();
+writePaymentLogoAssets();
 console.log(`Imágenes regeneradas en ${IMAGES_DIR}`);
 
 await initSchema();

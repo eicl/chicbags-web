@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Save } from "lucide-react";
+import { Save, Upload, Loader2, Trash2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { fetchSettings, updateSettings, AppSettings } from "@/lib/api";
+import {
+  fetchSettings, updateSettings, AppSettings,
+  fetchPaymentCardLogos, createPaymentCardLogo, deletePaymentCardLogo, uploadImage,
+} from "@/lib/api";
+import { productImageUrl } from "@/lib/images";
 
 // Panel de configuración general, organizado por secciones — por ahora solo
 // "Pedidos" (todo lo relacionado al ciclo de vida y descuentos de un
@@ -18,6 +22,8 @@ const AdminSettings = () => {
   const [adminMax, setAdminMax] = useState("");
   const [separationDays, setSeparationDays] = useState("");
   const [nearSeparationDeadlineDays, setNearSeparationDeadlineDays] = useState("");
+  const [paymentGatewayLogo, setPaymentGatewayLogo] = useState("");
+  const [uploadingGatewayLogo, setUploadingGatewayLogo] = useState(false);
 
   useEffect(() => {
     if (settings) {
@@ -25,6 +31,7 @@ const AdminSettings = () => {
       setAdminMax(String(settings.maxItemDiscountAdmin));
       setSeparationDays(String(settings.separationDays));
       setNearSeparationDeadlineDays(String(settings.nearSeparationDeadlineDays));
+      setPaymentGatewayLogo(settings.paymentGatewayLogo);
     }
   }, [settings]);
 
@@ -63,7 +70,47 @@ const AdminSettings = () => {
       maxItemDiscountAdmin: adminValue,
       separationDays: separationValue,
       nearSeparationDeadlineDays: nearDeadlineValue,
+      paymentGatewayLogo,
     });
+  };
+
+  const handleUploadGatewayLogo = async (file: File) => {
+    setUploadingGatewayLogo(true);
+    try {
+      const { filename } = await uploadImage(file);
+      setPaymentGatewayLogo(filename);
+    } catch {
+      toast.error("No se pudo subir el logo");
+    } finally {
+      setUploadingGatewayLogo(false);
+    }
+  };
+
+  const { data: cardLogos = [] } = useQuery({ queryKey: ["paymentCardLogos"], queryFn: fetchPaymentCardLogos });
+  const [uploadingCardLogo, setUploadingCardLogo] = useState(false);
+
+  const createLogoMutation = useMutation({
+    mutationFn: (image: string) => createPaymentCardLogo(image),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["paymentCardLogos"] }),
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo agregar el logo"),
+  });
+
+  const deleteLogoMutation = useMutation({
+    mutationFn: (id: number) => deletePaymentCardLogo(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["paymentCardLogos"] }),
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo eliminar el logo"),
+  });
+
+  const handleAddCardLogo = async (file: File) => {
+    setUploadingCardLogo(true);
+    try {
+      const { filename } = await uploadImage(file);
+      createLogoMutation.mutate(filename);
+    } catch {
+      toast.error("No se pudo subir el logo");
+    } finally {
+      setUploadingCardLogo(false);
+    }
   };
 
   return (
@@ -108,6 +155,80 @@ const AdminSettings = () => {
         <Button onClick={handleSave} disabled={mutation.isPending} className="gap-2">
           <Save className="w-4 h-4" /> {mutation.isPending ? "Guardando..." : "Guardar"}
         </Button>
+      </div>
+
+      <div className="p-6 border border-border rounded-lg bg-card">
+        <h2 className="text-lg font-medium mb-1" style={{ fontFamily: "var(--font-display)" }}>Pago con tarjeta</h2>
+        <p className="text-sm text-muted-foreground mb-5">
+          Logos que se muestran en el paso de pago con tarjeta del checkout. Los de ejemplo son insignias genéricas —
+          reemplázalas por los logos reales de las marcas.
+        </p>
+
+        <div className="mb-6">
+          <label className="text-sm text-muted-foreground mb-1 block">Logo de la pasarela ("Transacciones realizadas vía...")</label>
+          <div className="flex items-center gap-3">
+            {paymentGatewayLogo && (
+              <img
+                src={productImageUrl(paymentGatewayLogo)}
+                alt="Logo de la pasarela"
+                className="h-8 w-auto max-w-[140px] object-contain border border-border rounded bg-background p-1"
+              />
+            )}
+            <label className="flex items-center gap-2 h-9 px-3 rounded-md border border-input text-sm cursor-pointer hover:bg-muted/50">
+              {uploadingGatewayLogo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              {paymentGatewayLogo ? "Cambiar" : "Subir"}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleUploadGatewayLogo(file);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1.5">Se guarda junto con el resto de esta página, con el botón "Guardar" de arriba.</p>
+        </div>
+
+        <div>
+          <label className="text-sm text-muted-foreground mb-1 block">Logos de tarjetas aceptadas</label>
+          <div className="flex flex-wrap items-center gap-3">
+            {cardLogos.map((logo) => (
+              <div key={logo.id} className="relative group">
+                <img
+                  src={productImageUrl(logo.image)}
+                  alt="Logo de tarjeta"
+                  className="h-8 w-auto max-w-[100px] object-contain border border-border rounded bg-background p-1"
+                />
+                <button
+                  type="button"
+                  onClick={() => deleteLogoMutation.mutate(logo.id)}
+                  disabled={deleteLogoMutation.isPending}
+                  aria-label="Eliminar logo"
+                  className="absolute -top-2 -right-2 p-1 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+            <label className="flex items-center gap-2 h-9 px-3 rounded-md border border-dashed border-input text-sm cursor-pointer hover:bg-muted/50">
+              {uploadingCardLogo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              Agregar logo
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleAddCardLogo(file);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
+        </div>
       </div>
     </div>
   );

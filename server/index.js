@@ -633,6 +633,7 @@ const mapSettings = (row) => ({
   maxItemDiscountAdmin: Number(row.max_item_discount_admin),
   separationDays: Number(row.separation_days),
   nearSeparationDeadlineDays: Number(row.near_separation_deadline_days),
+  paymentGatewayLogo: row.payment_gateway_logo,
 });
 
 const getSettings = async () => {
@@ -645,7 +646,7 @@ app.get("/api/settings", async (req, res) => {
 });
 
 app.put("/api/settings", requireAuth, async (req, res) => {
-  const { maxItemDiscountPublic, maxItemDiscountAdmin, separationDays, nearSeparationDeadlineDays } = req.body;
+  const { maxItemDiscountPublic, maxItemDiscountAdmin, separationDays, nearSeparationDeadlineDays, paymentGatewayLogo } = req.body;
   if (typeof maxItemDiscountPublic !== "number" || !Number.isFinite(maxItemDiscountPublic) || maxItemDiscountPublic < 0) {
     return res.status(400).json({ error: "El descuento máximo del link público es inválido" });
   }
@@ -660,10 +661,35 @@ app.put("/api/settings", requireAuth, async (req, res) => {
   }
   const { rows } = await pool.query(
     `UPDATE settings SET max_item_discount_public = $1, max_item_discount_admin = $2, separation_days = $3,
-       near_separation_deadline_days = $4 WHERE id = 1 RETURNING *`,
-    [maxItemDiscountPublic, maxItemDiscountAdmin, separationDays, nearSeparationDeadlineDays]
+       near_separation_deadline_days = $4, payment_gateway_logo = $5 WHERE id = 1 RETURNING *`,
+    [maxItemDiscountPublic, maxItemDiscountAdmin, separationDays, nearSeparationDeadlineDays, (paymentGatewayLogo ?? "").trim()]
   );
   res.json(mapSettings(rows[0]));
+});
+
+// Logos de tarjetas aceptadas, mostrados en el paso de pago con tarjeta del
+// checkout — GET público (el checkout no siempre tiene sesión), alta/baja
+// solo con sesión de admin.
+app.get("/api/payment-card-logos", async (req, res) => {
+  const { rows } = await pool.query("SELECT * FROM payment_card_logos ORDER BY display_order, id");
+  res.json(rows.map((r) => ({ id: r.id, image: r.image, displayOrder: r.display_order })));
+});
+
+app.post("/api/payment-card-logos", requireAuth, async (req, res) => {
+  const image = (req.body.image ?? "").toString().trim();
+  if (!image) return res.status(400).json({ error: "Sube una imagen" });
+  const { rows: maxRows } = await pool.query("SELECT COALESCE(MAX(display_order), 0) AS max FROM payment_card_logos");
+  const { rows } = await pool.query(
+    "INSERT INTO payment_card_logos (image, display_order) VALUES ($1, $2) RETURNING *",
+    [image, Number(maxRows[0].max) + 1]
+  );
+  res.status(201).json({ id: rows[0].id, image: rows[0].image, displayOrder: rows[0].display_order });
+});
+
+app.delete("/api/payment-card-logos/:id", requireAuth, async (req, res) => {
+  const { rowCount } = await pool.query("DELETE FROM payment_card_logos WHERE id = $1", [Number(req.params.id)]);
+  if (rowCount === 0) return res.status(404).json({ error: "No encontrado" });
+  res.status(204).end();
 });
 
 const DELIVERY_MODE_REQUIRED = ["Shalom", "Olva"];

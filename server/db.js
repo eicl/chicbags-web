@@ -388,7 +388,34 @@ export const initSchema = async () => {
   `);
   await pool.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS separation_days NUMERIC NOT NULL DEFAULT 15;`);
   await pool.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS near_separation_deadline_days NUMERIC NOT NULL DEFAULT 13;`);
+  // Logo de la pasarela de pago ("Transacciones realizadas vía ...") en el
+  // paso de tarjeta del checkout — vacío significa que esa línea no se
+  // muestra. Editable desde Admin > Configuración.
+  await pool.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS payment_gateway_logo TEXT NOT NULL DEFAULT '';`);
   await pool.query(`INSERT INTO settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`);
+  // Se siembra un logo de ejemplo solo si la fila sigue con el vacío por
+  // defecto (nunca se pisa una elección real del usuario).
+  await pool.query(`UPDATE settings SET payment_gateway_logo = 'example-gateway-izipay.svg' WHERE id = 1 AND payment_gateway_logo = '';`);
+
+  // Logos de las tarjetas aceptadas, mostrados en fila en el paso de pago
+  // con tarjeta del checkout — lista editable desde Admin > Configuración
+  // (agregar/quitar), a diferencia del logo de pasarela que es uno solo.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS payment_card_logos (
+      id SERIAL PRIMARY KEY,
+      image TEXT NOT NULL,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  // Insignias de ejemplo (genéricas, no son los logos oficiales de las
+  // marcas — el usuario debe reemplazarlas subiendo las reales desde el
+  // admin). Solo se siembran una vez, si la tabla todavía está vacía.
+  await pool.query(`
+    INSERT INTO payment_card_logos (image, display_order)
+    SELECT * FROM (VALUES ('example-card-visa.svg', 1), ('example-card-mastercard.svg', 2)) AS seed(image, display_order)
+    WHERE NOT EXISTS (SELECT 1 FROM payment_card_logos);
+  `);
 
   // Título y descripción que se muestran al compartir cada link (ej. por
   // WhatsApp) — editables desde el panel. La imagen y a qué ruta aplica

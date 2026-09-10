@@ -62,6 +62,44 @@ const makeProduct = (id, name, price, category, description, colorSpecs) => {
   return { id, name, price, categories: [category], description, image: defaultImage, colors, code: makeCode(id, category) };
 };
 
+// Insignias de ejemplo para Admin > Configuración > Pago con tarjeta (logos
+// de tarjetas aceptadas y de la pasarela) — genéricas, no son los logos
+// oficiales de las marcas (no hay licencia para usarlos). El nombre de
+// archivo tiene que calzar con el que siembra server/db.js en
+// payment_card_logos / settings.payment_gateway_logo. Igual que las fotos
+// de producto de abajo, se regeneran en cada arranque (el disco de Render
+// es efímero en los planes sin disco persistente, como staging) — se puede
+// llamar siempre de forma segura, sobrescribe con el mismo contenido.
+const PAYMENT_LOGOS = [
+  {
+    filename: "example-card-visa.svg",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40">
+    <rect width="100%" height="100%" rx="4" fill="#1a1f71"/>
+    <text x="50%" y="53%" fill="#ffffff" font-family="Arial, sans-serif" font-size="18" font-weight="bold" font-style="italic" text-anchor="middle" dominant-baseline="middle">VISA</text>
+  </svg>`,
+  },
+  {
+    filename: "example-card-mastercard.svg",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40">
+    <rect width="100%" height="100%" rx="4" fill="#2d2d2d"/>
+    <text x="50%" y="53%" fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" dominant-baseline="middle">Mastercard</text>
+  </svg>`,
+  },
+  {
+    filename: "example-gateway-izipay.svg",
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="32">
+    <text x="50%" y="53%" fill="#e30613" font-family="Arial, sans-serif" font-size="18" font-weight="bold" text-anchor="middle" dominant-baseline="middle">izipay</text>
+  </svg>`,
+  },
+];
+
+export const writePaymentLogoAssets = () => {
+  mkdirSync(IMAGES_DIR, { recursive: true });
+  for (const { filename, svg } of PAYMENT_LOGOS) {
+    writeFileSync(path.join(IMAGES_DIR, filename), svg);
+  }
+};
+
 // Construye la lista de productos y, como efecto secundario, (re)genera los
 // archivos de imagen placeholder en disco. Se puede llamar siempre de forma
 // segura: sobrescribe los SVG existentes con el mismo contenido.

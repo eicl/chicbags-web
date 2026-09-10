@@ -608,6 +608,9 @@ export interface AppSettings {
   maxItemDiscountAdmin: number;
   separationDays: number;
   nearSeparationDeadlineDays: number;
+  // Logo de la pasarela de pago ("Transacciones realizadas vía ...") en el
+  // paso de tarjeta del checkout — filename, vacío si no hay logo elegido.
+  paymentGatewayLogo: string;
 }
 
 export const fetchSettings = (): Promise<AppSettings> =>
@@ -620,6 +623,28 @@ export const updateSettings = (data: AppSettings): Promise<AppSettings> =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   }).then((res) => handle<AppSettings>(res));
+
+// Logos de las tarjetas aceptadas, en fila en el paso de pago con tarjeta
+// del checkout — lista editable desde Admin > Configuración.
+export interface PaymentCardLogo {
+  id: number;
+  image: string;
+  displayOrder: number;
+}
+
+export const fetchPaymentCardLogos = (): Promise<PaymentCardLogo[]> =>
+  fetch(`${API_URL}/payment-card-logos`).then((res) => handle<PaymentCardLogo[]>(res));
+
+export const createPaymentCardLogo = (image: string): Promise<PaymentCardLogo> =>
+  fetch(`${API_URL}/payment-card-logos`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image }),
+  }).then((res) => handle<PaymentCardLogo>(res));
+
+export const deletePaymentCardLogo = (id: number): Promise<void> =>
+  fetch(`${API_URL}/payment-card-logos/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
 
 // Título y descripción que se muestran al compartir cada link (ej. por
 // WhatsApp): editables desde el panel. path/label son solo informativos
