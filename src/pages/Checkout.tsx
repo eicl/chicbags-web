@@ -375,7 +375,14 @@ const Checkout = () => {
                       este título no puede depender de que "algo" la
                       resuelva bien — se fija explícito para que nunca
                       salga con un color ajeno. */}
-                  <h2 className="text-lg font-medium" style={{ color: "hsl(25 20% 15%)" }}>Tarjeta de crédito o débito</h2>
+                  {/* fontFamily también forzado acá (no solo el color): el
+                      index.css del sitio pone h1-h6 en la fuente de título
+                      (Playfair Display) por reglas propias, que le ganan a
+                      la herencia del Roboto del contenedor padre — hay que
+                      declararlo directo en el propio h2 para que gane. */}
+                  <h2 className="text-lg font-medium" style={{ color: "hsl(25 20% 15%)", fontFamily: "Roboto, sans-serif" }}>
+                    Tarjeta de crédito o débito
+                  </h2>
                   {cardLogos.length > 0 && (
                     <div className="flex items-center gap-2">
                       {cardLogos.map((logo) => (
