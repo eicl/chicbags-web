@@ -384,23 +384,26 @@ const Checkout = () => {
                     <Loader2 className="w-4 h-4 animate-spin" /> Iniciando el pago con tarjeta...
                   </div>
                 )}
-                {/* Ajuste best-effort sobre el widget de Izipay: solo las
-                    variables de tema (confirmadas contra su CSS real,
-                    classic-reset.css) — es el único nivel que se probó
-                    confiable. Se intentó, en dos vueltas seguidas, forzar
-                    también el borde de los campos y el botón por clase
-                    directa (.kr-field-wrapper, luego .kr-field.kr-text
-                    .kr-input-wrapper, .kr-payment-button) y cada intento
-                    rompió algo distinto (el botón quedó sin caja, los campos
-                    sin borde) — el DOM real que arma el widget no calza con
-                    lo que se puede inferir leyendo su hoja de estilos desde
-                    afuera, sin inspeccionarlo en un navegador real. Se
-                    revierte a lo último confirmado sin roturas: el botón
-                    "Pagar" con su fondo teal vía variable. Los campos se
-                    quedan con la apariencia propia de Izipay sin forzar caja
-                    — para ese ajuste puntual hace falta el nombre de clase
-                    real (botón derecho → Inspeccionar sobre un campo en el
-                    navegador) en vez de seguir adivinando. */}
+                {/* Ajuste sobre el widget de Izipay, esta vez con las clases
+                    reales confirmadas inspeccionando el DOM en vivo (no
+                    adivinadas desde su hoja de estilos):
+
+                    - El número/fecha/CVV se renderizan cada uno DENTRO DE UN
+                      IFRAME de static.micuentaweb.pe (otro origen, por
+                      PCI-DSS) — por eso ningún CSS nuestro pudo tocar jamás
+                      el input en sí. Pero el contenedor que envuelve ese
+                      iframe sí vive en nuestra página: .kr-field-wrapper-pan,
+                      .kr-field-wrapper-expiryDate, .kr-field-wrapper-
+                      securityCode (y .kr-field-wrapper-cardHolderName, que
+                      no usa iframe). Ahí es donde va la caja.
+                    - .kr-payment-button es hermano de los campos, no está
+                      anidado en ningún .kr-field-wrapper — se puede forzar
+                      aparte sin cruzarse con los campos.
+                    - --kr-global-color-primary sigue sin aplicarse de forma
+                      confiable (Izipay la pone inline en <html>, probablemente
+                      desde la configuración de la cuenta) — se deja el
+                      intento igual, no hace daño, pero el color real de los
+                      campos/botón depende de los valores fijos de abajo. */}
                 <style>{`
                   .kr-embedded {
                     --kr-global-color-primary: ${IZIPAY_BRAND_COLOR} !important;
@@ -409,6 +412,39 @@ const Checkout = () => {
                     --kr-form-button-borderColor: ${IZIPAY_BRAND_COLOR} !important;
                     --kr-form-button-color: #ffffff !important;
                     --kr-global-focus-outlineColor: ${IZIPAY_BRAND_COLOR} !important;
+                  }
+                  .kr-embedded .kr-field-wrapper-pan,
+                  .kr-embedded .kr-field-wrapper-expiryDate,
+                  .kr-embedded .kr-field-wrapper-securityCode,
+                  .kr-embedded .kr-field-wrapper-cardHolderName {
+                    background-color: #ffffff !important;
+                    border: 1px solid #d8d8d8 !important;
+                    border-radius: 6px !important;
+                    padding: 10px 12px !important;
+                    box-sizing: border-box !important;
+                  }
+                  .kr-embedded .kr-field-wrapper-pan:focus-within,
+                  .kr-embedded .kr-field-wrapper-expiryDate:focus-within,
+                  .kr-embedded .kr-field-wrapper-securityCode:focus-within,
+                  .kr-embedded .kr-field-wrapper-cardHolderName:focus-within {
+                    border-color: ${IZIPAY_BRAND_COLOR} !important;
+                    box-shadow: 0 0 0 3px ${IZIPAY_BRAND_COLOR}26 !important;
+                  }
+                  .kr-embedded .kr-field-element {
+                    margin-bottom: 12px !important;
+                  }
+                  .kr-embedded .kr-payment-button {
+                    display: block !important;
+                    width: 100% !important;
+                    box-sizing: border-box !important;
+                    padding: 12px !important;
+                    text-align: center !important;
+                    background-color: ${IZIPAY_BRAND_COLOR} !important;
+                    border: 1px solid ${IZIPAY_BRAND_COLOR} !important;
+                    color: #ffffff !important;
+                    border-radius: 6px !important;
+                    font-size: 15px !important;
+                    cursor: pointer !important;
                   }
                 `}</style>
                 <div id={KR_FORM_WRAPPER_ID}>
