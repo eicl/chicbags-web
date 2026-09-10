@@ -389,16 +389,15 @@ const Checkout = () => {
                     classic-reset.css), pero Izipay no las publica como API
                     pública, así que pueden cambiar sin aviso.
 
-                    En producción se vio que las variables --kr-form-button-*
-                    sí se aplican (el botón "Pagar" ya sale teal), pero
-                    --kr-global-color-primary NO — el resto del widget
-                    (borde/foco de los campos) se queda con su azul por
-                    defecto (#293c7a, confirmado leyendo su CSS: así lo usan
-                    como valor de respaldo en decenas de reglas). Por eso acá
-                    abajo, además de dejar las variables, se fuerza también
-                    el borde/fondo/foco de los campos directo por clase
-                    (.kr-field-wrapper), sin depender de que la variable se
-                    resuelva. */}
+                    Dos vueltas atrás: forzar .kr-field-wrapper (genérico)
+                    también pescó al botón "Pagar" — perdió su fondo teal y
+                    quedó como texto plano, sin caja. Se cambia al selector
+                    real y más específico .kr-field.kr-text .kr-input-wrapper
+                    (confirmado en su CSS), que solo existe en los campos de
+                    texto, no en el botón — así no hay forma de que se crucen.
+                    También se agrega separación entre campos (venían muy
+                    pegados) y se saca el padding-left que duplicaba el que
+                    ya trae el input por su cuenta. */}
                 <style>{`
                   .kr-embedded {
                     --kr-global-color-primary: ${IZIPAY_BRAND_COLOR} !important;
@@ -408,13 +407,21 @@ const Checkout = () => {
                     --kr-form-button-color: #ffffff !important;
                     --kr-global-focus-outlineColor: ${IZIPAY_BRAND_COLOR} !important;
                   }
-                  .kr-embedded .kr-field-wrapper {
+                  .kr-embedded .kr-payment-button {
+                    background-color: ${IZIPAY_BRAND_COLOR} !important;
+                    border-color: ${IZIPAY_BRAND_COLOR} !important;
+                    color: #ffffff !important;
+                    border-radius: 6px !important;
+                  }
+                  .kr-embedded .kr-field.kr-text {
+                    margin-bottom: 14px !important;
+                  }
+                  .kr-embedded .kr-field.kr-text .kr-input-wrapper {
                     background-color: #ffffff !important;
                     border: 1px solid #d8d8d8 !important;
                     border-radius: 6px !important;
-                    padding-left: 8px !important;
                   }
-                  .kr-embedded .kr-field-wrapper:focus-within {
+                  .kr-embedded .kr-field.kr-text .kr-input-wrapper:focus-within {
                     border-color: ${IZIPAY_BRAND_COLOR} !important;
                     box-shadow: 0 0 0 3px ${IZIPAY_BRAND_COLOR}26 !important;
                   }
