@@ -10,7 +10,7 @@ import KRGlueImport from "@lyracom/embedded-form-glue";
 // desenvuelve a mano para que funcione sin importar si el bundler lo envuelve
 // una vez o dos.
 const KRGlue = (KRGlueImport as unknown as { default?: typeof KRGlueImport }).default ?? KRGlueImport;
-import { ArrowLeft, CheckCircle2, CreditCard, Banknote, Loader2, Lock } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CreditCard, Banknote, Loader2, Lock, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import Header from "@/components/Header";
@@ -39,6 +39,12 @@ const KR_FORM_WRAPPER_ID = "micuentawebstd_rest_wrapper";
 // de Izipay (ver el bloque de estilo junto al widget más abajo).
 const IZIPAY_BRAND_COLOR = "#00A99D";
 
+// registerOrder (server/index.js) tira estos dos mensajes cuando ya no hay
+// stock suficiente o el color ya no existe — se detectan por texto para
+// resaltarlos aparte del error genérico (no hay un código de error separado
+// para esto en la respuesta del servidor).
+const isStockError = (message: string) => /no hay suficiente stock|ya no tiene el color/i.test(message);
+
 interface CardPaymentInfo {
   orderId: number;
   total: number;
@@ -58,6 +64,10 @@ const Checkout = () => {
   const [stage, setStage] = useState<Stage>("form");
   const [order, setOrder] = useState<Order | null>(null);
   const [cardPayment, setCardPayment] = useState<CardPaymentInfo | null>(null);
+  // Aparte del toast (que desaparece solo), este mensaje queda fijo en
+  // pantalla cuando el pedido no se pudo registrar por falta de stock —
+  // para que no se pierda de vista qué producto/color se quedó sin unidades.
+  const [stockError, setStockError] = useState<string | null>(null);
 
   // Logos configurables desde Admin > Configuración — se muestran alrededor
   // del formulario de tarjeta (los campos en sí los renderiza el widget de
@@ -180,6 +190,7 @@ const Checkout = () => {
     if (!customer || items.length === 0 || submitting) return;
     setChargeType("Normal");
     setSubmitting(true);
+    setStockError(null);
     try {
       // Si un intento anterior con tarjeta ya registró el pedido (ej. la
       // tarjeta fue rechazada y se volvió a "form"), se reusa ese mismo
@@ -213,7 +224,9 @@ const Checkout = () => {
         publicKey: tokenBody.publicKey,
       });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo procesar el pago");
+      const message = err instanceof Error ? err.message : "No se pudo procesar el pago";
+      toast.error(message);
+      if (isStockError(message)) setStockError(message);
       setStage("form");
     } finally {
       setSubmitting(false);
@@ -226,6 +239,7 @@ const Checkout = () => {
   const payContraentrega = async () => {
     if (!customer || items.length === 0 || submitting) return;
     setSubmitting(true);
+    setStockError(null);
     try {
       let currentOrder = order && order.chargeType === "Contraentrega" ? order : null;
       if (!currentOrder) {
@@ -242,7 +256,9 @@ const Checkout = () => {
       clearCart();
       setStage("cod-success");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo registrar el pedido");
+      const message = err instanceof Error ? err.message : "No se pudo registrar el pedido";
+      toast.error(message);
+      if (isStockError(message)) setStockError(message);
     } finally {
       setSubmitting(false);
     }
@@ -323,6 +339,12 @@ const Checkout = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 lg:gap-12">
           <div className="lg:col-span-3 space-y-6">
+            {stockError && (
+              <div className="flex items-start gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                <p>{stockError}</p>
+              </div>
+            )}
             <div className="border border-border rounded-lg p-6 space-y-4">
               <h2 className="text-lg font-medium">Tus datos de entrega</h2>
               <p className="text-sm text-muted-foreground">
