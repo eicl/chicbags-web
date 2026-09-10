@@ -74,11 +74,20 @@ const AdminSettings = () => {
     });
   };
 
+  // A diferencia de los campos de "Pedidos" (que se guardan juntos con el
+  // botón "Guardar"), este se persiste solo, igual que los logos de
+  // tarjeta — para no depender de que el usuario sepa que hace falta un
+  // segundo clic en un botón que ni siquiera está en esta misma sección.
+  // Usa los valores ya guardados de "settings" (no el borrador local de los
+  // campos de Pedidos) para no persistir de paso una edición a medio hacer.
   const handleUploadGatewayLogo = async (file: File) => {
     setUploadingGatewayLogo(true);
     try {
       const { filename } = await uploadImage(file);
       setPaymentGatewayLogo(filename);
+      if (settings) {
+        mutation.mutate({ ...settings, paymentGatewayLogo: filename });
+      }
     } catch {
       toast.error("No se pudo subir el logo");
     } finally {
@@ -189,7 +198,7 @@ const AdminSettings = () => {
               />
             </label>
           </div>
-          <p className="text-xs text-muted-foreground mt-1.5">Se guarda junto con el resto de esta página, con el botón "Guardar" de arriba.</p>
+          <p className="text-xs text-muted-foreground mt-1.5">Se guarda de inmediato al subirlo.</p>
         </div>
 
         <div>
