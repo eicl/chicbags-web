@@ -446,6 +446,41 @@ const Checkout = () => {
                     font-size: 15px !important;
                     cursor: pointer !important;
                   }
+                  /* Los desplegables "Sin cuotas"/"Pago sin diferido"
+                     (.kr-custom-select, confirmado real en el DOM) no usan
+                     iframe — son un combobox propio armado con divs, así
+                     que sí se pueden restylear directo: la caja que se ve
+                     siempre (.kr-select), el panel de opciones que aparece
+                     al abrir (.kr-options/.kr-option) y la flechita
+                     (.kr-select-caret). */
+                  .kr-embedded .kr-select-wrapper.kr-custom-select .kr-select {
+                    border: 1px solid #d8d8d8 !important;
+                    border-radius: 6px !important;
+                    background-color: #ffffff !important;
+                    padding: 10px 12px !important;
+                    box-sizing: border-box !important;
+                  }
+                  .kr-embedded .kr-select-wrapper.kr-custom-select .kr-select:hover,
+                  .kr-embedded .kr-select-wrapper.kr-custom-select .kr-select[aria-expanded="true"] {
+                    border-color: ${IZIPAY_BRAND_COLOR} !important;
+                  }
+                  .kr-embedded .kr-select-wrapper.kr-custom-select .kr-select-caret svg path {
+                    fill: #999999 !important;
+                  }
+                  .kr-embedded .kr-select-wrapper.kr-custom-select .kr-options {
+                    border: 1px solid #d8d8d8 !important;
+                    border-radius: 6px !important;
+                    background-color: #ffffff !important;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+                    overflow: hidden !important;
+                  }
+                  .kr-embedded .kr-select-wrapper.kr-custom-select .kr-option {
+                    background-color: #ffffff !important;
+                  }
+                  .kr-embedded .kr-select-wrapper.kr-custom-select .kr-option:hover,
+                  .kr-embedded .kr-select-wrapper.kr-custom-select .kr-option.kr-active-option {
+                    background-color: ${IZIPAY_BRAND_COLOR}1A !important;
+                  }
                 `}</style>
                 <div id={KR_FORM_WRAPPER_ID}>
                   <div className="kr-embedded" />
