@@ -360,7 +360,12 @@ const Checkout = () => {
               // acento teal de abajo es el color real de marca de Izipay.
               <div
                 className="rounded-lg p-6 space-y-4"
-                style={{ fontFamily: "Roboto, sans-serif", border: `1px solid ${IZIPAY_BRAND_COLOR}30`, borderTop: `3px solid ${IZIPAY_BRAND_COLOR}` }}
+                style={{
+                  fontFamily: "Roboto, sans-serif",
+                  backgroundColor: "#ffffff",
+                  border: `1px solid ${IZIPAY_BRAND_COLOR}30`,
+                  borderTop: `3px solid ${IZIPAY_BRAND_COLOR}`,
+                }}
               >
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   {/* Color forzado a mano (no hsl(var(--primary)) ni
@@ -406,6 +411,7 @@ const Checkout = () => {
                       campos/botón depende de los valores fijos de abajo. */}
                 <style>{`
                   .kr-embedded {
+                    background-color: #ffffff !important;
                     --kr-global-color-primary: ${IZIPAY_BRAND_COLOR} !important;
                     --kr-global-color-primaryLight: ${IZIPAY_BRAND_COLOR}30 !important;
                     --kr-form-button-backgroundColor: ${IZIPAY_BRAND_COLOR} !important;
