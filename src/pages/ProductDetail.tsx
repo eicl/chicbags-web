@@ -343,11 +343,25 @@ const ProductDetail = () => {
               transition={{ duration: 0.2 }}
               className="fixed inset-4 md:inset-12 z-50 flex items-center justify-center pointer-events-none"
             >
-              <img
-                src={productImageUrl(mainMediaSrc)}
-                alt={activePhoto ? product.name : `${product.name}${colors[selectedColor] ? " - " + colors[selectedColor].name : ""}`}
-                className="max-w-full max-h-full object-contain pointer-events-auto"
-              />
+              {/* El wrapper se ajusta exactamente al tamaño real que termina
+                  ocupando la foto (limitado por los max-w/max-h de abajo,
+                  que replican el inset-4/inset-12 del contenedor en vw/vh
+                  para no depender de un % contra un padre de ancho
+                  automático) — así la etiqueta queda pegada a la esquina de
+                  la foto y no a la de la pantalla, aunque la foto no llene
+                  todo el visor. */}
+              <div className="relative inline-block pointer-events-auto">
+                <img
+                  src={productImageUrl(mainMediaSrc)}
+                  alt={activePhoto ? product.name : `${product.name}${colors[selectedColor] ? " - " + colors[selectedColor].name : ""}`}
+                  className="block max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] md:max-w-[calc(100vw-6rem)] md:max-h-[calc(100vh-6rem)]"
+                />
+                {!mediaOverride && colors[selectedColor] && (
+                  <span className="absolute bottom-2 left-2 z-10 bg-background/85 backdrop-blur-sm text-foreground text-[10px] font-medium tracking-widest uppercase px-2.5 py-1 rounded-sm">
+                    {colors[selectedColor].name}
+                  </span>
+                )}
+              </div>
             </motion.div>
             <button
               type="button"
