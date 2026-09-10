@@ -12,7 +12,7 @@ import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { pool, initSchema, getOrCreateBrandId, ensureCategoryExists, ensureDistrictExists } from "./db.js";
-import { sendCustomerRegistrationWhatsApp, sendOrderRegistrationWhatsApp, sendOrderStatusWhatsApp, sendMobileVerificationPin, sendPasswordResetWhatsApp } from "./whatsapp.js";
+import { sendCustomerRegistrationWhatsApp, sendCustomerAccountWhatsApp, sendOrderRegistrationWhatsApp, sendOrderStatusWhatsApp, sendMobileVerificationPin, sendPasswordResetWhatsApp } from "./whatsapp.js";
 import { lookupDni } from "./migo.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1060,7 +1060,7 @@ app.post("/api/customers/register-account", async (req, res) => {
     await pool.query("DELETE FROM mobile_verifications WHERE mobile = $1", [mobile]);
     setCustomerAuthCookie(res, signCustomerToken(row.id));
     res.status(201).json(customer);
-    sendCustomerRegistrationWhatsApp(customer);
+    sendCustomerAccountWhatsApp(customer);
   } catch (err) {
     if (err.message === "ACCOUNT_EXISTS") {
       return res.status(409).json({ error: "Ya existe una cuenta con ese documento. Inicia sesión." });
@@ -2878,7 +2878,7 @@ app.put("/api/route-meta/:key", requireAuth, async (req, res) => {
 // estado, registro de cliente) — GET público porque las páginas que arman
 // esos links (registro de pedido, registro de cliente) no siempre tienen
 // sesión de admin; solo editarlas requiere sesión.
-const MESSAGE_TEMPLATE_KEYS = ["order_registration", "order_status_update", "customer_registration"];
+const MESSAGE_TEMPLATE_KEYS = ["order_registration", "order_status_update", "customer_registration", "customer_account_registration"];
 
 app.get("/api/message-templates", async (req, res) => {
   const { rows } = await pool.query("SELECT template_key, template FROM message_templates ORDER BY template_key");

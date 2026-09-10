@@ -8,6 +8,7 @@ export const DEFAULT_MESSAGE_TEMPLATES: Record<MessageTemplateKey, string> = {
   // Antes lo mandaba el cliente a la empresa (link wa.me); ahora lo manda
   // la empresa al cliente automáticamente, así que va en segunda persona.
   customer_registration: `Hola {{cliente}}, gracias por registrarte en ChicBags. Tu código de cliente es #{{codigo}}. Aquí tienes el link para registrar tu pedido: {{link}}`,
+  customer_account_registration: `Hola {{cliente}}, gracias por registrarte en ChicBags. Tu código de cliente es #{{codigo}}. Desde ahora ya puedes realizar tus compras desde la web.`,
 };
 
 // Reemplaza cada {{variable}} por su valor; una variable sin valor en el

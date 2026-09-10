@@ -64,6 +64,11 @@ const DEFAULT_MESSAGE_TEMPLATES = {
   // mandara a la empresa), ahora la empresa le escribe al cliente, así que
   // el texto está en segunda persona.
   customer_registration: `Hola {{cliente}}, gracias por registrarte en ChicBags. Tu código de cliente es #{{codigo}}. Aquí tienes el link para registrar tu pedido: {{link}}`,
+  // A diferencia de customer_registration (registro por el link público,
+  // donde el link de /registro-pedido lo sigue usando el vendedor), quien
+  // crea una cuenta desde el catálogo ya puede comprar directo por la web
+  // — no tiene sentido ofrecerle ese link.
+  customer_account_registration: `Hola {{cliente}}, gracias por registrarte en ChicBags. Tu código de cliente es #{{codigo}}. Desde ahora ya puedes realizar tus compras desde la web.`,
 };
 
 const renderMessageTemplate = (template, vars) => template.replace(/\{\{(\w+)\}\}/g, (_match, key) => vars[key] ?? "");
@@ -112,6 +117,18 @@ export const sendCustomerRegistrationWhatsApp = async (customer) => {
     apellido: customer.paternalSurname,
     codigo: String(customer.id),
     link: `${SITE_URL}/registro-pedido/${customer.id}`,
+  });
+  return sendWhatsAppMessage(customer.mobile, message);
+};
+
+// Para quien crea una cuenta desde el catálogo (Crea tu cuenta) en vez de
+// registrarse por el link público — ver nota en DEFAULT_MESSAGE_TEMPLATES.
+export const sendCustomerAccountWhatsApp = async (customer) => {
+  const template = await getMessageTemplate("customer_account_registration");
+  const message = renderMessageTemplate(template, {
+    cliente: customer.firstName,
+    apellido: customer.paternalSurname,
+    codigo: String(customer.id),
   });
   return sendWhatsAppMessage(customer.mobile, message);
 };
