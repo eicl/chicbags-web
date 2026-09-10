@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ShoppingBag, Menu, X, Search, User, Truck, Lock, Star } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useCart } from "@/context/CartContext";
+import { useCustomerAuth } from "@/context/CustomerAuthContext";
 import { motion, AnimatePresence } from "framer-motion";
 
 const NAV_LINKS = [
@@ -21,6 +22,7 @@ const isRouteLink = (href: string) => href === "/" || href === "/catalogo";
 
 const Header = () => {
   const { totalItems, setIsCartOpen } = useCart();
+  const { customer } = useCustomerAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
@@ -61,10 +63,11 @@ const Header = () => {
           </button>
           <Link
             to="/mi-cuenta"
-            className="hidden sm:inline-flex p-2 hover:bg-muted rounded-full transition-colors"
+            className="hidden sm:inline-flex items-center gap-2 p-2 hover:bg-muted rounded-full transition-colors"
             aria-label="Mi cuenta"
           >
             <User className="w-5 h-5 text-foreground" />
+            {customer && <span className="text-sm text-foreground pr-1">Hola, {customer.firstName}</span>}
           </Link>
           <button
             onClick={() => setIsCartOpen(true)}
