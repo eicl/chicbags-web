@@ -114,6 +114,10 @@ const Checkout = () => {
           // que hace GET /api/orders/:id/status (ver reconcileIzipayOrder
           // en server/index.js) — por eso se hace polling en vez de confiar
           // solo en esta respuesta.
+          // Acá es el punto en que el pago se concreta de verdad (se le dio
+          // clic al botón "Pagar" propio de Izipay y la tarjeta fue
+          // aceptada) — recién acá se vacía el carrito, no antes.
+          clearCart();
           setStage("confirming");
           pollOrderStatus(cardPayment.orderId, cardPayment.total);
         });
@@ -153,36 +157,45 @@ const Checkout = () => {
     }, 2000);
   };
 
-  const handlePay = async () => {
-    if (!customer || items.length === 0) return;
+  const getOnlineSellerId = async (): Promise<number | null> => {
+    const sellers = await fetchSellers();
+    const onlineSeller = sellers.find((s) => s.username === ONLINE_SELLER_USERNAME);
+    if (!onlineSeller) {
+      toast.error("La tienda no está lista para recibir pedidos en línea todavía. Escríbenos por WhatsApp.");
+      return null;
+    }
+    return onlineSeller.id;
+  };
+
+  // Se dispara con un solo clic en "Tarjeta" — ya no hay un botón aparte de
+  // "Confirmar pedido". El pedido se registra (y recién ahí se reserva el
+  // stock de cada ítem) apenas arranca el pago con tarjeta, para que dos
+  // clientes no puedan quedarse con el mismo stock mientras uno de ellos
+  // está completando el pago. El carrito, en cambio, NO se vacía acá: sigue
+  // disponible (y sobrevive a un refresh, ver CartContext) hasta que el
+  // pago se concreta de verdad — recién en el onSubmit del formulario de
+  // Izipay más abajo — así un refresh a mitad de camino o una tarjeta
+  // rechazada no hacen perder el pedido.
+  const payWithCard = async () => {
+    if (!customer || items.length === 0 || submitting) return;
+    setChargeType("Normal");
     setSubmitting(true);
     try {
-      // Si un intento anterior ya creó el pedido (ej. el paso de la tarjeta
-      // falló después) se reusa ese mismo pedido en vez de crear uno nuevo
-      // — evita duplicar el pedido si el cliente reintenta.
-      let currentOrder = order;
+      // Si un intento anterior con tarjeta ya registró el pedido (ej. la
+      // tarjeta fue rechazada y se volvió a "form"), se reusa ese mismo
+      // pedido en vez de crear uno nuevo y descontar el stock dos veces.
+      let currentOrder = order && order.chargeType === "Normal" ? order : null;
       if (!currentOrder) {
-        const sellers = await fetchSellers();
-        const onlineSeller = sellers.find((s) => s.username === ONLINE_SELLER_USERNAME);
-        if (!onlineSeller) {
-          toast.error("La tienda no está lista para recibir pedidos en línea todavía. Escríbenos por WhatsApp.");
-          return;
-        }
+        const sellerId = await getOnlineSellerId();
+        if (!sellerId) return;
         currentOrder = await registerOrder({
           customerId: customer.id,
-          sellerId: onlineSeller.id,
+          sellerId,
           items: items.map((item) => ({ productId: item.id, colorName: item.colorName, quantity: item.quantity })),
-          chargeType,
+          chargeType: "Normal",
         });
         setOrder(currentOrder);
       }
-
-      if (chargeType === "Contraentrega") {
-        clearCart();
-        setStage("cod-success");
-        return;
-      }
-
       setStage("loading-card-form");
       const tokenRes = await fetch("/api/izipay/formtoken", {
         method: "POST",
@@ -191,11 +204,6 @@ const Checkout = () => {
       });
       const tokenBody = await tokenRes.json();
       if (!tokenRes.ok) throw new Error(tokenBody.error ?? "No se pudo iniciar el pago con tarjeta");
-      // Recién acá se limpia el carrito: el pedido ya existe y el
-      // formulario de pago va a poder cargar. Si se limpiara antes y este
-      // paso fallara, el cliente quedaría viendo "carrito vacío" sin poder
-      // reintentar el pago.
-      clearCart();
       // El formulario en sí se carga en el useEffect de arriba, una vez que
       // este estado hace que se renderice el contenedor que necesita.
       setCardPayment({
@@ -207,6 +215,34 @@ const Checkout = () => {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo procesar el pago");
       setStage("form");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Contra entrega no tiene un botón de pago propio como el de Izipay (se
+  // paga en efectivo al recibir), así que acá sí hace falta una acción
+  // explícita del cliente para registrar el pedido.
+  const payContraentrega = async () => {
+    if (!customer || items.length === 0 || submitting) return;
+    setSubmitting(true);
+    try {
+      let currentOrder = order && order.chargeType === "Contraentrega" ? order : null;
+      if (!currentOrder) {
+        const sellerId = await getOnlineSellerId();
+        if (!sellerId) return;
+        currentOrder = await registerOrder({
+          customerId: customer.id,
+          sellerId,
+          items: items.map((item) => ({ productId: item.id, colorName: item.colorName, quantity: item.quantity })),
+          chargeType: "Contraentrega",
+        });
+        setOrder(currentOrder);
+      }
+      clearCart();
+      setStage("cod-success");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo registrar el pedido");
     } finally {
       setSubmitting(false);
     }
@@ -309,15 +345,17 @@ const Checkout = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    setChargeType("Normal");
-                    setOrder(null);
-                  }}
-                  className={`flex items-center gap-3 p-4 rounded-md border text-left transition-colors ${
+                  onClick={payWithCard}
+                  disabled={submitting || stage !== "form"}
+                  className={`flex items-center gap-3 p-4 rounded-md border text-left transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
                     chargeType === "Normal" ? "border-primary bg-primary/10" : "border-input hover:border-muted-foreground/50"
                   }`}
                 >
-                  <CreditCard className="w-5 h-5 shrink-0" />
+                  {submitting && chargeType === "Normal" ? (
+                    <Loader2 className="w-5 h-5 shrink-0 animate-spin" />
+                  ) : (
+                    <CreditCard className="w-5 h-5 shrink-0" />
+                  )}
                   <div>
                     <p className="text-sm font-medium">Tarjeta</p>
                     {cardLogos.length > 0 ? (
@@ -334,11 +372,9 @@ const Checkout = () => {
                 {canPickContraentrega && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setChargeType("Contraentrega");
-                      setOrder(null);
-                    }}
-                    className={`flex items-center gap-3 p-4 rounded-md border text-left transition-colors ${
+                    onClick={() => setChargeType("Contraentrega")}
+                    disabled={submitting || stage !== "form"}
+                    className={`flex items-center gap-3 p-4 rounded-md border text-left transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
                       chargeType === "Contraentrega" ? "border-primary bg-primary/10" : "border-input hover:border-muted-foreground/50"
                     }`}
                   >
@@ -559,9 +595,27 @@ const Checkout = () => {
                 <span>Total</span>
                 <span>S/.{(order ? order.total : totalPrice).toFixed(2)}</span>
               </div>
-              <Button onClick={handlePay} disabled={submitting || stage !== "form"} className="w-full py-6 text-sm tracking-widest uppercase gap-2">
-                {submitting ? "Procesando..." : "Confirmar pedido"}
-              </Button>
+              {/* Con tarjeta no hay un botón aparte acá: elegir "Tarjeta"
+                  arriba ya dispara el registro del pedido y carga el
+                  formulario de Izipay — el pago en sí se concreta con el
+                  botón "Pagar" propio de ese formulario. Contra entrega no
+                  tiene un botón de pago externo, así que sí necesita esta
+                  acción explícita. */}
+              {chargeType === "Contraentrega" ? (
+                <Button
+                  onClick={payContraentrega}
+                  disabled={submitting || stage !== "form"}
+                  className="w-full py-6 text-sm tracking-widest uppercase gap-2"
+                >
+                  {submitting ? "Procesando..." : "Registrar pedido"}
+                </Button>
+              ) : (
+                stage === "form" && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    Elige "Tarjeta" arriba para continuar con el pago.
+                  </p>
+                )
+              )}
             </div>
           </div>
         </div>
