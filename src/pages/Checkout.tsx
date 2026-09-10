@@ -34,6 +34,10 @@ const ONLINE_SELLER_USERNAME = "Tienda Online";
 // el formulario embebido de tarjeta dentro de KR_FORM_WRAPPER_ID.
 const IZIPAY_ENDPOINT = "https://static.micuentaweb.pe";
 const KR_FORM_WRAPPER_ID = "micuentawebstd_rest_wrapper";
+// Teal real de la marca Izipay — a propósito distinto del color primario de
+// ChicBags, para que el paso de tarjeta se note como el formulario propio
+// de Izipay (ver el bloque de estilo junto al widget más abajo).
+const IZIPAY_BRAND_COLOR = "#00A99D";
 
 interface CardPaymentInfo {
   orderId: number;
@@ -349,13 +353,15 @@ const Checkout = () => {
             </div>
 
             {stage === "loading-card-form" && (
-              // El widget de Izipay (tema "classic") usa la tipografía
-              // Roboto en todo su formulario (confirmado contra su propio
-              // CSS, classic-reset.css) — el texto que agregamos alrededor
-              // usa la misma, para que combine en vez de mezclar con la
-              // tipografía del resto del sitio. Ya queda cargada por el
-              // propio widget, no hace falta importarla de nuevo acá.
-              <div className="border border-border rounded-lg p-6 space-y-4" style={{ fontFamily: "Roboto, sans-serif" }}>
+              // A propósito, esta zona se ve distinta al resto del sitio:
+              // el cliente tiene que notar que está en el formulario propio
+              // de Izipay (marca de confianza para meter los datos de la
+              // tarjeta), no una imitación del estilo de ChicBags. El
+              // acento teal de abajo es el color real de marca de Izipay.
+              <div
+                className="rounded-lg p-6 space-y-4"
+                style={{ fontFamily: "Roboto, sans-serif", border: `1px solid ${IZIPAY_BRAND_COLOR}30`, borderTop: `3px solid ${IZIPAY_BRAND_COLOR}` }}
+              >
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <h2 className="text-lg font-medium">Tarjeta de crédito o débito</h2>
                   {cardLogos.length > 0 && (
@@ -371,25 +377,39 @@ const Checkout = () => {
                     <Loader2 className="w-4 h-4 animate-spin" /> Iniciando el pago con tarjeta...
                   </div>
                 )}
-                {/* El color del botón "Pagar" es el único aspecto que se
-                    toca acá (texto y funcionalidad son 100% de Izipay) —
-                    .kr-payment-button es la clase que documenta Lyra para
-                    esto. Es un ajuste best-effort: puede no calzar igual en
-                    todos los navegadores/temas de Izipay, conviene
-                    confirmarlo visualmente. */}
-                <style>{`.kr-embedded .kr-payment-button { background-color: hsl(var(--primary)) !important; }`}</style>
+                {/* Estas son variables propias del tema de Izipay/Lyra
+                    (confirmadas contra su CSS real, classic-reset.css — no
+                    son una clase suelta adivinada): controlan el color de
+                    marca en todo el widget (botón, íconos, foco de los
+                    campos), a diferencia de forzar un solo botón con CSS
+                    ajeno. Se fijan al teal real de Izipay, no al color de
+                    ChicBags — a propósito, para que se note que es un
+                    formulario embebido de otra marca. Ajuste best-effort:
+                    Izipay no publica esto como API pública, así que puede
+                    cambiar en una actualización suya sin aviso; conviene
+                    confirmarlo visualmente de vez en cuando. */}
+                <style>{`
+                  .kr-embedded {
+                    --kr-global-color-primary: ${IZIPAY_BRAND_COLOR} !important;
+                    --kr-global-color-primaryLight: ${IZIPAY_BRAND_COLOR}30 !important;
+                    --kr-form-button-backgroundColor: ${IZIPAY_BRAND_COLOR} !important;
+                    --kr-form-button-borderColor: ${IZIPAY_BRAND_COLOR} !important;
+                    --kr-form-button-color: #ffffff !important;
+                    --kr-global-focus-outlineColor: ${IZIPAY_BRAND_COLOR} !important;
+                  }
+                `}</style>
                 <div id={KR_FORM_WRAPPER_ID}>
                   <div className="kr-embedded" />
                 </div>
                 <div className="flex items-center justify-between gap-3 flex-wrap pt-3 border-t border-border">
                   {settings?.paymentGatewayLogo && (
-                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      Transacciones realizadas vía
-                      <img src={productImageUrl(settings.paymentGatewayLogo)} alt="Pasarela de pago" className="h-4 w-auto object-contain" />
+                    <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
+                      Powered by
+                      <img src={productImageUrl(settings.paymentGatewayLogo)} alt="Izipay" className="h-4 w-auto object-contain" />
                     </p>
                   )}
                   <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Lock className="w-3.5 h-3.5 text-primary shrink-0" />
+                    <Lock className="w-3.5 h-3.5 shrink-0" style={{ color: IZIPAY_BRAND_COLOR }} />
                     Tus pagos se realizan de forma segura con encriptación de 256 bits
                   </p>
                 </div>
