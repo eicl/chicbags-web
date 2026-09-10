@@ -384,20 +384,23 @@ const Checkout = () => {
                     <Loader2 className="w-4 h-4 animate-spin" /> Iniciando el pago con tarjeta...
                   </div>
                 )}
-                {/* Ajuste best-effort sobre el widget de Izipay — no son
-                    clases inventadas (confirmadas contra su CSS real,
-                    classic-reset.css), pero Izipay no las publica como API
-                    pública, así que pueden cambiar sin aviso.
-
-                    Dos vueltas atrás: forzar .kr-field-wrapper (genérico)
-                    también pescó al botón "Pagar" — perdió su fondo teal y
-                    quedó como texto plano, sin caja. Se cambia al selector
-                    real y más específico .kr-field.kr-text .kr-input-wrapper
-                    (confirmado en su CSS), que solo existe en los campos de
-                    texto, no en el botón — así no hay forma de que se crucen.
-                    También se agrega separación entre campos (venían muy
-                    pegados) y se saca el padding-left que duplicaba el que
-                    ya trae el input por su cuenta. */}
+                {/* Ajuste best-effort sobre el widget de Izipay: solo las
+                    variables de tema (confirmadas contra su CSS real,
+                    classic-reset.css) — es el único nivel que se probó
+                    confiable. Se intentó, en dos vueltas seguidas, forzar
+                    también el borde de los campos y el botón por clase
+                    directa (.kr-field-wrapper, luego .kr-field.kr-text
+                    .kr-input-wrapper, .kr-payment-button) y cada intento
+                    rompió algo distinto (el botón quedó sin caja, los campos
+                    sin borde) — el DOM real que arma el widget no calza con
+                    lo que se puede inferir leyendo su hoja de estilos desde
+                    afuera, sin inspeccionarlo en un navegador real. Se
+                    revierte a lo último confirmado sin roturas: el botón
+                    "Pagar" con su fondo teal vía variable. Los campos se
+                    quedan con la apariencia propia de Izipay sin forzar caja
+                    — para ese ajuste puntual hace falta el nombre de clase
+                    real (botón derecho → Inspeccionar sobre un campo en el
+                    navegador) en vez de seguir adivinando. */}
                 <style>{`
                   .kr-embedded {
                     --kr-global-color-primary: ${IZIPAY_BRAND_COLOR} !important;
@@ -406,24 +409,6 @@ const Checkout = () => {
                     --kr-form-button-borderColor: ${IZIPAY_BRAND_COLOR} !important;
                     --kr-form-button-color: #ffffff !important;
                     --kr-global-focus-outlineColor: ${IZIPAY_BRAND_COLOR} !important;
-                  }
-                  .kr-embedded .kr-payment-button {
-                    background-color: ${IZIPAY_BRAND_COLOR} !important;
-                    border-color: ${IZIPAY_BRAND_COLOR} !important;
-                    color: #ffffff !important;
-                    border-radius: 6px !important;
-                  }
-                  .kr-embedded .kr-field.kr-text {
-                    margin-bottom: 14px !important;
-                  }
-                  .kr-embedded .kr-field.kr-text .kr-input-wrapper {
-                    background-color: #ffffff !important;
-                    border: 1px solid #d8d8d8 !important;
-                    border-radius: 6px !important;
-                  }
-                  .kr-embedded .kr-field.kr-text .kr-input-wrapper:focus-within {
-                    border-color: ${IZIPAY_BRAND_COLOR} !important;
-                    box-shadow: 0 0 0 3px ${IZIPAY_BRAND_COLOR}26 !important;
                   }
                 `}</style>
                 <div id={KR_FORM_WRAPPER_ID}>
