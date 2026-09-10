@@ -68,6 +68,21 @@ const Checkout = () => {
   // pantalla cuando el pedido no se pudo registrar por falta de stock —
   // para que no se pierda de vista qué producto/color se quedó sin unidades.
   const [stockError, setStockError] = useState<string | null>(null);
+  // Se activa apenas el cliente le da clic al botón "Pagar" propio del
+  // formulario de Izipay (KR.smartForm.onClick, action "beforePaymentStart"
+  // — el gancho oficial de la librería, no un listener casero sobre el DOM
+  // del botón) y tapa el formulario con un overlay que bloquea más clics
+  // mientras se procesa. cardSubmitSeconds es solo para que el cliente vea
+  // que algo sigue pasando, no un límite real de tiempo.
+  const [cardSubmitting, setCardSubmitting] = useState(false);
+  const [cardSubmitSeconds, setCardSubmitSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!cardSubmitting) return;
+    setCardSubmitSeconds(0);
+    const interval = setInterval(() => setCardSubmitSeconds((s) => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, [cardSubmitting]);
 
   // Logos configurables desde Admin > Configuración — se muestran alrededor
   // del formulario de tarjeta (los campos en sí los renderiza el widget de
@@ -104,12 +119,19 @@ const Checkout = () => {
         await KR.setFormConfig({ formToken: cardPayment.formToken, "kr-language": "es-ES" });
         const { KR: KR2, result } = await KR.renderElements(`#${KR_FORM_WRAPPER_ID}`);
         await KR2.showForm(result.formId);
+        // Gancho oficial de la librería para saber cuándo el cliente le dio
+        // clic al botón "Pagar" del propio formulario (no es nuestro botón,
+        // así que no hay otra forma de engancharse a ese clic).
+        await KR2.smartForm.onClick(({ action }) => {
+          if (action === "beforePaymentStart") setCardSubmitting(true);
+        });
         await KR2.onSubmit((response) => {
           const orderStatus = response.clientAnswer?.orderStatus;
           if (orderStatus !== "PAID") {
             // Rechazo inmediato (ej. tarjeta inválida, fondos insuficientes)
             // — no tiene sentido esperar una confirmación que nunca va a
             // llegar. El detalle del error viene dentro de la transacción.
+            setCardSubmitting(false);
             const transaction = response.clientAnswer?.transactions?.[0] as
               | { errorMessage?: string; detailedErrorMessage?: string }
               | undefined;
@@ -191,6 +213,7 @@ const Checkout = () => {
     setChargeType("Normal");
     setSubmitting(true);
     setStockError(null);
+    setCardSubmitting(false);
     try {
       // Si un intento anterior con tarjeta ya registró el pedido (ej. la
       // tarjeta fue rechazada y se volvió a "form"), se reusa ese mismo
@@ -553,8 +576,24 @@ const Checkout = () => {
                     background-color: ${IZIPAY_BRAND_COLOR}1A !important;
                   }
                 `}</style>
-                <div id={KR_FORM_WRAPPER_ID}>
-                  <div className="kr-embedded" />
+                <div className="relative">
+                  <div id={KR_FORM_WRAPPER_ID}>
+                    <div className="kr-embedded" />
+                  </div>
+                  {cardSubmitting && (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-md bg-white/90 backdrop-blur-sm">
+                      <Loader2 className="w-8 h-8 animate-spin" style={{ color: IZIPAY_BRAND_COLOR }} />
+                      <p
+                        className="text-sm font-medium"
+                        style={{ color: "hsl(25 20% 15%)", fontFamily: "Roboto, sans-serif" }}
+                      >
+                        Procesando tu pago... {cardSubmitSeconds}s
+                      </p>
+                      <p className="text-xs text-muted-foreground px-6 text-center" style={{ fontFamily: "Roboto, sans-serif" }}>
+                        No cierres ni actualices esta página.
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center justify-between gap-3 flex-wrap pt-3 border-t border-border">
                   {settings?.paymentGatewayLogo && (
