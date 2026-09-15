@@ -63,6 +63,16 @@ const TEMPLATE_META: { key: MessageTemplateKey; label: string; usage: string; va
     ],
   },
   {
+    key: "separation_deadline_notice",
+    label: "Aviso de plazo de Separación",
+    usage:
+      'Se inserta dentro del bloque {{estado_texto}} de los 4 mensajes de arriba, solo cuando el pedido está en Separación (o Separado en almacén) y ya tiene un plazo calculado.',
+    variables: [
+      ["dias", "Plazo de separación en días (Admin > Configuración > Pedidos)"],
+      ["fecha_limite", "Fecha límite calculada para ese pedido"],
+    ],
+  },
+  {
     key: "customer_registration",
     label: "Confirmación de registro de cliente",
     usage: "Se envía automáticamente por WhatsApp justo después de que un cliente se registra por el link público (a él, no a la empresa).",

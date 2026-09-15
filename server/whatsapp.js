@@ -76,6 +76,12 @@ const DEFAULT_MESSAGE_TEMPLATES = {
   // crea una cuenta desde el catálogo ya puede comprar directo por la web
   // — no tiene sentido ofrecerle ese link.
   customer_account_registration: `Hola {{cliente}}, gracias por registrarte en ChicBags. Tu código de cliente es #{{codigo}}. Desde ahora ya puedes realizar tus compras desde la web.`,
+  // Sub-plantilla que se inserta dentro de {{estado_texto}} (de los 4
+  // mensajes de arriba) solo cuando el pedido está en Separación/Separado
+  // en almacén y ya tiene un plazo calculado — antes era texto fijo en el
+  // código ("Tienes 15 días..."), sin poder editarse ni reflejar el valor
+  // real configurado en Admin > Configuración > Pedidos.
+  separation_deadline_notice: `Tienes {{dias}} días calendario para cancelar tu pedido. Fecha límite: {{fecha_limite}}.`,
 };
 
 const renderMessageTemplate = (template, vars) => template.replace(/\{\{(\w+)\}\}/g, (_match, key) => vars[key] ?? "");
@@ -97,7 +103,7 @@ const buildOrderItemsText = (order) =>
 
 const formatDeadlineDate = (iso) => new Date(iso).toLocaleDateString("es-PE", { dateStyle: "long", timeZone: "UTC" });
 
-const buildOrderStatusText = (order) => {
+const buildOrderStatusText = async (order) => {
   let text = `Estado del pedido: ${order.status}`;
   const paid = order.payments.reduce((sum, p) => sum + p.amount, 0);
   const remaining = order.total - paid;
@@ -110,7 +116,12 @@ const buildOrderStatusText = (order) => {
     }
   }
   if (isWaitingPayment && order.separationDeadline) {
-    text += `\n\nTienes 15 días calendario para cancelar tu pedido. Fecha límite: ${formatDeadlineDate(order.separationDeadline)}.`;
+    const { rows } = await pool.query("SELECT separation_days FROM settings WHERE id = 1");
+    const template = await getMessageTemplate("separation_deadline_notice");
+    text += `\n\n${renderMessageTemplate(template, {
+      dias: String(Number(rows[0]?.separation_days ?? 15)),
+      fecha_limite: formatDeadlineDate(order.separationDeadline),
+    })}`;
   }
   return text;
 };
@@ -159,7 +170,7 @@ export const sendOrderRegistrationWhatsApp = async (order, customer) => {
     fecha: formatDateTime(order.createdAt),
     items: buildOrderItemsText(order),
     total: order.total.toFixed(2),
-    estado_texto: buildOrderStatusText(order),
+    estado_texto: await buildOrderStatusText(order),
   });
   return sendWhatsAppMessage(customer.mobile, message);
 };
@@ -170,7 +181,7 @@ export const sendOrderStatusWhatsApp = async (order, customer) => {
     cliente: customer.firstName,
     pedido: String(order.id),
     items: buildOrderItemsText(order),
-    estado_texto: buildOrderStatusText(order),
+    estado_texto: await buildOrderStatusText(order),
   });
   return sendWhatsAppMessage(customer.mobile, message);
 };

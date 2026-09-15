@@ -2914,6 +2914,7 @@ const MESSAGE_TEMPLATE_KEYS = [
   "order_registration_separacion",
   "order_registration_contraentrega",
   "order_status_update",
+  "separation_deadline_notice",
   "customer_registration",
   "customer_account_registration",
 ];
