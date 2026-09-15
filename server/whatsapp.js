@@ -57,14 +57,16 @@ export const sendPasswordResetWhatsApp = async (mobile, token) =>
 // (duplicado a propósito — frontend y backend no comparten módulos en este
 // proyecto, mismo criterio de duplicación leve usado en todo el código). ---
 
+const CLOSING_TEXT = `Gracias por tu compra. Cualquier consulta, escríbenos por este medio.`;
+
 const DEFAULT_MESSAGE_TEMPLATES = {
-  order_registration: `Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}}:\n\n{{items}}\n\nTotal: S/.{{total}}\n\n{{estado_texto}}`,
+  order_registration: `Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}}:\n\n{{items}}\n\nTotal: S/.{{total}}\n\n{{estado_texto}}\n\n${CLOSING_TEXT}`,
   // Variantes del mensaje de arriba para los dos casos donde, al momento de
   // registrarse, el pedido no queda pagado por completo de una — ver el
   // switch de plantilla en sendOrderRegistrationWhatsApp más abajo.
-  order_registration_separacion: `Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}} y quedó en Separación:\n\n{{items}}\n\nTotal: S/.{{total}}\n\n{{estado_texto}}`,
-  order_registration_contraentrega: `Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}} para pago contra entrega:\n\n{{items}}\n\nTotal: S/.{{total}}\n\n{{estado_texto}}`,
-  order_status_update: `Hola {{cliente}}, novedades de tu pedido #{{pedido}}:\n\n{{items}}\n\n{{estado_texto}}`,
+  order_registration_separacion: `Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}} y quedó en Separación:\n\n{{items}}\n\nTotal: S/.{{total}}\n\n{{estado_texto}}\n\n${CLOSING_TEXT}`,
+  order_registration_contraentrega: `Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}} para pago contra entrega:\n\n{{items}}\n\nTotal: S/.{{total}}\n\n{{estado_texto}}\n\n${CLOSING_TEXT}`,
+  order_status_update: `Hola {{cliente}}, novedades de tu pedido #{{pedido}}:\n\n{{items}}\n\n{{estado_texto}}\n\n${CLOSING_TEXT}`,
   // A diferencia del texto anterior (pensado para que el cliente se lo
   // mandara a la empresa), ahora la empresa le escribe al cliente, así que
   // el texto está en segunda persona.

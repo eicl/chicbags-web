@@ -2,11 +2,13 @@ import { MessageTemplateKey } from "@/lib/api";
 
 // Mismo texto que se siembra en la base (server/db.js) — sirve de respaldo
 // mientras se cargan las plantillas reales, o si a una le falta el texto.
+const CLOSING_TEXT = `Gracias por tu compra. Cualquier consulta, escríbenos por este medio.`;
+
 export const DEFAULT_MESSAGE_TEMPLATES: Record<MessageTemplateKey, string> = {
-  order_registration: `Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}}:\n\n{{items}}\n\nTotal: S/.{{total}}\n\n{{estado_texto}}`,
-  order_registration_separacion: `Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}} y quedó en Separación:\n\n{{items}}\n\nTotal: S/.{{total}}\n\n{{estado_texto}}`,
-  order_registration_contraentrega: `Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}} para pago contra entrega:\n\n{{items}}\n\nTotal: S/.{{total}}\n\n{{estado_texto}}`,
-  order_status_update: `Hola {{cliente}}, novedades de tu pedido #{{pedido}}:\n\n{{items}}\n\n{{estado_texto}}`,
+  order_registration: `Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}}:\n\n{{items}}\n\nTotal: S/.{{total}}\n\n{{estado_texto}}\n\n${CLOSING_TEXT}`,
+  order_registration_separacion: `Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}} y quedó en Separación:\n\n{{items}}\n\nTotal: S/.{{total}}\n\n{{estado_texto}}\n\n${CLOSING_TEXT}`,
+  order_registration_contraentrega: `Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}} para pago contra entrega:\n\n{{items}}\n\nTotal: S/.{{total}}\n\n{{estado_texto}}\n\n${CLOSING_TEXT}`,
+  order_status_update: `Hola {{cliente}}, novedades de tu pedido #{{pedido}}:\n\n{{items}}\n\n{{estado_texto}}\n\n${CLOSING_TEXT}`,
   // Antes lo mandaba el cliente a la empresa (link wa.me); ahora lo manda
   // la empresa al cliente automáticamente, así que va en segunda persona.
   customer_registration: `Hola {{cliente}}, gracias por registrarte en ChicBags. Tu código de cliente es #{{codigo}}. Aquí tienes el link para registrar tu pedido: {{link}}`,

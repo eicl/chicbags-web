@@ -482,26 +482,34 @@ export const initSchema = async () => {
 
 Total: S/.{{total}}
 
-{{estado_texto}}'),
+{{estado_texto}}
+
+Gracias por tu compra. Cualquier consulta, escríbenos por este medio.'),
       ('order_registration_separacion', 'Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}} y quedó en Separación:
 
 {{items}}
 
 Total: S/.{{total}}
 
-{{estado_texto}}'),
+{{estado_texto}}
+
+Gracias por tu compra. Cualquier consulta, escríbenos por este medio.'),
       ('order_registration_contraentrega', 'Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}} para pago contra entrega:
 
 {{items}}
 
 Total: S/.{{total}}
 
-{{estado_texto}}'),
+{{estado_texto}}
+
+Gracias por tu compra. Cualquier consulta, escríbenos por este medio.'),
       ('order_status_update', 'Hola {{cliente}}, novedades de tu pedido #{{pedido}}:
 
 {{items}}
 
-{{estado_texto}}'),
+{{estado_texto}}
+
+Gracias por tu compra. Cualquier consulta, escríbenos por este medio.'),
       ('customer_registration', 'Hola {{cliente}}, gracias por registrarte en ChicBags. Tu código de cliente es #{{codigo}}. Aquí tienes el link para registrar tu pedido: {{link}}'),
       ('customer_account_registration', 'Hola {{cliente}}, gracias por registrarte en ChicBags. Tu código de cliente es #{{codigo}}. Desde ahora ya puedes realizar tus compras desde la web.')
     ON CONFLICT (template_key) DO NOTHING;
