@@ -13,7 +13,35 @@ const TEMPLATE_META: { key: MessageTemplateKey; label: string; usage: string; va
   {
     key: "order_registration",
     label: "Confirmación de registro de pedido",
-    usage: "Se envía automáticamente por WhatsApp justo después de registrar un pedido (registro público, checkout o desde el panel).",
+    usage:
+      'Se envía automáticamente por WhatsApp justo después de registrar un pedido (registro público, checkout o desde el panel) — salvo que quede en Separación o sea contra entrega, que usan sus propias plantillas de abajo.',
+    variables: [
+      ["cliente", "Nombre del cliente"],
+      ["pedido", "Número de pedido"],
+      ["fecha", "Fecha y hora en que se registró"],
+      ["items", "Lista de productos/servicios del pedido"],
+      ["total", "Total del pedido (sin \"S/.\")"],
+      ["estado_texto", "Bloque con el estado y, si aplica, pagado/saldo pendiente/plazo"],
+    ],
+  },
+  {
+    key: "order_registration_separacion",
+    label: "Confirmación de registro de pedido (Separación)",
+    usage:
+      "Se envía en vez de la de arriba cuando, al momento de registrarse, el pedido queda en Separación (pago parcial).",
+    variables: [
+      ["cliente", "Nombre del cliente"],
+      ["pedido", "Número de pedido"],
+      ["fecha", "Fecha y hora en que se registró"],
+      ["items", "Lista de productos/servicios del pedido"],
+      ["total", "Total del pedido (sin \"S/.\")"],
+      ["estado_texto", "Bloque con el estado y, si aplica, pagado/saldo pendiente/plazo"],
+    ],
+  },
+  {
+    key: "order_registration_contraentrega",
+    label: "Confirmación de registro de pedido (Contra entrega)",
+    usage: "Se envía en vez de la de arriba cuando el pedido se registra para pagar contra entrega (en efectivo).",
     variables: [
       ["cliente", "Nombre del cliente"],
       ["pedido", "Número de pedido"],

@@ -483,6 +483,20 @@ export const initSchema = async () => {
 Total: S/.{{total}}
 
 {{estado_texto}}'),
+      ('order_registration_separacion', 'Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}} y quedó en Separación:
+
+{{items}}
+
+Total: S/.{{total}}
+
+{{estado_texto}}'),
+      ('order_registration_contraentrega', 'Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}} para pago contra entrega:
+
+{{items}}
+
+Total: S/.{{total}}
+
+{{estado_texto}}'),
       ('order_status_update', 'Hola {{cliente}}, novedades de tu pedido #{{pedido}}:
 
 {{items}}

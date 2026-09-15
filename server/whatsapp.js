@@ -59,6 +59,11 @@ export const sendPasswordResetWhatsApp = async (mobile, token) =>
 
 const DEFAULT_MESSAGE_TEMPLATES = {
   order_registration: `Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}}:\n\n{{items}}\n\nTotal: S/.{{total}}\n\n{{estado_texto}}`,
+  // Variantes del mensaje de arriba para los dos casos donde, al momento de
+  // registrarse, el pedido no queda pagado por completo de una — ver el
+  // switch de plantilla en sendOrderRegistrationWhatsApp más abajo.
+  order_registration_separacion: `Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}} y quedó en Separación:\n\n{{items}}\n\nTotal: S/.{{total}}\n\n{{estado_texto}}`,
+  order_registration_contraentrega: `Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}} para pago contra entrega:\n\n{{items}}\n\nTotal: S/.{{total}}\n\n{{estado_texto}}`,
   order_status_update: `Hola {{cliente}}, novedades de tu pedido #{{pedido}}:\n\n{{items}}\n\n{{estado_texto}}`,
   // A diferencia del texto anterior (pensado para que el cliente se lo
   // mandara a la empresa), ahora la empresa le escribe al cliente, así que
@@ -133,8 +138,19 @@ export const sendCustomerAccountWhatsApp = async (customer) => {
   return sendWhatsAppMessage(customer.mobile, message);
 };
 
+// Contraentrega y Separación tienen su propia plantilla configurable (el
+// registro "normal" cubre tanto el caso pagado de una como el que todavía
+// no tiene ningún pago). Ambos casos son excluyentes en la práctica: un
+// pedido Contraentrega elegible salta directo a "Pendiente de envío" sin
+// pasar por "Separación" (ver /api/orders/register en server/index.js).
 export const sendOrderRegistrationWhatsApp = async (order, customer) => {
-  const template = await getMessageTemplate("order_registration");
+  const templateKey =
+    order.chargeType === "Contraentrega"
+      ? "order_registration_contraentrega"
+      : order.status === "Separación"
+        ? "order_registration_separacion"
+        : "order_registration";
+  const template = await getMessageTemplate(templateKey);
   const message = renderMessageTemplate(template, {
     cliente: customer.firstName,
     pedido: String(order.id),

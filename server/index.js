@@ -2909,7 +2909,14 @@ app.put("/api/route-meta/:key", requireAuth, async (req, res) => {
 // estado, registro de cliente) — GET público porque las páginas que arman
 // esos links (registro de pedido, registro de cliente) no siempre tienen
 // sesión de admin; solo editarlas requiere sesión.
-const MESSAGE_TEMPLATE_KEYS = ["order_registration", "order_status_update", "customer_registration", "customer_account_registration"];
+const MESSAGE_TEMPLATE_KEYS = [
+  "order_registration",
+  "order_registration_separacion",
+  "order_registration_contraentrega",
+  "order_status_update",
+  "customer_registration",
+  "customer_account_registration",
+];
 
 app.get("/api/message-templates", async (req, res) => {
   const { rows } = await pool.query("SELECT template_key, template FROM message_templates ORDER BY template_key");

@@ -4,6 +4,8 @@ import { MessageTemplateKey } from "@/lib/api";
 // mientras se cargan las plantillas reales, o si a una le falta el texto.
 export const DEFAULT_MESSAGE_TEMPLATES: Record<MessageTemplateKey, string> = {
   order_registration: `Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}}:\n\n{{items}}\n\nTotal: S/.{{total}}\n\n{{estado_texto}}`,
+  order_registration_separacion: `Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}} y quedó en Separación:\n\n{{items}}\n\nTotal: S/.{{total}}\n\n{{estado_texto}}`,
+  order_registration_contraentrega: `Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}} para pago contra entrega:\n\n{{items}}\n\nTotal: S/.{{total}}\n\n{{estado_texto}}`,
   order_status_update: `Hola {{cliente}}, novedades de tu pedido #{{pedido}}:\n\n{{items}}\n\n{{estado_texto}}`,
   // Antes lo mandaba el cliente a la empresa (link wa.me); ahora lo manda
   // la empresa al cliente automáticamente, así que va en segunda persona.
