@@ -511,6 +511,10 @@ Gracias por tu compra. Cualquier consulta, escríbenos por este medio.'),
 
 Gracias por tu compra. Cualquier consulta, escríbenos por este medio.'),
       ('separation_deadline_notice', 'Tienes {{dias}} días calendario para cancelar tu pedido. Fecha límite: {{fecha_limite}}.'),
+      ('order_balance_notice', 'Pagado: S/.{{pagado}}
+Saldo pendiente: S/.{{saldo}}'),
+      ('order_balance_notice_cod', 'Pagado: S/.{{pagado}}
+Saldo pendiente: S/.{{saldo}} (se cobra al momento de la entrega)'),
       ('customer_registration', 'Hola {{cliente}}, gracias por registrarte en ChicBags. Tu código de cliente es #{{codigo}}. Aquí tienes el link para registrar tu pedido: {{link}}'),
       ('customer_account_registration', 'Hola {{cliente}}, gracias por registrarte en ChicBags. Tu código de cliente es #{{codigo}}. Desde ahora ya puedes realizar tus compras desde la web.')
     ON CONFLICT (template_key) DO NOTHING;

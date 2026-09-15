@@ -82,6 +82,12 @@ const DEFAULT_MESSAGE_TEMPLATES = {
   // código ("Tienes 15 días..."), sin poder editarse ni reflejar el valor
   // real configurado en Admin > Configuración > Pedidos.
   separation_deadline_notice: `Tienes {{dias}} días calendario para cancelar tu pedido. Fecha límite: {{fecha_limite}}.`,
+  // Otras dos sub-plantillas que también se insertan dentro de
+  // {{estado_texto}} — el desglose de pagado/saldo pendiente, en sus dos
+  // variantes (Separación vs. contra entrega con saldo por cobrar al
+  // entregar). Antes también eran texto fijo en el código.
+  order_balance_notice: `Pagado: S/.{{pagado}}\nSaldo pendiente: S/.{{saldo}}`,
+  order_balance_notice_cod: `Pagado: S/.{{pagado}}\nSaldo pendiente: S/.{{saldo}} (se cobra al momento de la entrega)`,
 };
 
 const renderMessageTemplate = (template, vars) => template.replace(/\{\{(\w+)\}\}/g, (_match, key) => vars[key] ?? "");
@@ -110,10 +116,8 @@ const buildOrderStatusText = async (order) => {
   const isWaitingPayment = order.status === "Separación" || order.status === "Separado en almacén";
   const isPendingCod = order.status === "Pendiente de envío" && remaining > 0;
   if (isWaitingPayment || isPendingCod) {
-    text += `\n\nPagado: S/.${paid.toFixed(2)}\nSaldo pendiente: S/.${remaining.toFixed(2)}`;
-    if (isPendingCod) {
-      text += ` (se cobra al momento de la entrega)`;
-    }
+    const template = await getMessageTemplate(isPendingCod ? "order_balance_notice_cod" : "order_balance_notice");
+    text += `\n\n${renderMessageTemplate(template, { pagado: paid.toFixed(2), saldo: remaining.toFixed(2) })}`;
   }
   if (isWaitingPayment && order.separationDeadline) {
     const { rows } = await pool.query("SELECT separation_days FROM settings WHERE id = 1");

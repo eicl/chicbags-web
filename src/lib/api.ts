@@ -682,6 +682,8 @@ export type MessageTemplateKey =
   | "order_registration_contraentrega"
   | "order_status_update"
   | "separation_deadline_notice"
+  | "order_balance_notice"
+  | "order_balance_notice_cod"
   | "customer_registration"
   | "customer_account_registration";
 

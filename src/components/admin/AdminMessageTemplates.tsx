@@ -73,6 +73,26 @@ const TEMPLATE_META: { key: MessageTemplateKey; label: string; usage: string; va
     ],
   },
   {
+    key: "order_balance_notice",
+    label: "Aviso de saldo pendiente (Separación)",
+    usage:
+      'Se inserta dentro del bloque {{estado_texto}} de los 4 mensajes de pedido cuando el pedido está en Separación o Separado en almacén.',
+    variables: [
+      ["pagado", "Monto ya pagado (sin \"S/.\")"],
+      ["saldo", "Saldo pendiente (sin \"S/.\")"],
+    ],
+  },
+  {
+    key: "order_balance_notice_cod",
+    label: "Aviso de saldo pendiente (Contra entrega)",
+    usage:
+      'Se inserta dentro del bloque {{estado_texto}} en vez de la de arriba cuando el pedido está Pendiente de envío para pago contra entrega y todavía tiene saldo por cobrar al entregar.',
+    variables: [
+      ["pagado", "Monto ya pagado (sin \"S/.\")"],
+      ["saldo", "Saldo pendiente, a cobrar al entregar (sin \"S/.\")"],
+    ],
+  },
+  {
     key: "customer_registration",
     label: "Confirmación de registro de cliente",
     usage: "Se envía automáticamente por WhatsApp justo después de que un cliente se registra por el link público (a él, no a la empresa).",
