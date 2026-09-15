@@ -121,7 +121,8 @@ const ADDRESS_TYPES = ["Motorizado Express", "Motorizado Delivery"];
 // Los que reparten por agencia/courier: antes de marcarlos "Entregado a
 // delivery" hace falta subir el recibo del envío (mismo requisito del
 // servidor, repetido acá para deshabilitar el botón en vez de solo
-// mostrar el error después de intentarlo).
+// mostrar el error después de intentarlo) — salvo que Admin > Configuración
+// tenga apagado settings.requireDeliveryReceipt (ver más abajo).
 const COURIER_DELIVERY_TYPES = ["Shalom", "Olva", "Marvisur"];
 
 const escapeHtml = (s: string) =>
@@ -1251,7 +1252,9 @@ const AdminOrders = () => {
 
                           <AddOrderItemsExtras order={order} />
 
-                          {COURIER_DELIVERY_TYPES.includes(order.customerDeliveryType) && <ReceiptForm order={order} />}
+                          {settings?.requireDeliveryReceipt !== false && COURIER_DELIVERY_TYPES.includes(order.customerDeliveryType) && (
+                            <ReceiptForm order={order} />
+                          )}
 
                           <div className="flex flex-wrap items-center gap-3">
                             <SendStatusWhatsAppButton orderId={order.id} />
@@ -1288,7 +1291,10 @@ const AdminOrders = () => {
                               </Button>
                             )}
                             {order.status === "Listo para delivery" && (() => {
-                              const needsReceipt = COURIER_DELIVERY_TYPES.includes(order.customerDeliveryType) && !order.receiptImage;
+                              const needsReceipt =
+                                settings?.requireDeliveryReceipt !== false &&
+                                COURIER_DELIVERY_TYPES.includes(order.customerDeliveryType) &&
+                                !order.receiptImage;
                               return (
                                 <Button
                                   variant="outline"

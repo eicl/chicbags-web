@@ -24,6 +24,7 @@ const AdminSettings = () => {
   const [nearSeparationDeadlineDays, setNearSeparationDeadlineDays] = useState("");
   const [paymentGatewayLogo, setPaymentGatewayLogo] = useState("");
   const [uploadingGatewayLogo, setUploadingGatewayLogo] = useState(false);
+  const [requireDeliveryReceipt, setRequireDeliveryReceipt] = useState(true);
 
   useEffect(() => {
     if (settings) {
@@ -32,6 +33,7 @@ const AdminSettings = () => {
       setSeparationDays(String(settings.separationDays));
       setNearSeparationDeadlineDays(String(settings.nearSeparationDeadlineDays));
       setPaymentGatewayLogo(settings.paymentGatewayLogo);
+      setRequireDeliveryReceipt(settings.requireDeliveryReceipt);
     }
   }, [settings]);
 
@@ -71,6 +73,7 @@ const AdminSettings = () => {
       separationDays: separationValue,
       nearSeparationDeadlineDays: nearDeadlineValue,
       paymentGatewayLogo,
+      requireDeliveryReceipt,
     });
   };
 
@@ -160,6 +163,22 @@ const AdminSettings = () => {
             />
           </div>
         </div>
+
+        <label className="flex items-start gap-2 mb-6 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={requireDeliveryReceipt}
+            onChange={(e) => setRequireDeliveryReceipt(e.target.checked)}
+            className="mt-1"
+          />
+          <span>
+            <span className="text-sm block">Exigir recibo del envío para marcar "Entregado a delivery"</span>
+            <span className="text-xs text-muted-foreground block">
+              Aplica a pedidos por Shalom/Olva/Marvisur. Si se apaga, el recibo y la clave de rastreo desaparecen del
+              mantenimiento de pedido y dejan de ser obligatorios para pasar a ese estado.
+            </span>
+          </span>
+        </label>
 
         <Button onClick={handleSave} disabled={mutation.isPending} className="gap-2">
           <Save className="w-4 h-4" /> {mutation.isPending ? "Guardando..." : "Guardar"}

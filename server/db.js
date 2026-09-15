@@ -392,6 +392,11 @@ export const initSchema = async () => {
   // paso de tarjeta del checkout — vacío significa que esa línea no se
   // muestra. Editable desde Admin > Configuración.
   await pool.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS payment_gateway_logo TEXT NOT NULL DEFAULT '';`);
+  // Si se apaga, el recibo del envío y la clave de rastreo dejan de pedirse:
+  // desaparecen del mantenimiento de pedido y ya no bloquean el paso a
+  // "Entregado a delivery" (ver PUT /api/orders/:id/deliver). Por defecto
+  // sigue exigiéndose, igual que antes de que esto fuera configurable.
+  await pool.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS require_delivery_receipt BOOLEAN NOT NULL DEFAULT true;`);
   await pool.query(`INSERT INTO settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`);
   // Se siembra un logo de ejemplo solo si la fila sigue con el vacío por
   // defecto (nunca se pisa una elección real del usuario).

@@ -611,6 +611,10 @@ export interface AppSettings {
   // Logo de la pasarela de pago ("Transacciones realizadas vía ...") en el
   // paso de tarjeta del checkout — filename, vacío si no hay logo elegido.
   paymentGatewayLogo: string;
+  // Si está apagado, el recibo del envío y la clave de rastreo desaparecen
+  // del mantenimiento de pedido (AdminOrders) y dejan de ser obligatorios
+  // para pasar un pedido a "Entregado a delivery".
+  requireDeliveryReceipt: boolean;
 }
 
 export const fetchSettings = (): Promise<AppSettings> =>

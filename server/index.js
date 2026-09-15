@@ -634,6 +634,7 @@ const mapSettings = (row) => ({
   separationDays: Number(row.separation_days),
   nearSeparationDeadlineDays: Number(row.near_separation_deadline_days),
   paymentGatewayLogo: row.payment_gateway_logo,
+  requireDeliveryReceipt: row.require_delivery_receipt,
 });
 
 const getSettings = async () => {
@@ -646,7 +647,8 @@ app.get("/api/settings", async (req, res) => {
 });
 
 app.put("/api/settings", requireAuth, async (req, res) => {
-  const { maxItemDiscountPublic, maxItemDiscountAdmin, separationDays, nearSeparationDeadlineDays, paymentGatewayLogo } = req.body;
+  const { maxItemDiscountPublic, maxItemDiscountAdmin, separationDays, nearSeparationDeadlineDays, paymentGatewayLogo, requireDeliveryReceipt } =
+    req.body;
   if (typeof maxItemDiscountPublic !== "number" || !Number.isFinite(maxItemDiscountPublic) || maxItemDiscountPublic < 0) {
     return res.status(400).json({ error: "El descuento máximo del link público es inválido" });
   }
@@ -661,8 +663,8 @@ app.put("/api/settings", requireAuth, async (req, res) => {
   }
   const { rows } = await pool.query(
     `UPDATE settings SET max_item_discount_public = $1, max_item_discount_admin = $2, separation_days = $3,
-       near_separation_deadline_days = $4, payment_gateway_logo = $5 WHERE id = 1 RETURNING *`,
-    [maxItemDiscountPublic, maxItemDiscountAdmin, separationDays, nearSeparationDeadlineDays, (paymentGatewayLogo ?? "").trim()]
+       near_separation_deadline_days = $4, payment_gateway_logo = $5, require_delivery_receipt = $6 WHERE id = 1 RETURNING *`,
+    [maxItemDiscountPublic, maxItemDiscountAdmin, separationDays, nearSeparationDeadlineDays, (paymentGatewayLogo ?? "").trim(), Boolean(requireDeliveryReceipt)]
   );
   res.json(mapSettings(rows[0]));
 });
@@ -2403,7 +2405,9 @@ app.put("/api/orders/:id/ready-for-delivery", requireAuth, async (req, res) => {
 // "Entregado a delivery". El resto del ciclo de vida (Registrado →
 // Separación/Pendiente de envío) sigue calculándose solo a partir de los
 // pagos, nunca a mano. Para Shalom/Olva/Marvisur, además exige que ya se
-// haya subido el recibo del envío (ver PUT /api/orders/:id/receipt).
+// haya subido el recibo del envío (ver PUT /api/orders/:id/receipt) —
+// salvo que settings.requireDeliveryReceipt esté apagado (Admin >
+// Configuración), en cuyo caso ese requisito no aplica para nadie.
 app.put("/api/orders/:id/deliver", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
@@ -2424,7 +2428,8 @@ app.put("/api/orders/:id/deliver", requireAuth, async (req, res) => {
     if (order.status !== "Listo para delivery") {
       throw new Error("Solo se puede marcar como entregado a delivery un pedido Listo para delivery");
     }
-    if (COURIER_DELIVERY_TYPES.includes(order.delivery_type) && !order.receipt_image) {
+    const settings = await getSettings();
+    if (settings.requireDeliveryReceipt && COURIER_DELIVERY_TYPES.includes(order.delivery_type) && !order.receipt_image) {
       throw new Error("Sube el recibo del envío antes de marcar el pedido como entregado a delivery");
     }
     const { rows } = await client.query(
