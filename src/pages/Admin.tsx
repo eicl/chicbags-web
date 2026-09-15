@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, LogOut, Package, Tag, Layers, Users, IdCard, MapPin, ShoppingBag, Share2, Wrench, FileSpreadsheet, Receipt, MessageCircle, Settings } from "lucide-react";
+import { ArrowLeft, LogOut, Package, Tag, Layers, Users, IdCard, MapPin, ShoppingBag, Share2, Wrench, FileSpreadsheet, Receipt, MessageCircle, Settings, LayoutDashboard } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
+import AdminDashboard from "@/components/admin/AdminDashboard";
 import AdminProducts from "@/components/admin/AdminProducts";
 import AdminServices from "@/components/admin/AdminServices";
 import AdminBrands from "@/components/admin/AdminBrands";
@@ -17,9 +18,10 @@ import AdminPurchases from "@/components/admin/AdminPurchases";
 import AdminMessageTemplates from "@/components/admin/AdminMessageTemplates";
 import AdminSettings from "@/components/admin/AdminSettings";
 
-type Tab = "products" | "services" | "brands" | "categories" | "customers" | "districts" | "orders" | "users" | "linkPreviews" | "pitaya" | "purchases" | "messageTemplates" | "settings";
+type Tab = "dashboard" | "products" | "services" | "brands" | "categories" | "customers" | "districts" | "orders" | "users" | "linkPreviews" | "pitaya" | "purchases" | "messageTemplates" | "settings";
 
 const TABS: { id: Tab; label: string; icon: typeof Package }[] = [
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "orders", label: "Pedidos", icon: ShoppingBag },
   { id: "customers", label: "Clientes", icon: IdCard },
   { id: "products", label: "Productos", icon: Package },
@@ -80,6 +82,7 @@ const Admin = () => {
       </header>
 
       <div className="container mx-auto px-4 md:px-8 py-8">
+        {tab === "dashboard" && <AdminDashboard />}
         {tab === "products" && <AdminProducts />}
         {tab === "services" && <AdminServices />}
         {tab === "brands" && <AdminBrands />}

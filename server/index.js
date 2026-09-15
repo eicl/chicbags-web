@@ -1623,6 +1623,70 @@ app.get("/api/orders/:id/status", async (req, res) => {
   res.json({ id: rows[0].id, status: rows[0].status, total: Number(rows[0].total), paid: Number(paidRows[0].paid) });
 });
 
+// Reusa LIMA_OFFSET_MS (definido más arriba) para agrupar pedidos por
+// día/mes calendario de Lima en vez del día/mes UTC del servidor.
+const toLimaDate = (d) => new Date(d.getTime() - LIMA_OFFSET_MS);
+const pad2 = (n) => String(n).padStart(2, "0");
+const limaMonthKey = (d) => {
+  const lima = toLimaDate(d);
+  return `${lima.getUTCFullYear()}-${pad2(lima.getUTCMonth() + 1)}`;
+};
+const limaDayKey = (d) => {
+  const lima = toLimaDate(d);
+  return `${lima.getUTCFullYear()}-${pad2(lima.getUTCMonth() + 1)}-${pad2(lima.getUTCDate())}`;
+};
+
+// Evolución de ventas por mes (últimos 12 meses calendario de Lima,
+// incluido el actual) — "venta" es el total del pedido a la fecha en que
+// se registró, sin importar si ya está pagado del todo o sigue en
+// Separación; no hay estado "Cancelado" en este sistema (un pedido que se
+// cancela se elimina), así que no hace falta excluir nada.
+app.get("/api/dashboard/monthly-sales", requireAuth, async (req, res) => {
+  const { rows } = await pool.query("SELECT created_at, total FROM orders WHERE created_at >= now() - interval '400 days'");
+  const totalsByMonth = new Map();
+  for (const row of rows) {
+    const key = limaMonthKey(new Date(row.created_at));
+    totalsByMonth.set(key, (totalsByMonth.get(key) ?? 0) + Number(row.total));
+  }
+  const nowLima = toLimaDate(new Date());
+  const months = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(Date.UTC(nowLima.getUTCFullYear(), nowLima.getUTCMonth() - i, 1));
+    const key = `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}`;
+    months.push({ month: key, total: totalsByMonth.get(key) ?? 0 });
+  }
+  res.json(months);
+});
+
+// Ventas diarias por vendedor (últimos 30 días calendario de Lima,
+// incluido el hoy) — incluye a todo vendedor activo, aunque no haya
+// vendido nada en el período (justamente para que se note quién no está
+// vendiendo).
+app.get("/api/dashboard/daily-sales-by-seller", requireAuth, async (req, res) => {
+  const { rows: sellers } = await pool.query("SELECT id, username FROM users WHERE role = 'Vendedor' ORDER BY username");
+  const { rows: orderRows } = await pool.query(
+    "SELECT created_at, total, seller_id FROM orders WHERE created_at >= now() - interval '32 days'"
+  );
+  const totalsByDay = new Map();
+  for (const row of orderRows) {
+    const dayKey = limaDayKey(new Date(row.created_at));
+    if (!totalsByDay.has(dayKey)) totalsByDay.set(dayKey, new Map());
+    const dayMap = totalsByDay.get(dayKey);
+    dayMap.set(row.seller_id, (dayMap.get(row.seller_id) ?? 0) + Number(row.total));
+  }
+  const nowLima = toLimaDate(new Date());
+  const days = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(Date.UTC(nowLima.getUTCFullYear(), nowLima.getUTCMonth(), nowLima.getUTCDate() - i));
+    const dayKey = `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+    const dayMap = totalsByDay.get(dayKey);
+    const totals = {};
+    for (const seller of sellers) totals[seller.id] = dayMap?.get(seller.id) ?? 0;
+    days.push({ date: dayKey, totals });
+  }
+  res.json({ sellers: sellers.map((s) => ({ id: s.id, username: s.username })), days });
+});
+
 app.get("/api/orders", requireAuth, async (req, res) => {
   // Los items y los pagos se agregan cada uno en su propio subquery LATERAL
   // (en vez de un solo LEFT JOIN a las dos tablas) para que uno no multiplique

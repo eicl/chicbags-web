@@ -549,6 +549,25 @@ export interface AdminOrder extends Order {
 export const fetchOrders = (): Promise<AdminOrder[]> =>
   fetch(`${API_URL}/orders`, { credentials: "include" }).then((res) => handle<AdminOrder[]>(res));
 
+// Dashboard: evolución de ventas por mes (últimos 12) y ventas diarias por
+// vendedor (últimos 30 días) — "venta" es el total del pedido a la fecha en
+// que se registró, ver el comentario del endpoint en server/index.js.
+export interface MonthlySales {
+  month: string; // "YYYY-MM"
+  total: number;
+}
+
+export const fetchMonthlySales = (): Promise<MonthlySales[]> =>
+  fetch(`${API_URL}/dashboard/monthly-sales`, { credentials: "include" }).then((res) => handle<MonthlySales[]>(res));
+
+export interface DailySalesBySeller {
+  sellers: { id: number; username: string }[];
+  days: { date: string; totals: Record<string, number> }[]; // date: "YYYY-MM-DD", totals keyed by seller id
+}
+
+export const fetchDailySalesBySeller = (): Promise<DailySalesBySeller> =>
+  fetch(`${API_URL}/dashboard/daily-sales-by-seller`, { credentials: "include" }).then((res) => handle<DailySalesBySeller>(res));
+
 // Si el pedido es de tipo "Pedido" (no una Regularización), el servidor
 // devuelve el stock de cada ítem a su producto y color antes de borrarlo.
 export const deleteOrder = (id: number): Promise<void> =>
