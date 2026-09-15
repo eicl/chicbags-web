@@ -29,7 +29,7 @@ const TABS: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "districts", label: "Distritos", icon: MapPin },
   { id: "users", label: "Usuarios", icon: Users },
   { id: "linkPreviews", label: "Vistas previas", icon: Share2 },
-  { id: "pitaya", label: "Pitaya", icon: FileSpreadsheet },
+  { id: "pitaya", label: "Programación de Envío", icon: FileSpreadsheet },
   { id: "purchases", label: "Registro de Compras", icon: Receipt },
   { id: "messageTemplates", label: "Mensajes de WhatsApp", icon: MessageCircle },
   { id: "settings", label: "Configuración", icon: Settings },
