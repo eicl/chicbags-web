@@ -20,13 +20,13 @@ import AdminSettings from "@/components/admin/AdminSettings";
 type Tab = "products" | "services" | "brands" | "categories" | "customers" | "districts" | "orders" | "users" | "linkPreviews" | "pitaya" | "purchases" | "messageTemplates" | "settings";
 
 const TABS: { id: Tab; label: string; icon: typeof Package }[] = [
+  { id: "orders", label: "Pedidos", icon: ShoppingBag },
+  { id: "customers", label: "Clientes", icon: IdCard },
   { id: "products", label: "Productos", icon: Package },
   { id: "services", label: "Servicios", icon: Wrench },
   { id: "brands", label: "Marcas", icon: Tag },
   { id: "categories", label: "Categorías", icon: Layers },
-  { id: "customers", label: "Clientes", icon: IdCard },
   { id: "districts", label: "Distritos", icon: MapPin },
-  { id: "orders", label: "Pedidos", icon: ShoppingBag },
   { id: "users", label: "Usuarios", icon: Users },
   { id: "linkPreviews", label: "Vistas previas", icon: Share2 },
   { id: "pitaya", label: "Pitaya", icon: FileSpreadsheet },
@@ -37,7 +37,7 @@ const TABS: { id: Tab; label: string; icon: typeof Package }[] = [
 
 const Admin = () => {
   const { user, logout } = useAuth();
-  const [tab, setTab] = useState<Tab>("products");
+  const [tab, setTab] = useState<Tab>("orders");
 
   return (
     <div className="min-h-screen bg-background text-foreground">
