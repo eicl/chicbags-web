@@ -53,6 +53,12 @@ const bootstrapAdminUser = async () => {
 await bootstrapAdminUser();
 
 const app = express();
+// Render termina TLS por delante de la app y reenvía por HTTP interno con
+// X-Forwarded-Proto: https — sin esto, req.protocol siempre da "http" (aunque
+// el sitio real sea https), rompiendo cualquier URL absoluta armada con él
+// (ej. og:image/og:url más abajo: WhatsApp descarta imágenes que no sean
+// HTTPS, así que la vista previa se quedaba sin foto).
+app.set("trust proxy", 1);
 app.use(cors());
 app.use(express.json());
 // El IPN de Izipay llega como application/x-www-form-urlencoded, no JSON.
