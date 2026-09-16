@@ -72,6 +72,7 @@ const REQUIRED_FIELD_LABELS: Record<string, string> = {
   password: "Contraseña",
   confirmPassword: "Confirmar contraseña",
   mobileVerification: "Verificación del celular (código de WhatsApp)",
+  dataConsent: "Autorización de uso de datos personales",
 };
 
 const CustomerAccountRegister = () => {
@@ -87,6 +88,7 @@ const CustomerAccountRegister = () => {
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [registered, setRegistered] = useState(false);
+  const [dataConsent, setDataConsent] = useState(false);
 
   // Verificación de celular por PIN de WhatsApp. verifiedMobile/codeSentFor
   // guardan el celular exacto al que corresponden — si el cliente edita el
@@ -195,6 +197,7 @@ const CustomerAccountRegister = () => {
     if (needsAddress && !form.address.trim()) missing.push("address");
     if (!password || password.length < 6) missing.push("password");
     if (password !== confirmPassword) missing.push("confirmPassword");
+    if (!dataConsent) missing.push("dataConsent");
     return missing;
   };
 
@@ -578,7 +581,19 @@ const CustomerAccountRegister = () => {
             </div>
           </div>
 
-          <Button type="submit" disabled={isSubmitting} className="w-full py-6 text-sm tracking-widest uppercase gap-2">
+          <div className="pt-2 border-t border-border">
+            <label className={cn("flex items-start gap-2 text-sm cursor-pointer", hasError("dataConsent") && "text-destructive")}>
+              <input
+                type="checkbox"
+                checked={dataConsent}
+                onChange={(e) => setDataConsent(e.target.checked)}
+                className="w-4 h-4 mt-0.5 rounded border-input shrink-0"
+              />
+              Acepto que ChicBags use mis datos personales para gestionar mi cuenta, mis pedidos y coordinar mis envíos. *
+            </label>
+          </div>
+
+          <Button type="submit" disabled={isSubmitting || !dataConsent} className="w-full py-6 text-sm tracking-widest uppercase gap-2">
             <Save className="w-4 h-4" /> {isSubmitting ? "Creando cuenta..." : "Crear cuenta"}
           </Button>
         </form>

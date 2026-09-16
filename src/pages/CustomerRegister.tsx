@@ -75,6 +75,7 @@ const REQUIRED_FIELD_LABELS: Record<string, string> = {
   receiverPaternalSurname: "Apellido paterno de quién recepciona",
   receiverMobile: "Celular de quién recepciona",
   mobileVerification: "Verificación del celular (código de WhatsApp)",
+  dataConsent: "Autorización de uso de datos personales",
 };
 
 const CustomerRegister = () => {
@@ -82,6 +83,7 @@ const CustomerRegister = () => {
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [registered, setRegistered] = useState<Customer | null>(null);
   const [locating, setLocating] = useState(false);
+  const [dataConsent, setDataConsent] = useState(false);
 
   // Verificación de celular por PIN de WhatsApp. verifiedMobile/codeSentFor
   // guardan el celular exacto al que corresponden — si el cliente edita el
@@ -217,6 +219,7 @@ const CustomerRegister = () => {
       if (!form.receiverPaternalSurname.trim()) missing.push("receiverPaternalSurname");
       if (!form.receiverMobile.trim()) missing.push("receiverMobile");
     }
+    if (!dataConsent) missing.push("dataConsent");
     return missing;
   };
 
@@ -684,7 +687,23 @@ const CustomerRegister = () => {
             )}
           </div>
 
-          <Button type="submit" disabled={registerMutation.isPending} className="w-full py-6 text-sm tracking-widest uppercase gap-2">
+          <div className="pt-2 border-t border-border">
+            <label className={cn("flex items-start gap-2 text-sm cursor-pointer", hasError("dataConsent") && "text-destructive")}>
+              <input
+                type="checkbox"
+                checked={dataConsent}
+                onChange={(e) => setDataConsent(e.target.checked)}
+                className="w-4 h-4 mt-0.5 rounded border-input shrink-0"
+              />
+              Acepto que ChicBags use mis datos personales para gestionar mi registro, mis pedidos y coordinar mis envíos. *
+            </label>
+          </div>
+
+          <Button
+            type="submit"
+            disabled={registerMutation.isPending || !dataConsent}
+            className="w-full py-6 text-sm tracking-widest uppercase gap-2"
+          >
             <Save className="w-4 h-4" /> {registerMutation.isPending ? "Registrando..." : "Registrarme"}
           </Button>
         </form>
