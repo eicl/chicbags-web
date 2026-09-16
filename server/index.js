@@ -9,6 +9,7 @@ import jwt from "jsonwebtoken";
 import ExcelJS from "exceljs";
 import { mkdir, readFile } from "fs/promises";
 import { existsSync } from "fs";
+import sharp from "sharp";
 import path from "path";
 import { fileURLToPath } from "url";
 import { pool, initSchema, getOrCreateBrandId, ensureCategoryExists, ensureDistrictExists } from "./db.js";
@@ -22,6 +23,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const IMAGES_DIR = path.join(__dirname, "..", "public", "product-images");
 const DIST_DIR = path.join(__dirname, "..", "dist");
 await mkdir(IMAGES_DIR, { recursive: true });
+// Miniaturas livianas de las fotos de producto, solo para la vista previa
+// Open Graph (og:image) — WhatsApp falla en mostrar la foto cuando el
+// archivo pesa mucho (las fotos de producto reales suben sin comprimir,
+// pensadas para verse nítidas en la web, no para el límite que le gusta a
+// WhatsApp). Se generan una sola vez por archivo y quedan cacheadas en
+// disco (el nombre de archivo ya es único por subida, así que nunca hace
+// falta invalidar el caché).
+const OG_IMAGES_DIR = path.join(IMAGES_DIR, ".og-cache");
+await mkdir(OG_IMAGES_DIR, { recursive: true });
 
 await initSchema();
 
@@ -65,6 +75,33 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use("/product-images", express.static(IMAGES_DIR));
+
+// Versión reducida (max 1000px de ancho, JPEG) de una foto de producto,
+// pensada solo para og:image — ver el comentario de OG_IMAGES_DIR arriba.
+// path.basename evita que el parámetro escape del directorio de imágenes.
+app.get("/product-images/og/:filename", async (req, res) => {
+  const filename = path.basename(req.params.filename);
+  const sourcePath = path.join(IMAGES_DIR, filename);
+  if (!existsSync(sourcePath)) {
+    return res.status(404).end();
+  }
+  const cachePath = path.join(OG_IMAGES_DIR, `${filename}.jpg`);
+  if (!existsSync(cachePath)) {
+    try {
+      await sharp(sourcePath)
+        .rotate() // respeta la orientación EXIF de fotos tomadas con celular
+        .resize({ width: 1000, withoutEnlargement: true })
+        .jpeg({ quality: 72 })
+        .toFile(cachePath);
+    } catch (err) {
+      console.error("No se pudo generar la miniatura og:image:", err);
+      return res.status(500).end();
+    }
+  }
+  res.set("Content-Type", "image/jpeg");
+  res.set("Cache-Control", "public, max-age=31536000, immutable");
+  res.sendFile(cachePath);
+});
 
 const signToken = (username) => jwt.sign({ sub: username }, JWT_SECRET, { expiresIn: "7d" });
 
@@ -3058,7 +3095,9 @@ if (existsSync(DIST_DIR)) {
       if (product && product.visible) {
         const description = stripHtml(product.description).slice(0, 200) || DEFAULT_ROUTE_META.description;
         meta = { title: `${product.name} — ChicBags`, description };
-        image = product.image ? `${origin}/product-images/${product.image}` : `${origin}${DEFAULT_ROUTE_IMAGE}`;
+        image = product.image
+          ? `${origin}/product-images/og/${encodeURIComponent(product.image)}`
+          : `${origin}${DEFAULT_ROUTE_IMAGE}`;
       }
     }
 
