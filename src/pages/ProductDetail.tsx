@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Maximize2, Play, ShoppingBag, Truck, ShieldCheck, X } from "lucide-react";
+import { ArrowLeft, Maximize2, Play, ShoppingBag, Truck, ShieldCheck, X, Share2 } from "lucide-react";
 import { useProducts } from "@/context/ProductContext";
 import { useCart } from "@/context/CartContext";
 import { Button } from "@/components/ui/button";
@@ -78,6 +78,27 @@ const ProductDetail = () => {
   const mainMediaSrc = activeVideo ?? activePhoto ?? displayImage;
   const showAvailabilityBadge = !mediaOverride && colors.length > 0;
   const isAvailable = colors[selectedColor]?.stock !== 0;
+
+  // El link se comparte tal cual (window.location.href) — el servidor le
+  // arma su propia vista previa (foto, título, descripción) al abrirse,
+  // ver el catch-all de /producto/:id en server/index.js.
+  const handleShare = async () => {
+    const url = window.location.href;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: product.name, text: `Mira ${product.name} en ChicBags`, url });
+      } catch {
+        // El usuario canceló el diálogo nativo de compartir — no es un error.
+      }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("Link copiado al portapapeles");
+    } catch {
+      toast.error("No se pudo copiar el link");
+    }
+  };
 
   const handleAddToCart = () => {
     if (colors.length > 0 && colors[selectedColor]?.stock === 0) {
@@ -235,7 +256,18 @@ const ProductDetail = () => {
           <div>
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs tracking-widest uppercase text-muted-foreground">{product.categories.join(", ")}</p>
-              {product.code && <p className="text-xs text-muted-foreground">Código: {product.code}</p>}
+              <div className="flex items-center gap-3">
+                {product.code && <p className="text-xs text-muted-foreground">Código: {product.code}</p>}
+                <button
+                  type="button"
+                  onClick={handleShare}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Compartir este producto"
+                  title="Compartir este producto"
+                >
+                  <Share2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
             {product.brand && <p className="text-sm text-primary font-medium mb-1">{product.brand}</p>}
             <h1 className="text-3xl md:text-4xl font-medium mb-3" style={{ fontFamily: "var(--font-display)" }}>

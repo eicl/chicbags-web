@@ -3011,6 +3011,11 @@ const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace
 
 const replaceMetaContent = (html, selectorRegex, value) => html.replace(selectorRegex, (_match, before, after) => `${before}${escapeHtml(value)}${after}`);
 
+// Para meta description no hace falta HTML, solo el texto — la descripción
+// de un producto se escribe libre, así que se limpian etiquetas por si
+// tuviera alguna.
+const stripHtml = (s) => (s ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+
 // En producción, este mismo servicio sirve la web ya compilada (dist/) y
 // resuelve las rutas del cliente (React Router) devolviendo el index.html,
 // con los metadatos de la ruta ya reemplazados.
@@ -3026,17 +3031,42 @@ if (existsSync(DIST_DIR)) {
     if (!indexHtmlTemplate) {
       indexHtmlTemplate = await readFile(path.join(DIST_DIR, "index.html"), "utf-8");
     }
-    const matchedRoute = ROUTE_KEYS.find((r) => req.path.startsWith(r.prefix));
-    const routeKey = matchedRoute?.key ?? DEFAULT_ROUTE_KEY;
-    const { rows: metaRows } = await pool.query("SELECT title, description FROM route_meta WHERE route_key = $1", [routeKey]);
-    const meta = {
-      title: metaRows[0]?.title ?? DEFAULT_ROUTE_META.title,
-      description: metaRows[0]?.description ?? DEFAULT_ROUTE_META.description,
-      image: matchedRoute?.image ?? DEFAULT_ROUTE_IMAGE,
-    };
     const origin = `${req.protocol}://${req.get("host")}`;
     const url = `${origin}${req.originalUrl}`;
-    const image = meta.image.startsWith("http") ? meta.image : `${origin}${meta.image}`;
+
+    // Un link de producto (/producto/:id) muestra su propia foto/título al
+    // compartirse (WhatsApp, etc.) en vez del logo genérico de ROUTE_KEYS —
+    // no encaja en ese sistema porque cada producto necesita su propia
+    // imagen y título, no uno fijo compartido por toda la ruta.
+    const productMatch = req.path.match(/^\/producto\/(\d+)(?:\/|$)/);
+    let meta = null;
+    let image = null;
+    if (productMatch) {
+      const { rows: productRows } = await pool.query(
+        "SELECT name, description, image, visible FROM products WHERE id = $1",
+        [Number(productMatch[1])]
+      );
+      const product = productRows[0];
+      // Un producto oculto no tiene página de detalle pública (ver
+      // ProductDetail.tsx) — tampoco le corresponde una vista previa propia.
+      if (product && product.visible) {
+        const description = stripHtml(product.description).slice(0, 200) || DEFAULT_ROUTE_META.description;
+        meta = { title: `${product.name} — ChicBags`, description };
+        image = product.image ? `${origin}/product-images/${product.image}` : `${origin}${DEFAULT_ROUTE_IMAGE}`;
+      }
+    }
+
+    if (!meta) {
+      const matchedRoute = ROUTE_KEYS.find((r) => req.path.startsWith(r.prefix));
+      const routeKey = matchedRoute?.key ?? DEFAULT_ROUTE_KEY;
+      const { rows: metaRows } = await pool.query("SELECT title, description FROM route_meta WHERE route_key = $1", [routeKey]);
+      meta = {
+        title: metaRows[0]?.title ?? DEFAULT_ROUTE_META.title,
+        description: metaRows[0]?.description ?? DEFAULT_ROUTE_META.description,
+      };
+      const routeImage = matchedRoute?.image ?? DEFAULT_ROUTE_IMAGE;
+      image = routeImage.startsWith("http") ? routeImage : `${origin}${routeImage}`;
+    }
 
     let html = indexHtmlTemplate;
     html = replaceMetaContent(html, /(<title>)[^<]*(<\/title>)/, meta.title);
