@@ -130,7 +130,10 @@ const buildOrderStatusText = async (order) => {
   return text;
 };
 
-const formatDateTime = (iso) => new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
+// Sin timeZone, toLocaleString usa la zona horaria del servidor (Render
+// corre en UTC) — 5 horas adelantado de Lima/Bogotá, así que el mensaje le
+// llegaba al cliente con una hora que no era la real.
+const formatDateTime = (iso) => new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Lima" });
 
 export const sendCustomerRegistrationWhatsApp = async (customer) => {
   const template = await getMessageTemplate("customer_registration");

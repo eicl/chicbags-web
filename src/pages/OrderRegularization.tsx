@@ -79,8 +79,11 @@ interface RegLine {
   isService?: boolean;
 }
 
+// Se fija timeZone acá (a diferencia de dejar que el navegador use su
+// propia zona) para que el mensaje de WhatsApp y esta pantalla siempre
+// muestren la hora de Lima/Bogotá, sin importar dónde esté el admin.
 const formatDateTime = (iso: string) =>
-  new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
+  new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Lima" });
 
 // A diferencia de formatDateTime (para momentos reales, como cuándo se creó
 // el pedido), esta es para fechas de calendario sin hora (fecha de pago,
