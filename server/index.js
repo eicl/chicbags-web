@@ -30,7 +30,11 @@ await mkdir(IMAGES_DIR, { recursive: true });
 // WhatsApp). Se generan una sola vez por archivo y quedan cacheadas en
 // disco (el nombre de archivo ya es único por subida, así que nunca hace
 // falta invalidar el caché).
-const OG_IMAGES_DIR = path.join(IMAGES_DIR, ".og-cache");
+// Sin punto inicial a propósito: res.sendFile/express.static usan el
+// paquete "send", que por defecto ignora (404) cualquier ruta con un
+// segmento que empiece con punto (dotfiles: "ignore") — un directorio
+// ".og-cache" nunca se hubiera podido servir.
+const OG_IMAGES_DIR = path.join(IMAGES_DIR, "og-cache");
 await mkdir(OG_IMAGES_DIR, { recursive: true });
 
 await initSchema();
