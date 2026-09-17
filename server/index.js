@@ -2662,7 +2662,14 @@ const ACCUMULATING_STATUS = "Pendiente de envío en almacén por acumulación";
 // un ítem y deja de estarlo, tiene que salir de ahí y volver a Separación,
 // si no se queda con una etiqueta de envío en vez de la de separación que
 // le corresponde.
-const recomputeOrderStatusForTotal = async (client, orderId, newTotal, order, separationDays) => {
+// extendDeadline: solo lo pasa en true POST /api/orders/:id/items (agregar
+// un producto/servicio nuevo) — ahí el plazo se corre a
+// "hoy + separationDays" aunque ya hubiera uno puesto, porque agregar algo
+// al pedido es, en la práctica, un nuevo compromiso de compra. Editar un
+// descuento, la cantidad de un servicio, o quitar un ítem NO mueven el
+// plazo — siguen dejando el que ya había (o poniendo uno recién si todavía
+// no tenía, ej. un pedido que recién pasa a deber por primera vez).
+const recomputeOrderStatusForTotal = async (client, orderId, newTotal, order, separationDays, { extendDeadline = false } = {}) => {
   if (order.status !== "Separación" && order.status !== "Pendiente de envío" && order.status !== ACCUMULATING_STATUS) {
     return { status: order.status, separationDeadline: order.separation_deadline };
   }
@@ -2671,10 +2678,9 @@ const recomputeOrderStatusForTotal = async (client, orderId, newTotal, order, se
   const isContraentrega = order.charge_type === "Contraentrega";
   const stillFullyPaid = paid >= newTotal || isContraentrega;
   const status = stillFullyPaid ? (order.status === ACCUMULATING_STATUS ? ACCUMULATING_STATUS : "Pendiente de envío") : "Separación";
+  const freshDeadline = new Date(limaCalendarDayStart(new Date()).getTime() + separationDays * 24 * 60 * 60 * 1000);
   const separationDeadline =
-    status === "Separación"
-      ? order.separation_deadline ?? new Date(limaCalendarDayStart(new Date()).getTime() + separationDays * 24 * 60 * 60 * 1000)
-      : order.separation_deadline;
+    status === "Separación" ? (extendDeadline ? freshDeadline : order.separation_deadline ?? freshDeadline) : order.separation_deadline;
   return { status, separationDeadline };
 };
 
@@ -2767,7 +2773,14 @@ app.post("/api/orders/:id/items", requireAuth, async (req, res) => {
       [orderId, li.productId, li.serviceId, li.productName, li.productCode, li.colorName, li.unitPrice, li.quantity, li.discount, li.subtotal]
     );
 
-    const { status: newStatus, separationDeadline: newDeadline } = await recomputeOrderStatusForTotal(client, orderId, newTotal, order, settings.separationDays);
+    const { status: newStatus, separationDeadline: newDeadline } = await recomputeOrderStatusForTotal(
+      client,
+      orderId,
+      newTotal,
+      order,
+      settings.separationDays,
+      { extendDeadline: true }
+    );
     await client.query("UPDATE orders SET total = $1, status = $2, separation_deadline = $3 WHERE id = $4", [newTotal, newStatus, newDeadline, orderId]);
 
     const { rows: finalOrderRows } = await client.query("SELECT * FROM orders WHERE id = $1", [orderId]);
