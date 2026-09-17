@@ -52,6 +52,7 @@ const PAYMENT_SOURCES = ["Yape", "Plin", "Otro"];
 // Respaldo mientras se carga la configuración real desde el servidor
 // (Admin > Configuración > Pedidos).
 const FALLBACK_NEAR_SEPARATION_DEADLINE_DAYS = 13;
+const FALLBACK_SEPARATION_DAYS = 15;
 const PAGE_SIZE = 20;
 
 const matchesOrder = (order: AdminOrder, query: string) => {
@@ -72,20 +73,23 @@ const limaCalendarDayStart = (date: Date) => {
   return Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate());
 };
 
-// Alerta visual: pedidos "Separación"/"Separado en almacén" (el plazo para
-// cancelar se configura en Admin > Configuración) que ya pasaron
-// nearSeparationDeadlineDays días calendario desde el primer pago y
-// todavía tienen saldo pendiente — para verlos de un vistazo antes de que
-// se cumpla el plazo. Un pedido ya pagado del todo (remaining = 0) no se
-// marca, aunque siga técnicamente en ese estado.
-const isNearSeparationDeadline = (order: AdminOrder, nearSeparationDeadlineDays: number) => {
+// Alerta visual: pedidos "Separación"/"Separado en almacén" a los que les
+// quedan separationDays - nearSeparationDeadlineDays días calendario o
+// menos para su separationDeadline (o que ya lo pasaron) y todavía tienen
+// saldo pendiente — para verlos de un vistazo antes de que se cumpla el
+// plazo. Se basa en separationDeadline (no en "días desde el primer pago")
+// a propósito: ese campo es la fuente real de verdad y respeta cualquier
+// extensión del plazo, automática (al agregar un ítem) o manual. Un pedido
+// ya pagado del todo (remaining = 0) no se marca, aunque siga técnicamente
+// en ese estado.
+const isNearSeparationDeadline = (order: AdminOrder, separationDays: number, nearSeparationDeadlineDays: number) => {
   const status = order.status.toLowerCase();
   if (!status.includes("separac") && !status.includes("separad")) return false;
-  const firstPayment = order.payments[0];
-  if (!firstPayment) return false;
-  const daysSinceFirstPayment =
-    (limaCalendarDayStart(new Date()) - limaCalendarDayStart(new Date(firstPayment.createdAt))) / (1000 * 60 * 60 * 24);
-  if (daysSinceFirstPayment <= nearSeparationDeadlineDays) return false;
+  if (!order.separationDeadline) return false;
+  const daysUntilDeadline =
+    (limaCalendarDayStart(new Date(order.separationDeadline)) - limaCalendarDayStart(new Date())) / (1000 * 60 * 60 * 24);
+  const warnWithinDays = separationDays - nearSeparationDeadlineDays;
+  if (daysUntilDeadline > warnWithinDays) return false;
   const paid = order.payments.reduce((sum, p) => sum + p.amount, 0);
   return order.total - paid > 0;
 };
@@ -879,6 +883,7 @@ const AdminOrders = () => {
   const { products } = useProducts();
   const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
   const nearSeparationDeadlineDays = settings?.nearSeparationDeadlineDays ?? FALLBACK_NEAR_SEPARATION_DEADLINE_DAYS;
+  const separationDays = settings?.separationDays ?? FALLBACK_SEPARATION_DAYS;
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "Todos">("Todos");
@@ -894,8 +899,8 @@ const AdminOrders = () => {
     .sort((a, b) => {
       if (statusFilter !== "Todos") return 0;
       return (
-        Number(isNearSeparationDeadline(b, nearSeparationDeadlineDays)) -
-        Number(isNearSeparationDeadline(a, nearSeparationDeadlineDays))
+        Number(isNearSeparationDeadline(b, separationDays, nearSeparationDeadlineDays)) -
+        Number(isNearSeparationDeadline(a, separationDays, nearSeparationDeadlineDays))
       );
     });
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
@@ -1097,8 +1102,8 @@ const AdminOrders = () => {
                       <td className="py-3 px-4 text-sm font-medium text-primary">
                         <span className="inline-flex items-center gap-1.5">
                           #{order.id}
-                          {isNearSeparationDeadline(order, nearSeparationDeadlineDays) && (
-                            <span title={`Cerca del plazo de separación: más de ${nearSeparationDeadlineDays} días desde el primer pago`}>
+                          {isNearSeparationDeadline(order, separationDays, nearSeparationDeadlineDays) && (
+                            <span title="Cerca del plazo de separación (o ya vencido)">
                               <Flag className="w-3.5 h-3.5 text-destructive fill-destructive shrink-0" aria-label="Cerca del plazo de separación" />
                             </span>
                           )}

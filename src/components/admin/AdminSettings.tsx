@@ -152,7 +152,8 @@ const AdminSettings = () => {
           <div>
             <label className="text-sm text-muted-foreground mb-1 block">Alerta de plazo próximo (días)</label>
             <p className="text-xs text-muted-foreground mb-1">
-              A cuántos días calendario desde el primer pago se enciende la banderita roja en Pedidos.
+              La banderita roja de Pedidos se enciende cuando al plazo de separación del pedido le quedan{" "}
+              {Math.max(0, Number(separationDays) - Number(nearSeparationDeadlineDays))} días o menos (o ya lo pasó).
             </p>
             <Input
               type="number"
