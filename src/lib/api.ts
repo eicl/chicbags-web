@@ -543,6 +543,13 @@ export interface AdminOrder extends Order {
   customerDeliveryMode: DeliveryMode | null;
   customerAgency: string;
   customerAddress: string;
+  // Si el cliente registró que otra persona recibe sus envíos (portería,
+  // familiar, etc.) — ver differentReceiver en Customer. Vacíos si no.
+  customerDifferentReceiver: boolean;
+  customerReceiverDocumentType: string;
+  customerReceiverDocumentNumber: string;
+  customerReceiverName: string;
+  customerReceiverMobile: string;
   sellerName: string;
 }
 

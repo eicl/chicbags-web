@@ -166,6 +166,16 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
   // no tiene sentido mostrárselo a ellas.
   const showYapeQr = showCobrar && !COURIER_DELIVERY_TYPES.includes(order.customerDeliveryType);
   const motoIconSrc = MOTO_ICON_SRC[order.customerDeliveryType];
+  // Si el cliente registró que otra persona recibe sus envíos y esos datos
+  // están completos, la etiqueta final (Pendiente de envío en adelante) va
+  // con los datos de quien recepciona en vez de los del cliente — a quien
+  // entrega le sirve más el nombre/celular de quien realmente va a abrir
+  // la puerta, no el del titular de la cuenta.
+  const usesReceiver = order.customerDifferentReceiver && order.customerReceiverName.trim() !== "";
+  const recipientName = usesReceiver ? order.customerReceiverName : order.customerName;
+  const recipientDocumentType = usesReceiver ? order.customerReceiverDocumentType : order.customerDocumentType;
+  const recipientDocumentNumber = usesReceiver ? order.customerReceiverDocumentNumber : order.customerDocumentNumber;
+  const recipientMobile = usesReceiver ? order.customerReceiverMobile : order.customerMobile;
   const rows: [string, string][] = [
     ["Delivery", order.customerAgency ? `${order.customerDeliveryType} - ${order.customerAgency}` : order.customerDeliveryType],
     ...(isMotorized
@@ -174,9 +184,9 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
           ["Dirección", order.customerAddress],
         ] as [string, string][])
       : ([["Ubicación", `${order.customerDepartment} - ${order.customerProvince} - ${order.customerDistrict}`]] as [string, string][])),
-    ...(isMotorized ? [] : ([["Documento", `${order.customerDocumentType} - ${order.customerDocumentNumber}`]] as [string, string][])),
-    ["Nombre", order.customerName],
-    ["Celular", order.customerMobile],
+    ...(isMotorized ? [] : ([["Documento", `${recipientDocumentType} - ${recipientDocumentNumber}`]] as [string, string][])),
+    [usesReceiver ? "Nombre (recepciona)" : "Nombre", recipientName],
+    [usesReceiver ? "Celular (recepciona)" : "Celular", recipientMobile],
   ];
   // Solo productos (sin servicios, que no tienen color) — código, cantidad
   // y color de cada ítem, para armar el paquete sin tener que abrir el

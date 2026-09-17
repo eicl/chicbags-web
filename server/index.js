@@ -1745,6 +1745,8 @@ app.get("/api/orders", requireAuth, async (req, res) => {
       o.separation_deadline, o.total, o.created_at,
       c.first_name, c.paternal_surname, c.maternal_surname, c.document_type, c.document_number, c.mobile,
       c.department, c.province, c.district, c.delivery_type, c.delivery_mode, c.agency, c.address,
+      c.different_receiver, c.receiver_document_type, c.receiver_document_number, c.receiver_first_name,
+      c.receiver_paternal_surname, c.receiver_maternal_surname, c.receiver_mobile,
       u.username AS seller_username,
       COALESCE(items.items, '[]') AS items,
       COALESCE(payments.payments, '[]') AS payments
@@ -1789,6 +1791,13 @@ app.get("/api/orders", requireAuth, async (req, res) => {
       customerDeliveryMode: row.delivery_mode,
       customerAgency: row.agency,
       customerAddress: row.address,
+      customerDifferentReceiver: row.different_receiver,
+      customerReceiverDocumentType: row.receiver_document_type,
+      customerReceiverDocumentNumber: row.receiver_document_number,
+      customerReceiverName: [row.receiver_first_name, row.receiver_paternal_surname, row.receiver_maternal_surname]
+        .filter(Boolean)
+        .join(" "),
+      customerReceiverMobile: row.receiver_mobile,
       sellerId: row.seller_id,
       sellerName: row.seller_username ?? "",
       type: row.type,
