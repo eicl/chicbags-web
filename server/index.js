@@ -2648,20 +2648,29 @@ app.put("/api/orders/:id/release-accumulate", requireAuth, async (req, res) => {
   res.json(mapOrder(rows[0], itemRows, paymentRows));
 });
 
+const ACCUMULATING_STATUS = "Pendiente de envío en almacén por acumulación";
+
 // Recalcula estado/plazo de un pedido después de que cambió su total (por
 // agregar, editar o quitar un ítem) — misma regla que applyPayment: solo
-// toca el estado si el pedido ya estaba en Separación/Pendiente de envío
-// (es decir, si ya había al menos un pago); antes de eso no hay nada que
-// recalcular. Si ya eligieron Contraentrega, el saldo pendiente no lo
-// devuelve a Separación — quien reparte sigue cobrando el resto al entregar.
+// toca el estado si el pedido ya estaba en Separación/Pendiente de envío/
+// acumulación (es decir, si ya había al menos un pago); antes de eso no hay
+// nada que recalcular. Si ya eligieron Contraentrega, el saldo pendiente no
+// lo devuelve a Separación — quien reparte sigue cobrando el resto al
+// entregar.
+// Un pedido "en almacén por acumulación" solo es válido mientras siga
+// pagado del todo (ver PUT /api/orders/:id/accumulate) — si se le agrega
+// un ítem y deja de estarlo, tiene que salir de ahí y volver a Separación,
+// si no se queda con una etiqueta de envío en vez de la de separación que
+// le corresponde.
 const recomputeOrderStatusForTotal = async (client, orderId, newTotal, order, separationDays) => {
-  if (order.status !== "Separación" && order.status !== "Pendiente de envío") {
+  if (order.status !== "Separación" && order.status !== "Pendiente de envío" && order.status !== ACCUMULATING_STATUS) {
     return { status: order.status, separationDeadline: order.separation_deadline };
   }
   const { rows: paidRows } = await client.query("SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE order_id = $1", [orderId]);
   const paid = Number(paidRows[0].paid);
   const isContraentrega = order.charge_type === "Contraentrega";
-  const status = paid >= newTotal || isContraentrega ? "Pendiente de envío" : "Separación";
+  const stillFullyPaid = paid >= newTotal || isContraentrega;
+  const status = stillFullyPaid ? (order.status === ACCUMULATING_STATUS ? ACCUMULATING_STATUS : "Pendiente de envío") : "Separación";
   const separationDeadline =
     status === "Separación"
       ? order.separation_deadline ?? new Date(limaCalendarDayStart(new Date()).getTime() + separationDays * 24 * 60 * 60 * 1000)
