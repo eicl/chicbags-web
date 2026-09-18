@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Plus } from "lucide-react";
+import { Plus, Share2 } from "lucide-react";
 import { Product, ProductColor, useCart } from "@/context/CartContext";
 import { productImageUrl } from "@/lib/images";
 import { CART_ENABLED } from "@/lib/config";
 import { sortColors } from "@/lib/colors";
+import { shareProductLink } from "@/lib/share";
 
 // Si el primer color (el que se mostraría por defecto) está agotado, elige
 // al azar la foto de otro color que sí tenga stock, para no mostrar en el
@@ -38,11 +39,26 @@ const ProductCard = ({ product, isNew = false }: { product: Product; isNew?: boo
     >
       <Link to={`/producto/${product.id}`}>
         <div className="relative aspect-[4/5] overflow-hidden bg-muted">
-          {isNew && (
-            <span className="absolute top-3 left-3 z-10 bg-primary text-primary-foreground text-[10px] font-medium tracking-widest uppercase px-2.5 py-1 rounded-sm">
-              Nuevo
-            </span>
-          )}
+          <div className="absolute top-3 left-3 z-10 flex flex-col items-start gap-2">
+            {isNew && (
+              <span className="bg-primary text-primary-foreground text-[10px] font-medium tracking-widest uppercase px-2.5 py-1 rounded-sm">
+                Nuevo
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                shareProductLink(product.name, `${window.location.origin}/producto/${product.id}`);
+              }}
+              className="p-2 rounded-full bg-background/80 text-foreground hover:bg-background transition-colors shadow-sm"
+              aria-label={`Compartir ${product.name}`}
+              title="Compartir este producto"
+            >
+              <Share2 className="w-4 h-4" />
+            </button>
+          </div>
           {colors.length > 0 && (
             <span
               className={`absolute top-3 right-3 z-10 text-[10px] font-medium tracking-widest uppercase px-2.5 py-1 rounded-sm ${

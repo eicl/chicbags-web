@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { productImageUrl } from "@/lib/images";
 import { CART_ENABLED } from "@/lib/config";
 import { sortColors } from "@/lib/colors";
+import { shareProductLink } from "@/lib/share";
 
 const ProductDetail = () => {
   const { id } = useParams();
@@ -79,26 +80,7 @@ const ProductDetail = () => {
   const showAvailabilityBadge = !mediaOverride && colors.length > 0;
   const isAvailable = colors[selectedColor]?.stock !== 0;
 
-  // El link se comparte tal cual (window.location.href) — el servidor le
-  // arma su propia vista previa (foto, título, descripción) al abrirse,
-  // ver el catch-all de /producto/:id en server/index.js.
-  const handleShare = async () => {
-    const url = window.location.href;
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: product.name, text: `Mira ${product.name} en ChicBags`, url });
-      } catch {
-        // El usuario canceló el diálogo nativo de compartir — no es un error.
-      }
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(url);
-      toast.success("Link copiado al portapapeles");
-    } catch {
-      toast.error("No se pudo copiar el link");
-    }
-  };
+  const handleShare = () => shareProductLink(product.name, window.location.href);
 
   const handleAddToCart = () => {
     if (colors.length > 0 && colors[selectedColor]?.stock === 0) {
@@ -160,6 +142,17 @@ const ProductDetail = () => {
                   />
                 )}
               </AnimatePresence>
+              {!activeVideo && (
+                <button
+                  type="button"
+                  onClick={handleShare}
+                  className="absolute top-3 left-3 z-10 p-2 rounded-full bg-background/80 text-foreground hover:bg-background transition-colors shadow-sm"
+                  aria-label="Compartir este producto"
+                  title="Compartir este producto"
+                >
+                  <Share2 className="w-4 h-4" />
+                </button>
+              )}
               {showAvailabilityBadge && (
                 <span
                   className={`absolute top-3 right-3 z-10 text-[10px] font-medium tracking-widest uppercase px-2.5 py-1 rounded-sm ${
@@ -256,18 +249,7 @@ const ProductDetail = () => {
           <div>
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs tracking-widest uppercase text-muted-foreground">{product.categories.join(", ")}</p>
-              <div className="flex items-center gap-3">
-                {product.code && <p className="text-xs text-muted-foreground">Código: {product.code}</p>}
-                <button
-                  type="button"
-                  onClick={handleShare}
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label="Compartir este producto"
-                  title="Compartir este producto"
-                >
-                  <Share2 className="w-4 h-4" />
-                </button>
-              </div>
+              {product.code && <p className="text-xs text-muted-foreground">Código: {product.code}</p>}
             </div>
             {product.brand && <p className="text-sm text-primary font-medium mb-1">{product.brand}</p>}
             <h1 className="text-3xl md:text-4xl font-medium mb-3" style={{ fontFamily: "var(--font-display)" }}>
