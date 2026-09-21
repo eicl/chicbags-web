@@ -1403,15 +1403,31 @@ const validatePaymentInput = ({ amount, source, proofImage, date }) => {
   }
 };
 
+// Estados donde un pago nuevo no debe tocar el status del pedido: ya salió
+// del ciclo de pagos (Listo para delivery/Entregado a delivery, ej. un pago
+// tardío o una corrección) o lo maneja otra lógica aparte (acumulación, ver
+// recomputeOrderStatusForTotal más abajo).
+const PAYMENT_UNTOUCHED_STATUSES = ["Listo para delivery", "Entregado a delivery"];
+
 // Inserta el pago y recalcula el estado del pedido sumando TODOS los pagos
 // ya registrados contra el total: si lo cubre pasa a "Pendiente de envío",
 // si no a "Separación" (con un plazo de separationDays días calendario para
 // cancelar — configurable en Admin > Configuración — que se fija solo la
-// primera vez que entra a ese estado). No abre su propia transacción: el
-// caller decide el alcance — sola (registerPaymentTx) o junto con la
-// creación del pedido, en la misma transacción, cuando el pago se carga al
-// mismo tiempo que los productos.
-const applyPayment = async (client, orderId, total, currentDeadline, { amount, source, proofImage, registeredBy, date, operationNumber }, separationDays) => {
+// primera vez que entra a ese estado). Si el pedido ya estaba "Separado en
+// almacén" y el pago todavía no alcanza a cubrirlo, se queda ahí (no se
+// resetea a "Separación" a secas, perdiendo que ya se apartó físicamente).
+// No abre su propia transacción: el caller decide el alcance — sola
+// (registerPaymentTx) o junto con la creación del pedido, en la misma
+// transacción, cuando el pago se carga al mismo tiempo que los productos.
+const applyPayment = async (
+  client,
+  orderId,
+  total,
+  currentDeadline,
+  currentStatus,
+  { amount, source, proofImage, registeredBy, date, operationNumber },
+  separationDays
+) => {
   // "date" llega como fecha sin hora ("YYYY-MM-DD", del selector de fecha
   // del formulario) pensada como día calendario en Lima. new Date(date) a
   // secas la interpreta como medianoche UTC, que en Lima (UTC-5) todavía es
@@ -1428,13 +1444,20 @@ const applyPayment = async (client, orderId, total, currentDeadline, { amount, s
     [orderId]
   );
   const paid = Number(paidRows[0].paid);
-  const status = paid >= total ? "Pendiente de envío" : "Separación";
+  const untouched = PAYMENT_UNTOUCHED_STATUSES.includes(currentStatus) || currentStatus === ACCUMULATING_STATUS;
+  const status = untouched
+    ? currentStatus
+    : paid >= total
+      ? "Pendiente de envío"
+      : currentStatus === "Separado en almacén"
+        ? "Separado en almacén"
+        : "Separación";
   // El plazo se cuenta desde el día calendario del pago (no desde que se
   // registró en el sistema ni desde su hora exacta), así que si el pago se
   // carga con una fecha pasada, el plazo también arranca desde ese día y no
   // desde "ahora".
   const separationDeadline =
-    status === "Separación"
+    status === "Separación" || status === "Separado en almacén"
       ? currentDeadline ?? new Date(limaCalendarDayStart(paidAt).getTime() + separationDays * 24 * 60 * 60 * 1000)
       : currentDeadline;
   await client.query("UPDATE orders SET status = $1, separation_deadline = $2 WHERE id = $3", [status, separationDeadline, orderId]);
@@ -1451,14 +1474,14 @@ const registerPaymentTx = async (orderId, paymentData) => {
   try {
     await client.query("BEGIN");
     const { rows: orderRows } = await client.query(
-      "SELECT id, total, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
+      "SELECT id, total, status, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
       [orderId]
     );
     if (orderRows.length === 0) {
       throw new Error("El pedido no existe");
     }
     const order = orderRows[0];
-    await applyPayment(client, orderId, Number(order.total), order.separation_deadline, paymentData, settings.separationDays);
+    await applyPayment(client, orderId, Number(order.total), order.separation_deadline, order.status, paymentData, settings.separationDays);
 
     const { rows: updatedRows } = await client.query("SELECT * FROM orders WHERE id = $1", [orderId]);
     const { rows: itemRows } = await client.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [orderId]);
@@ -1495,7 +1518,7 @@ const recordIzipayPayment = async (orderId, operationNumber) => {
   try {
     await client.query("BEGIN");
     const { rows: orderRows } = await client.query(
-      "SELECT id, total, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
+      "SELECT id, total, status, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
       [orderId]
     );
     if (orderRows.length === 0) {
@@ -1522,6 +1545,7 @@ const recordIzipayPayment = async (orderId, operationNumber) => {
         orderId,
         Number(order.total),
         order.separation_deadline,
+        order.status,
         { amount: remaining, source: "Tarjeta (Izipay)", proofImage: "", registeredBy: "Izipay (automático)", operationNumber },
         settings.separationDays
       );
@@ -2341,9 +2365,11 @@ app.post("/api/orders/register", async (req, res) => {
 
     if (Array.isArray(payments) && payments.length > 0) {
       let deadline = null;
+      let status = order.status;
       for (const p of payments) {
-        const result = await applyPayment(client, order.id, total, deadline, { ...p, registeredBy: seller.username }, settings.separationDays);
+        const result = await applyPayment(client, order.id, total, deadline, status, { ...p, registeredBy: seller.username }, settings.separationDays);
         deadline = result.separationDeadline;
+        status = result.status;
       }
     }
     // Contraentrega en un delivery elegible salta directo a "Pendiente de
@@ -2466,7 +2492,7 @@ app.post("/api/orders/regularize", async (req, res) => {
     if (payment !== undefined) {
       validatePaymentInput(payment);
       const settings = await getSettings();
-      await applyPayment(client, order.id, total, null, { ...payment, registeredBy: seller.username }, settings.separationDays);
+      await applyPayment(client, order.id, total, null, order.status, { ...payment, registeredBy: seller.username }, settings.separationDays);
     }
     const { rows: finalOrderRows } = await client.query("SELECT * FROM orders WHERE id = $1", [order.id]);
     const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [order.id]);
