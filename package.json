@@ -27,17 +27,21 @@
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
+    "fast-xml-parser": "^5.11.1",
     "framer-motion": "^12.42.2",
     "jsonwebtoken": "^9.0.3",
+    "jszip": "^3.10.2",
     "lucide-react": "^1.26.0",
     "multer": "^2.2.0",
+    "node-forge": "^1.4.0",
     "pg": "^8.22.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.1",
     "sharp": "^0.35.4",
     "sonner": "^2.0.7",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "xml-crypto": "^6.3.0"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

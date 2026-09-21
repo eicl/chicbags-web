@@ -551,10 +551,36 @@ export interface AdminOrder extends Order {
   customerReceiverName: string;
   customerReceiverMobile: string;
   sellerName: string;
+  // Boleta electrónica SUNAT del pedido (la más reciente, si hay más de un
+  // intento) — null si nunca se emitió ninguna. Ver POST /api/orders/:id/boleta.
+  boleta: OrderBoleta | null;
 }
 
 export const fetchOrders = (): Promise<AdminOrder[]> =>
   fetch(`${API_URL}/orders`, { credentials: "include" }).then((res) => handle<AdminOrder[]>(res));
+
+// Emisión de boletas electrónicas ante SUNAT (server/sunat.js) — botón
+// "Emitir boleta" en Admin > Pedidos. "error_envio" es reintentable (el
+// mismo endpoint detecta que ya hay un intento fallido y reusa el XML/
+// correlativo ya firmados); "rechazado" no lo es, hace falta emitir de
+// nuevo con un correlativo nuevo.
+export type BoletaStatus = "pendiente" | "aceptado" | "aceptado_con_observaciones" | "rechazado" | "error_envio";
+
+export interface OrderBoleta {
+  id: number;
+  serie: string;
+  correlativo: number;
+  status: BoletaStatus;
+  sunatResponseCode: string;
+  sunatResponseDescription: string;
+  // Solo tiene contenido útil cuando status es "error_envio" o "rechazado"
+  // por un soap:Fault — el mensaje de red/timeout o del fault de SUNAT.
+  errorMessage: string;
+  createdAt: string;
+}
+
+export const emitBoleta = (orderId: number): Promise<OrderBoleta> =>
+  fetch(`${API_URL}/orders/${orderId}/boleta`, { method: "POST", credentials: "include" }).then((res) => handle<OrderBoleta>(res));
 
 // Dashboard: evolución de ventas por mes (últimos 12) y ventas diarias por
 // vendedor (últimos 30 días) — "venta" es el total del pedido a la fecha en

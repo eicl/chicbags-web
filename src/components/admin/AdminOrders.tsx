@@ -1,10 +1,10 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ArchiveRestore, Check, ChevronDown, ChevronUp, Flag, MessageCircle, Loader2, PackageCheck, Pencil, Plus, Printer, Search, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, ChevronDown, ChevronUp, FileText, Flag, MessageCircle, Loader2, PackageCheck, Pencil, Plus, Printer, Search, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
 import {
   AdminOrder, ChargeType, DeliveryType, OrderItem, OrderStatus, PaymentInput, Service,
-  addOrderItem, deleteOrder, deleteOrderItem, fetchOrders, fetchServices, fetchSettings, markOrderAccumulating,
+  addOrderItem, deleteOrder, deleteOrderItem, emitBoleta, fetchOrders, fetchServices, fetchSettings, markOrderAccumulating,
   markOrderDelivered, markOrderReadyForDelivery, markOrderWarehouseSeparated, registerPayment, releaseOrderAccumulating,
   sendOrderStatusWhatsApp, updateOrderChargeType, updateOrderItemColor, updateOrderItemDiscount, updateOrderReceipt, updateOrderServiceItem,
   uploadImage,
@@ -985,6 +985,26 @@ const AdminOrders = () => {
     onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo actualizar el pedido"),
   });
 
+  const boletaMutation = useMutation({
+    mutationFn: emitBoleta,
+    onSuccess: (boleta) => {
+      if (boleta.status === "aceptado") {
+        toast.success(`Boleta ${boleta.serie}-${boleta.correlativo} emitida`);
+      } else if (boleta.status === "aceptado_con_observaciones") {
+        toast.warning(`Boleta ${boleta.serie}-${boleta.correlativo} emitida con observaciones: ${boleta.sunatResponseDescription}`);
+      }
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+    onError: (err: unknown) => {
+      toast.error(err instanceof Error ? err.message : "No se pudo emitir la boleta");
+      // El servidor ya deja la boleta en error_envio/rechazado antes de
+      // responder con el error — hay que refrescar para que el botón pase
+      // a "Reintentar" (o "Emitir boleta" de nuevo) en vez de quedarse
+      // mostrando el estado anterior.
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+
   const warehouseMutation = useMutation({
     mutationFn: markOrderWarehouseSeparated,
     onSuccess: () => {
@@ -1283,6 +1303,48 @@ const AdminOrders = () => {
                             >
                               <Printer className="w-3.5 h-3.5" /> Imprimir
                             </Button>
+                            {(() => {
+                              const boleta = order.boleta;
+                              if (boleta?.status === "aceptado" || boleta?.status === "aceptado_con_observaciones") {
+                                return (
+                                  <span
+                                    className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md ${
+                                      boleta.status === "aceptado" ? "bg-emerald-500/10 text-emerald-600" : "bg-amber-500/10 text-amber-600"
+                                    }`}
+                                    title={boleta.status === "aceptado_con_observaciones" ? boleta.sunatResponseDescription : undefined}
+                                  >
+                                    <FileText className="w-3.5 h-3.5" /> Boleta {boleta.serie}-{boleta.correlativo}
+                                  </span>
+                                );
+                              }
+                              if (boleta?.status === "pendiente") {
+                                return (
+                                  <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 text-muted-foreground">
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Boleta en proceso...
+                                  </span>
+                                );
+                              }
+                              const isRetry = boleta?.status === "error_envio";
+                              return (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => boletaMutation.mutate(order.id)}
+                                  disabled={boletaMutation.isPending || order.status === "Registrado"}
+                                  title={
+                                    order.status === "Registrado"
+                                      ? "Registra un pago primero"
+                                      : isRetry
+                                        ? boleta.errorMessage
+                                        : undefined
+                                  }
+                                  className="gap-2"
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                  {boletaMutation.isPending ? "Emitiendo..." : isRetry ? "Reintentar envío a SUNAT" : "Emitir boleta"}
+                                </Button>
+                              );
+                            })()}
                             {order.status === "Separación" && (
                               <Button
                                 variant="outline"

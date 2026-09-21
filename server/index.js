@@ -15,6 +15,17 @@ import { fileURLToPath } from "url";
 import { pool, initSchema, getOrCreateBrandId, ensureCategoryExists, ensureDistrictExists } from "./db.js";
 import { sendCustomerRegistrationWhatsApp, sendCustomerAccountWhatsApp, sendOrderRegistrationWhatsApp, sendOrderStatusWhatsApp, sendMobileVerificationPin, sendPasswordResetWhatsApp } from "./whatsapp.js";
 import { lookupDni } from "./migo.js";
+import {
+  loadCertificate as loadSunatCertificate,
+  documentTypeCode,
+  computeIgvBreakdown,
+  buildBoletaXml,
+  signXml,
+  buildZip,
+  sendBillToSunat,
+  parseSendBillResponse,
+  classifyCdrStatus,
+} from "./sunat.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Las imágenes viven dentro del frontend (carpeta public/) para que Vite
@@ -1773,10 +1784,19 @@ app.get("/api/orders", requireAuth, async (req, res) => {
       c.receiver_paternal_surname, c.receiver_maternal_surname, c.receiver_mobile,
       u.username AS seller_username,
       COALESCE(items.items, '[]') AS items,
-      COALESCE(payments.payments, '[]') AS payments
+      COALESCE(payments.payments, '[]') AS payments,
+      boleta.boleta
     FROM orders o
     JOIN customers c ON c.id = o.customer_id
     LEFT JOIN users u ON u.id = o.seller_id
+    LEFT JOIN LATERAL (
+      SELECT json_build_object(
+        'id', b.id, 'serie', b.serie, 'correlativo', b.correlativo, 'status', b.status,
+        'sunatResponseCode', b.sunat_response_code, 'sunatResponseDescription', b.sunat_response_description,
+        'errorMessage', b.error_message, 'createdAt', b.created_at
+      ) AS boleta
+      FROM sunat_boletas b WHERE b.order_id = o.id ORDER BY b.id DESC LIMIT 1
+    ) boleta ON true
     LEFT JOIN LATERAL (
       SELECT json_agg(
         json_build_object(
@@ -1839,6 +1859,7 @@ app.get("/api/orders", requireAuth, async (req, res) => {
         subtotal: Number(i.subtotal),
       })),
       payments: row.payments.map((p) => ({ ...p, amount: Number(p.amount) })),
+      boleta: row.boleta,
     }))
   );
 });
@@ -3019,6 +3040,230 @@ app.put("/api/orders/:id/charge-type", requireAuth, async (req, res) => {
   } finally {
     client.release();
   }
+});
+
+// "YYYY-MM-DD"/"HH:MM:SS" en hora de Lima, para cbc:IssueDate/IssueTime del
+// XML de SUNAT (ver server/sunat.js) — mismo offset fijo (Perú no tiene
+// horario de verano) que LIMA_OFFSET_MS/limaCalendarDayStart de más arriba.
+const limaDateTimeStrings = (date) => {
+  const shifted = new Date(date.getTime() - LIMA_OFFSET_MS);
+  const pad2local = (n) => String(n).padStart(2, "0");
+  const issueDateLima = `${shifted.getUTCFullYear()}-${pad2local(shifted.getUTCMonth() + 1)}-${pad2local(shifted.getUTCDate())}`;
+  const issueTimeLima = `${pad2local(shifted.getUTCHours())}:${pad2local(shifted.getUTCMinutes())}:${pad2local(shifted.getUTCSeconds())}`;
+  return { issueDateLima, issueTimeLima };
+};
+
+const mapBoleta = (row) => ({
+  id: row.id,
+  serie: row.serie,
+  correlativo: row.correlativo,
+  status: row.status,
+  sunatResponseCode: row.sunat_response_code,
+  sunatResponseDescription: row.sunat_response_description,
+  errorMessage: row.error_message,
+  createdAt: row.created_at,
+});
+
+// Emite (o reintenta) la boleta electrónica de un pedido ante SUNAT. Cubre
+// tanto la primera emisión como el reintento tras una falla de red — ver
+// el plan: tres desenlaces posibles (red/timeout, soap:Fault, CDR de
+// SUNAT), cada uno con su propio manejo, porque acá hay dinero y
+// obligaciones tributarias reales de por medio, no solo una UX a cuidar.
+app.post("/api/orders/:id/boleta", requireAuth, async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!Number.isInteger(orderId)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  if (!loadSunatCertificate()) {
+    return res.status(500).json({ error: "SUNAT no está configurado" });
+  }
+  const serie = process.env.SUNAT_SERIE_BOLETA || "B001";
+
+  const { rows: orderRows } = await pool.query(
+    `SELECT o.id, o.total, o.status, o.customer_id, c.document_type, c.document_number,
+            c.first_name, c.paternal_surname, c.maternal_surname
+     FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.id = $1`,
+    [orderId]
+  );
+  if (orderRows.length === 0) {
+    return res.status(404).json({ error: "Pedido no encontrado" });
+  }
+  const orderRow = orderRows[0];
+  if (Number(orderRow.total) <= 0) {
+    return res.status(400).json({ error: "El pedido no tiene un total válido" });
+  }
+  const customer = {
+    documentType: orderRow.document_type,
+    documentNumber: orderRow.document_number,
+    firstName: orderRow.first_name,
+    paternalSurname: orderRow.paternal_surname,
+    maternalSurname: orderRow.maternal_surname,
+  };
+  if (!customer.documentNumber?.trim()) {
+    return res.status(400).json({ error: "El cliente no tiene un documento válido para emitir boleta" });
+  }
+
+  const { rows: itemRows } = await pool.query(
+    "SELECT product_id, service_id, product_name, product_code, color_name, unit_price, quantity, subtotal FROM order_items WHERE order_id = $1 ORDER BY id",
+    [orderId]
+  );
+  if (itemRows.length === 0) {
+    return res.status(400).json({ error: "El pedido no tiene ítems" });
+  }
+  const items = itemRows.map((i) => ({
+    productId: i.product_id,
+    serviceId: i.service_id,
+    productName: i.product_name,
+    productCode: i.product_code,
+    colorName: i.color_name,
+    unitPrice: Number(i.unit_price),
+    quantity: i.quantity,
+    subtotal: Number(i.subtotal),
+  }));
+
+  const { rows: existingRows } = await pool.query(
+    "SELECT * FROM sunat_boletas WHERE order_id = $1 ORDER BY id DESC LIMIT 1",
+    [orderId]
+  );
+  const existing = existingRows[0];
+  if (existing && ["pendiente", "aceptado", "aceptado_con_observaciones"].includes(existing.status)) {
+    return res.status(409).json({ error: "Este pedido ya tiene una boleta emitida" });
+  }
+
+  let boletaRow;
+  let zipBuffer;
+  let zipFilename;
+  if (existing && existing.status === "error_envio") {
+    // Reintento: reusa el XML ya firmado y el correlativo ya asignado, sin
+    // rearmar ni gastar uno nuevo.
+    boletaRow = existing;
+    const built = await buildZip({
+      ruc: process.env.SUNAT_RUC,
+      serie: existing.serie,
+      correlativo: existing.correlativo,
+      signedXml: existing.xml_firmado.toString("utf-8"),
+    });
+    zipBuffer = built.buffer;
+    zipFilename = built.filename;
+  } else {
+    // Emisión nueva. El correlativo va dentro del XML (cbc:ID), así que no
+    // se puede firmar antes de conocerlo — en cambio, el lock FOR UPDATE se
+    // mantiene solo mientras dura el incremento en sí (transacción corta),
+    // y el trabajo de firma/armado pesado pasa DESPUÉS del COMMIT, sin
+    // ninguna fila bloqueada mientras tanto.
+    const client = await pool.connect();
+    let correlativo;
+    try {
+      await client.query("BEGIN");
+      await client.query("INSERT INTO sunat_series (serie) VALUES ($1) ON CONFLICT (serie) DO NOTHING", [serie]);
+      const { rows: serieRows } = await client.query("SELECT last_correlativo FROM sunat_series WHERE serie = $1 FOR UPDATE", [serie]);
+      correlativo = serieRows[0].last_correlativo + 1;
+      await client.query("UPDATE sunat_series SET last_correlativo = $1 WHERE serie = $2", [correlativo, serie]);
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: err.message });
+    } finally {
+      client.release();
+    }
+
+    try {
+      const breakdown = computeIgvBreakdown(items);
+      const { issueDateLima, issueTimeLima } = limaDateTimeStrings(new Date());
+      const unsignedXml = buildBoletaXml({ serie, correlativo, issueDateLima, issueTimeLima, customer, breakdown });
+      const signedXml = signXml(unsignedXml);
+      const { rows: insertedRows } = await pool.query(
+        `INSERT INTO sunat_boletas
+           (order_id, serie, correlativo, customer_document_type, customer_document_number, customer_name, op_gravada, igv, total, xml_firmado, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pendiente') RETURNING *`,
+        [
+          orderId,
+          serie,
+          correlativo,
+          documentTypeCode(customer.documentType),
+          customer.documentNumber,
+          [customer.firstName, customer.paternalSurname, customer.maternalSurname].filter(Boolean).join(" "),
+          breakdown.opGravada,
+          breakdown.igv,
+          breakdown.total,
+          Buffer.from(signedXml, "utf-8"),
+        ]
+      );
+      boletaRow = insertedRows[0];
+      const built = await buildZip({ ruc: process.env.SUNAT_RUC, serie, correlativo, signedXml });
+      zipBuffer = built.buffer;
+      zipFilename = built.filename;
+    } catch (err) {
+      // El correlativo ya quedó reservado en sunat_series (no se puede
+      // "devolver" sin arriesgar una carrera con otra emisión concurrente)
+      // — este pedido va a tener que reintentar con el siguiente
+      // correlativo. No debería pasar nunca en la práctica (build/sign son
+      // trabajo local, sin red de por medio), pero si pasa, no hay fila en
+      // sunat_boletas que actualizar, así que se responde directo.
+      console.error("Error armando/firmando la boleta:", err);
+      return res.status(500).json({ error: "No se pudo armar la boleta: " + err.message });
+    }
+  }
+
+  // La llamada a SUNAT queda deliberadamente fuera de la transacción de
+  // arriba (que ya hizo COMMIT) — un fallo acá actualiza la fila ya
+  // confirmada con un UPDATE aparte, sin arriesgar el correlativo.
+  try {
+    const soapText = await sendBillToSunat(zipBuffer, zipFilename);
+    const parsed = await parseSendBillResponse(soapText);
+
+    if (parsed.fault) {
+      const { rows } = await pool.query(
+        "UPDATE sunat_boletas SET status = 'rechazado', error_message = $1 WHERE id = $2 RETURNING *",
+        [`${parsed.fault.code}: ${parsed.fault.message}`, boletaRow.id]
+      );
+      return res.status(422).json({ error: parsed.fault.message || "SUNAT rechazó la solicitud", boleta: mapBoleta(rows[0]) });
+    }
+
+    const status = classifyCdrStatus(parsed.responseCode);
+    const { rows } = await pool.query(
+      `UPDATE sunat_boletas
+         SET status = $1, sunat_response_code = $2, sunat_response_description = $3, cdr_zip = $4, sent_at = now()
+       WHERE id = $5 RETURNING *`,
+      [status, parsed.responseCode, parsed.description, parsed.cdrZipBuffer, boletaRow.id]
+    );
+    if (status === "rechazado") {
+      return res.status(422).json({ error: parsed.description || "SUNAT rechazó la boleta", boleta: mapBoleta(rows[0]) });
+    }
+    res.json(mapBoleta(rows[0]));
+  } catch (err) {
+    console.error("Error de red/timeout enviando la boleta a SUNAT:", err);
+    await pool.query("UPDATE sunat_boletas SET status = 'error_envio', error_message = $1 WHERE id = $2", [err.message, boletaRow.id]);
+    res.status(502).json({ error: "No se pudo contactar a SUNAT. Puedes reintentar sin perder el número de comprobante." });
+  }
+});
+
+app.get("/api/orders/:id/boleta/xml", requireAuth, async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!Number.isInteger(orderId)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  const { rows } = await pool.query("SELECT xml_firmado, serie, correlativo FROM sunat_boletas WHERE order_id = $1 ORDER BY id DESC LIMIT 1", [orderId]);
+  if (rows.length === 0 || !rows[0].xml_firmado) {
+    return res.status(404).json({ error: "Este pedido no tiene una boleta emitida" });
+  }
+  res.set("Content-Type", "application/xml");
+  res.set("Content-Disposition", `attachment; filename="${rows[0].serie}-${rows[0].correlativo}.xml"`);
+  res.send(rows[0].xml_firmado);
+});
+
+app.get("/api/orders/:id/boleta/cdr", requireAuth, async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!Number.isInteger(orderId)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  const { rows } = await pool.query("SELECT cdr_zip, serie, correlativo FROM sunat_boletas WHERE order_id = $1 ORDER BY id DESC LIMIT 1", [orderId]);
+  if (rows.length === 0 || !rows[0].cdr_zip) {
+    return res.status(404).json({ error: "Este pedido no tiene un CDR de SUNAT todavía" });
+  }
+  res.set("Content-Type", "application/zip");
+  res.set("Content-Disposition", `attachment; filename="CDR-${rows[0].serie}-${rows[0].correlativo}.zip"`);
+  res.send(rows[0].cdr_zip);
 });
 
 // Metadatos Open Graph/Twitter por ruta: así, cuando se comparte por

@@ -464,6 +464,49 @@ export const initSchema = async () => {
     );
   `);
 
+  // Emisión de boletas electrónicas ante SUNAT (ver server/sunat.js) — el
+  // correlativo por serie se incrementa atómicamente (SELECT ... FOR UPDATE,
+  // mismo patrón que el descuento de stock) para que nunca se salte ni se
+  // repita un número.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sunat_series (
+      serie TEXT PRIMARY KEY,
+      last_correlativo INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  // Puede haber más de una fila por pedido con el tiempo: un rechazo
+  // definitivo quema el correlativo (hay que emitir de nuevo con uno
+  // nuevo); una falla de red (error_envio) reintenta la MISMA fila/XML ya
+  // firmado, sin gastar un correlativo nuevo. xml_firmado/cdr_zip van acá
+  // (no en el disco de product-images, que es solo para fotos de catálogo)
+  // para que queden con el mismo backup/retención que el resto de la base.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sunat_boletas (
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL REFERENCES orders(id),
+      serie TEXT NOT NULL,
+      correlativo INTEGER NOT NULL,
+      tipo_documento TEXT NOT NULL DEFAULT '03',
+      customer_document_type TEXT NOT NULL,
+      customer_document_number TEXT NOT NULL,
+      customer_name TEXT NOT NULL,
+      op_gravada NUMERIC NOT NULL,
+      igv NUMERIC NOT NULL,
+      total NUMERIC NOT NULL,
+      xml_firmado BYTEA NOT NULL,
+      cdr_zip BYTEA,
+      status TEXT NOT NULL DEFAULT 'pendiente',
+      sunat_response_code TEXT NOT NULL DEFAULT '',
+      sunat_response_description TEXT NOT NULL DEFAULT '',
+      error_message TEXT NOT NULL DEFAULT '',
+      sent_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (serie, correlativo)
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS sunat_boletas_order_id_idx ON sunat_boletas (order_id);`);
+  await pool.query(`INSERT INTO sunat_series (serie) VALUES ('B001') ON CONFLICT (serie) DO NOTHING;`);
+
   // Plantillas de los mensajes que se abren en WhatsApp (registro de
   // pedido, aviso de estado, registro de cliente) — editables desde el
   // panel. Las variables {{...}} se reemplazan en el navegador al armar el

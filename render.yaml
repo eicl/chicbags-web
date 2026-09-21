@@ -34,6 +34,28 @@ services:
         sync: false
       - key: MIGO_API_TOKEN
         sync: false
+      - key: SUNAT_ENV
+        sync: false
+      - key: SUNAT_RUC
+        sync: false
+      - key: SUNAT_RAZON_SOCIAL
+        sync: false
+      - key: SUNAT_NOMBRE_COMERCIAL
+        sync: false
+      - key: SUNAT_DIRECCION_FISCAL
+        sync: false
+      - key: SUNAT_UBIGEO
+        sync: false
+      - key: SUNAT_SERIE_BOLETA
+        sync: false
+      - key: SUNAT_SOL_USER
+        sync: false
+      - key: SUNAT_SOL_PASSWORD
+        sync: false
+      - key: SUNAT_CERT_P12_BASE64
+        sync: false
+      - key: SUNAT_CERT_PASSWORD
+        sync: false
     disk:
       name: product-images
       mountPath: /opt/render/project/src/public/product-images
