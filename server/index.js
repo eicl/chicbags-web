@@ -3028,10 +3028,10 @@ app.put("/api/orders/:id/charge-type", requireAuth, async (req, res) => {
 // El ícono y a qué ruta aplica cada uno quedan fijos acá; el título y la
 // descripción son editables desde el panel (tabla route_meta).
 const ROUTE_KEYS = [
-  { key: "regularizacion-separaciones", prefix: "/regularizacion-separaciones", image: "/og-regularizacion.png" },
-  { key: "registro-pedido", prefix: "/registro-pedido", image: "/og-registro-pedido.png" },
-  { key: "registro-cliente", prefix: "/registro-cliente", image: "/og-registro-cliente.png" },
-  { key: "catalogo", prefix: "/catalogo", image: "/og-catalogo.png" },
+  { key: "regularizacion-separaciones", prefix: "/regularizacion-separaciones", image: "/og-regularizacion.jpg" },
+  { key: "registro-pedido", prefix: "/registro-pedido", image: "/og-registro-pedido.jpg" },
+  { key: "registro-cliente", prefix: "/registro-cliente", image: "/og-registro-cliente.jpg" },
+  { key: "catalogo", prefix: "/catalogo", image: "/og-catalogo.jpg" },
 ];
 const DEFAULT_ROUTE_KEY = "default";
 const DEFAULT_ROUTE_IMAGE = "/chicBags.jpeg";
