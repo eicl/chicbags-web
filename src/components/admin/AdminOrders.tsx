@@ -1307,14 +1307,21 @@ const AdminOrders = () => {
                               const boleta = order.boleta;
                               if (boleta?.status === "aceptado" || boleta?.status === "aceptado_con_observaciones") {
                                 return (
-                                  <span
-                                    className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md ${
+                                  <a
+                                    href={`/api/orders/${order.id}/boleta/pdf`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md hover:opacity-80 ${
                                       boleta.status === "aceptado" ? "bg-emerald-500/10 text-emerald-600" : "bg-amber-500/10 text-amber-600"
                                     }`}
-                                    title={boleta.status === "aceptado_con_observaciones" ? boleta.sunatResponseDescription : undefined}
+                                    title={
+                                      boleta.status === "aceptado_con_observaciones"
+                                        ? `${boleta.sunatResponseDescription} — clic para ver el PDF`
+                                        : "Clic para ver/descargar el PDF"
+                                    }
                                   >
                                     <FileText className="w-3.5 h-3.5" /> Boleta {boleta.serie}-{boleta.correlativo}
-                                  </span>
+                                  </a>
                                 );
                               }
                               if (boleta?.status === "pendiente") {

@@ -13,6 +13,8 @@ import forge from "node-forge";
 import { SignedXml } from "xml-crypto";
 import JSZip from "jszip";
 import { XMLParser } from "fast-xml-parser";
+import QRCode from "qrcode";
+import PDFDocument from "pdfkit";
 
 const SUNAT_RUC = process.env.SUNAT_RUC || "";
 const SUNAT_RAZON_SOCIAL = process.env.SUNAT_RAZON_SOCIAL || "";
@@ -42,6 +44,8 @@ export const DOCUMENT_TYPE_CODES = {
   Pasaporte: "7",
 };
 export const documentTypeCode = (documentType) => DOCUMENT_TYPE_CODES[documentType] ?? "0";
+const DOCUMENT_TYPE_LABELS = { "1": "DNI", "4": "Carné de Extranjería", "6": "RUC", "7": "Pasaporte", "0": "Doc." };
+export const documentTypeLabel = (code) => DOCUMENT_TYPE_LABELS[code] ?? "Doc.";
 
 let cachedCertificate = null;
 let certificateLoadAttempted = false;
@@ -415,3 +419,102 @@ export const classifyCdrStatus = (responseCode) => {
   if (OBSERVATION_CODES.has(responseCode)) return "aceptado_con_observaciones";
   return "rechazado";
 };
+
+// Contenido del código QR exigido por SUNAT en la representación impresa
+// (Resolución 189-2015/SUNAT y modificatorias): 9 campos separados por "|",
+// en este orden exacto, terminados en un "|" final. No incluye el hash de
+// la firma digital (10mo campo, opcional) — no hace falta para que el QR
+// sea legible/verificable contra la consulta pública de SUNAT.
+export const buildBoletaQrText = ({ serie, correlativo, issueDateLima, customerDocTypeCode, customerDocNumber, breakdown }) =>
+  [SUNAT_RUC, "03", serie, correlativo, breakdown.igv.toFixed(2), breakdown.total.toFixed(2), issueDateLima, customerDocTypeCode, customerDocNumber, ""].join("|");
+
+export const buildBoletaQrPng = (qrText) => QRCode.toBuffer(qrText, { errorCorrectionLevel: "M", margin: 1, width: 200 });
+
+const money = (n) => `S/ ${n.toFixed(2)}`;
+
+// Representación impresa (PDF) de la boleta — generada al vuelo a partir de
+// lo ya guardado (nunca se persiste el PDF en sí, es barato de rearmar y
+// así nunca queda desactualizado respecto al XML/CDR reales). No es el
+// comprobante legal (eso es el XML firmado) — es la vista para
+// imprimir/mandarle al cliente, con el QR que exige SUNAT.
+export const buildBoletaPdf = ({ serie, correlativo, issueDateLima, customerName, customerDocLabel, customerDocNumber, breakdown, qrPng }) =>
+  new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: "A4", margin: 40 });
+    const chunks = [];
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    doc.font("Helvetica-Bold").fontSize(13).text(SUNAT_NOMBRE_COMERCIAL || SUNAT_RAZON_SOCIAL, 40, 40, { width: 320 });
+    doc.font("Helvetica").fontSize(9);
+    doc.text(SUNAT_RAZON_SOCIAL, { width: 320 });
+    doc.text(`RUC ${SUNAT_RUC}`, { width: 320 });
+    doc.text(SUNAT_DIRECCION_FISCAL, { width: 320 });
+
+    const boxX = 380;
+    const boxY = 40;
+    const boxW = 175;
+    const boxH = 70;
+    doc.rect(boxX, boxY, boxW, boxH).stroke();
+    doc.font("Helvetica-Bold").fontSize(10).text(`RUC ${SUNAT_RUC}`, boxX, boxY + 8, { width: boxW, align: "center" });
+    doc.fontSize(10).text("BOLETA DE VENTA ELECTRÓNICA", boxX + 5, boxY + 26, { width: boxW - 10, align: "center" });
+    doc.fontSize(13).text(`${serie}-${correlativo}`, boxX, boxY + 50, { width: boxW, align: "center" });
+
+    let y = 130;
+    doc.font("Helvetica").fontSize(9);
+    doc.text(`Fecha de emisión: ${issueDateLima}`, 40, y);
+    y += 14;
+    doc.text(`Cliente: ${customerName}`, 40, y);
+    y += 14;
+    doc.text(`${customerDocLabel}: ${customerDocNumber}`, 40, y);
+    y += 24;
+
+    const col = { cant: 40, desc: 80, punit: 380, importe: 460 };
+    doc.font("Helvetica-Bold").fontSize(9);
+    doc.text("Cant.", col.cant, y);
+    doc.text("Descripción", col.desc, y);
+    doc.text("P. Unit.", col.punit, y, { width: 70, align: "right" });
+    doc.text("Importe", col.importe, y, { width: 70, align: "right" });
+    y += 14;
+    doc.moveTo(40, y).lineTo(530, y).stroke();
+    y += 6;
+
+    doc.font("Helvetica").fontSize(9);
+    for (const item of breakdown.lines) {
+      const description = `${item.productName}${item.colorName ? ` - ${item.colorName}` : ""}`;
+      const rowHeight = Math.max(14, doc.heightOfString(description, { width: 290 }));
+      doc.text(String(item.quantity), col.cant, y);
+      doc.text(description, col.desc, y, { width: 290 });
+      doc.text(item.unitPrice.toFixed(2), col.punit, y, { width: 70, align: "right" });
+      doc.text(item.subtotal.toFixed(2), col.importe, y, { width: 70, align: "right" });
+      y += rowHeight + 4;
+    }
+    y += 6;
+    doc.moveTo(40, y).lineTo(530, y).stroke();
+    y += 10;
+
+    doc.font("Helvetica").fontSize(9);
+    doc.text("Op. Gravada:", 380, y, { width: 80 });
+    doc.text(money(breakdown.opGravada), 460, y, { width: 70, align: "right" });
+    y += 14;
+    doc.text("IGV (18%):", 380, y, { width: 80 });
+    doc.text(money(breakdown.igv), 460, y, { width: 70, align: "right" });
+    y += 14;
+    doc.font("Helvetica-Bold");
+    doc.text("Importe Total:", 380, y, { width: 80 });
+    doc.text(money(breakdown.total), 460, y, { width: 70, align: "right" });
+    y += 22;
+
+    doc.font("Helvetica").fontSize(9).text(`Son: ${amountToWords(breakdown.total)}`, 40, y, { width: 490 });
+    y = doc.y + 20;
+
+    doc.image(qrPng, 40, y, { width: 90 });
+    doc.fontSize(7).text(
+      "Representación impresa de la Boleta de Venta Electrónica. Consulte este comprobante en www.sunat.gob.pe",
+      140,
+      y + 10,
+      { width: 390 }
+    );
+
+    doc.end();
+  });

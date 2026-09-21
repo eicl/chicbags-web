@@ -18,6 +18,7 @@ import { lookupDni } from "./migo.js";
 import {
   loadCertificate as loadSunatCertificate,
   documentTypeCode,
+  documentTypeLabel,
   computeIgvBreakdown,
   buildBoletaXml,
   signXml,
@@ -25,6 +26,9 @@ import {
   sendBillToSunat,
   parseSendBillResponse,
   classifyCdrStatus,
+  buildBoletaQrText,
+  buildBoletaQrPng,
+  buildBoletaPdf,
 } from "./sunat.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -3264,6 +3268,63 @@ app.get("/api/orders/:id/boleta/cdr", requireAuth, async (req, res) => {
   res.set("Content-Type", "application/zip");
   res.set("Content-Disposition", `attachment; filename="CDR-${rows[0].serie}-${rows[0].correlativo}.zip"`);
   res.send(rows[0].cdr_zip);
+});
+
+// Representación impresa (PDF) de la boleta, para imprimir o mandarle al
+// cliente. Se arma al vuelo a partir de lo ya guardado — nunca se persiste,
+// es barato de rearmar y así nunca queda desactualizado. Usa los datos del
+// cliente congelados en sunat_boletas (foto del momento de la emisión, no
+// los datos actuales del cliente) y los ítems del pedido (también
+// congelados en order_items), para que coincida exactamente con lo que se
+// mandó a SUNAT.
+app.get("/api/orders/:id/boleta/pdf", requireAuth, async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!Number.isInteger(orderId)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  const { rows: boletaRows } = await pool.query("SELECT * FROM sunat_boletas WHERE order_id = $1 ORDER BY id DESC LIMIT 1", [orderId]);
+  const boleta = boletaRows[0];
+  if (!boleta || !["aceptado", "aceptado_con_observaciones"].includes(boleta.status)) {
+    return res.status(404).json({ error: "Este pedido no tiene una boleta aceptada por SUNAT" });
+  }
+
+  const { rows: itemRows } = await pool.query(
+    "SELECT product_name, color_name, unit_price, quantity, subtotal FROM order_items WHERE order_id = $1 ORDER BY id",
+    [orderId]
+  );
+  const items = itemRows.map((i) => ({
+    productName: i.product_name,
+    colorName: i.color_name,
+    unitPrice: Number(i.unit_price),
+    quantity: i.quantity,
+    subtotal: Number(i.subtotal),
+  }));
+  const breakdown = computeIgvBreakdown(items);
+  const { issueDateLima } = limaDateTimeStrings(new Date(boleta.created_at));
+
+  const qrText = buildBoletaQrText({
+    serie: boleta.serie,
+    correlativo: boleta.correlativo,
+    issueDateLima,
+    customerDocTypeCode: boleta.customer_document_type,
+    customerDocNumber: boleta.customer_document_number,
+    breakdown,
+  });
+  const qrPng = await buildBoletaQrPng(qrText);
+  const pdfBuffer = await buildBoletaPdf({
+    serie: boleta.serie,
+    correlativo: boleta.correlativo,
+    issueDateLima,
+    customerName: boleta.customer_name,
+    customerDocLabel: documentTypeLabel(boleta.customer_document_type),
+    customerDocNumber: boleta.customer_document_number,
+    breakdown,
+    qrPng,
+  });
+
+  res.set("Content-Type", "application/pdf");
+  res.set("Content-Disposition", `inline; filename="${boleta.serie}-${boleta.correlativo}.pdf"`);
+  res.send(pdfBuffer);
 });
 
 // Metadatos Open Graph/Twitter por ruta: así, cuando se comparte por
