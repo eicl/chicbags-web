@@ -617,6 +617,17 @@ export interface IgvComparisonMonth {
 export const fetchIgvComparison = (): Promise<IgvComparisonMonth[]> =>
   fetch(`${API_URL}/dashboard/igv-comparison`, { credentials: "include" }).then((res) => handle<IgvComparisonMonth[]>(res));
 
+// Cantidad y monto vendido por departamento — ver el comentario del
+// endpoint en server/index.js.
+export interface DepartmentSales {
+  department: string;
+  quantity: number;
+  amount: number;
+}
+
+export const fetchSalesByDepartment = (): Promise<DepartmentSales[]> =>
+  fetch(`${API_URL}/dashboard/sales-by-department`, { credentials: "include" }).then((res) => handle<DepartmentSales[]>(res));
+
 // Si el pedido es de tipo "Pedido" (no una Regularización), el servidor
 // devuelve el stock de cada ítem a su producto y color antes de borrarlo.
 export const deleteOrder = (id: number): Promise<void> =>

@@ -1828,6 +1828,23 @@ app.get("/api/dashboard/igv-comparison", requireAuth, async (req, res) => {
   res.json(months);
 });
 
+// Cantidad de productos vendidos y monto vendido, por departamento del
+// cliente — todo el histórico, todo el catálogo (sin filtrar por
+// categoría, a pedido explícito). Excluye ítems de servicio
+// (product_id IS NULL, ej. delivery) — no son "productos vendidos".
+app.get("/api/dashboard/sales-by-department", requireAuth, async (req, res) => {
+  const { rows } = await pool.query(`
+    SELECT c.department, SUM(oi.quantity) AS quantity, SUM(oi.subtotal) AS amount
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    JOIN customers c ON c.id = o.customer_id
+    WHERE oi.product_id IS NOT NULL
+    GROUP BY c.department
+    ORDER BY amount DESC
+  `);
+  res.json(rows.map((r) => ({ department: r.department, quantity: Number(r.quantity), amount: Number(r.amount) })));
+});
+
 app.get("/api/orders", requireAuth, async (req, res) => {
   // Los items y los pagos se agregan cada uno en su propio subquery LATERAL
   // (en vez de un solo LEFT JOIN a las dos tablas) para que uno no multiplique

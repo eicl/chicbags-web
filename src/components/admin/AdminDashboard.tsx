@@ -1,15 +1,41 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchMonthlySales, fetchDailySalesBySeller, fetchIgvComparison } from "@/lib/api";
+import { fetchMonthlySales, fetchDailySalesBySeller, fetchIgvComparison, fetchSalesByDepartment } from "@/lib/api";
 import SalesLineChart, { SalesLineChartSeries } from "@/components/admin/SalesLineChart";
 import IgvComparisonBarChart from "@/components/admin/IgvComparisonBarChart";
+import DepartmentPieChart, { PieSlice } from "@/components/admin/DepartmentPieChart";
 
 // Paleta categórica validada (ver skill de dataviz) — orden fijo, nunca se
-// reordena por valor. Hasta 8 vendedores caben cómodos; de ahí para
-// arriba se pliegan en "Otros" con un gris neutro en vez de inventar una
-// novena tonalidad.
+// reordena por valor. Hasta 8 series (vendedores, departamentos) caben
+// cómodas; de ahí para arriba se pliegan en "Otros" con un gris neutro en
+// vez de inventar una novena tonalidad.
 const CATEGORICAL_PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
 const OTHER_COLOR = "#898781";
 const MAX_SELLER_SERIES = 8;
+const MAX_PIE_SLICES = 8;
+
+const formatUnits = (v: number) => v.toLocaleString("es-PE");
+
+// Top MAX_PIE_SLICES por valor + el resto plegado en "Otros" — mismo
+// criterio que ya se usa para los vendedores del gráfico de líneas.
+const foldIntoSlices = (
+  rows: { department: string; value: number }[],
+  labelFor: (department: string, value: number) => string
+): PieSlice[] => {
+  const sorted = [...rows].sort((a, b) => b.value - a.value);
+  const main = sorted.slice(0, MAX_PIE_SLICES);
+  const rest = sorted.slice(MAX_PIE_SLICES);
+  const slices: PieSlice[] = main.map((r, i) => ({
+    key: r.department,
+    label: labelFor(r.department, r.value),
+    color: CATEGORICAL_PALETTE[i],
+    value: r.value,
+  }));
+  if (rest.length > 0) {
+    const restTotal = rest.reduce((sum, r) => sum + r.value, 0);
+    slices.push({ key: "other", label: labelFor(`Otros (${rest.length})`, restTotal), color: OTHER_COLOR, value: restTotal });
+  }
+  return slices;
+};
 
 const formatSoles = (v: number) => `S/.${v.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -48,12 +74,27 @@ const AdminDashboard = () => {
     queryKey: ["dashboardIgvComparison"],
     queryFn: fetchIgvComparison,
   });
+  const { data: byDepartment = [], isLoading: loadingByDepartment } = useQuery({
+    queryKey: ["dashboardSalesByDepartment"],
+    queryFn: fetchSalesByDepartment,
+  });
 
   const monthlyTotal = monthly.reduce((sum, m) => sum + m.total, 0);
   const currentMonthTotal = monthly[monthly.length - 1]?.total ?? 0;
 
   const latestIgv = igvComparison[igvComparison.length - 1];
   const igvSaldo = latestIgv ? latestIgv.creditoFiscalAcumulado - latestIgv.igvDeclarado : 0;
+
+  const totalQuantitySold = byDepartment.reduce((sum, d) => sum + d.quantity, 0);
+  const totalAmountSold = byDepartment.reduce((sum, d) => sum + d.amount, 0);
+  const quantitySlices = foldIntoSlices(
+    byDepartment.map((d) => ({ department: d.department, value: d.quantity })),
+    (department, value) => `${department} — ${formatUnits(value)}`
+  );
+  const amountSlices = foldIntoSlices(
+    byDepartment.map((d) => ({ department: d.department, value: d.amount })),
+    (department, value) => `${department} — ${formatSoles(value)}`
+  );
 
   // De los N vendedores, se arman hasta MAX_SELLER_SERIES series propias
   // (en el mismo orden que manda el servidor) y el resto se pliega en
@@ -182,6 +223,30 @@ const AdminDashboard = () => {
               ]}
             />
           </>
+        )}
+      </ChartCard>
+
+      <ChartCard
+        title="Ventas por departamento"
+        subtitle="Cantidad de productos vendidos y monto total vendido, por departamento del cliente (histórico completo, todo el catálogo)."
+      >
+        {loadingByDepartment ? (
+          <p className="text-sm text-muted-foreground">Cargando...</p>
+        ) : byDepartment.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Todavía no hay ventas registradas.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Cantidad vendida</p>
+              <p className="text-2xl font-medium mb-4">{formatUnits(totalQuantitySold)} unidades</p>
+              <DepartmentPieChart slices={quantitySlices} formatValue={(v) => `${formatUnits(v)} unidades`} />
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Monto vendido</p>
+              <p className="text-2xl font-medium mb-4">{formatSoles(totalAmountSold)}</p>
+              <DepartmentPieChart slices={amountSlices} formatValue={formatSoles} />
+            </div>
+          </div>
         )}
       </ChartCard>
     </div>
