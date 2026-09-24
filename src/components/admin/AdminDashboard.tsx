@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchMonthlySales, fetchDailySalesBySeller } from "@/lib/api";
+import { fetchMonthlySales, fetchDailySalesBySeller, fetchIgvComparison } from "@/lib/api";
 import SalesLineChart, { SalesLineChartSeries } from "@/components/admin/SalesLineChart";
+import IgvComparisonBarChart from "@/components/admin/IgvComparisonBarChart";
 
 // Paleta categórica validada (ver skill de dataviz) — orden fijo, nunca se
 // reordena por valor. Hasta 8 vendedores caben cómodos; de ahí para
@@ -43,9 +44,16 @@ const AdminDashboard = () => {
     queryKey: ["dashboardDailySalesBySeller"],
     queryFn: fetchDailySalesBySeller,
   });
+  const { data: igvComparison = [], isLoading: loadingIgv } = useQuery({
+    queryKey: ["dashboardIgvComparison"],
+    queryFn: fetchIgvComparison,
+  });
 
   const monthlyTotal = monthly.reduce((sum, m) => sum + m.total, 0);
   const currentMonthTotal = monthly[monthly.length - 1]?.total ?? 0;
+
+  const latestIgv = igvComparison[igvComparison.length - 1];
+  const igvSaldo = latestIgv ? latestIgv.creditoFiscalAcumulado - latestIgv.igvDeclarado : 0;
 
   // De los N vendedores, se arman hasta MAX_SELLER_SERIES series propias
   // (en el mismo orden que manda el servidor) y el resto se pliega en
@@ -127,6 +135,52 @@ const AdminDashboard = () => {
               <p className="text-2xl font-medium">{formatSoles(dailyTotal)}</p>
             </div>
             <SalesLineChart xLabels={dailyXLabels} xTooltipLabels={dailyXTooltipLabels} series={sellerSeries} />
+          </>
+        )}
+      </ChartCard>
+
+      <ChartCard
+        title="Crédito fiscal vs. IGV declarado"
+        subtitle="Crédito fiscal acumulado de las compras registradas vs. IGV declarado en las boletas emitidas, mes a mes."
+      >
+        {loadingIgv ? (
+          <p className="text-sm text-muted-foreground">Cargando...</p>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-6 mb-4">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Crédito fiscal acumulado</p>
+                <p className="text-2xl font-medium">{formatSoles(latestIgv?.creditoFiscalAcumulado ?? 0)}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">IGV declarado este mes</p>
+                <p className="text-2xl font-medium">{formatSoles(latestIgv?.igvDeclarado ?? 0)}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Saldo</p>
+                <p className={`text-2xl font-medium ${igvSaldo >= 0 ? "text-emerald-600" : "text-destructive"}`}>
+                  {igvSaldo >= 0 ? "+" : ""}
+                  {formatSoles(igvSaldo)}
+                </p>
+              </div>
+            </div>
+            <IgvComparisonBarChart
+              xLabels={igvComparison.map((m) => monthLabel(m.month))}
+              series={[
+                {
+                  key: "credito",
+                  label: "Crédito fiscal acumulado",
+                  color: CATEGORICAL_PALETTE[0],
+                  values: igvComparison.map((m) => m.creditoFiscalAcumulado),
+                },
+                {
+                  key: "igv",
+                  label: "IGV declarado",
+                  color: CATEGORICAL_PALETTE[1],
+                  values: igvComparison.map((m) => m.igvDeclarado),
+                },
+              ]}
+            />
           </>
         )}
       </ChartCard>

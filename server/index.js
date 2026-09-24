@@ -1774,6 +1774,60 @@ app.get("/api/dashboard/daily-sales-by-seller", requireAuth, async (req, res) =>
   res.json({ sellers: sellers.map((s) => ({ id: s.id, username: s.username })), days });
 });
 
+// Crédito fiscal (IGV de compras, acumulado corriendo desde el inicio) vs
+// IGV declarado en boletas (por mes, sin acumular) — reporte mensual
+// estándar de crédito fiscal vs débito fiscal.
+//
+// purchase_date se guarda en UTC medianoche (fecha calendario pura, ver el
+// comentario de la tabla purchases en db.js) — se agrupa leyendo el mes
+// directo en UTC, sin restar el offset de Lima (mismo criterio con el que
+// ya se lee/muestra en el resto del panel). sunat_boletas.sent_at en
+// cambio es un instante real (cuándo SUNAT aceptó el comprobante), así que
+// sí se agrupa con limaMonthKey.
+//
+// El acumulado de compras NO se limita a los últimos 12 meses: es un saldo
+// corriente desde el inicio, así que la primera barra mostrada ya debe
+// reflejar todo lo acumulado antes de la ventana visible, no arrancar de
+// cero como si el negocio recién empezara.
+app.get("/api/dashboard/igv-comparison", requireAuth, async (req, res) => {
+  const { rows: purchaseRows } = await pool.query("SELECT purchase_date, igv FROM purchases ORDER BY purchase_date ASC");
+  const creditByMonth = new Map();
+  for (const row of purchaseRows) {
+    const d = new Date(row.purchase_date);
+    const key = `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}`;
+    creditByMonth.set(key, (creditByMonth.get(key) ?? 0) + Number(row.igv));
+  }
+
+  const { rows: boletaRows } = await pool.query(
+    `SELECT sent_at, igv FROM sunat_boletas
+     WHERE status IN ('aceptado', 'aceptado_con_observaciones') AND sent_at >= now() - interval '400 days'`
+  );
+  const igvByMonth = new Map();
+  for (const row of boletaRows) {
+    const key = limaMonthKey(new Date(row.sent_at));
+    igvByMonth.set(key, (igvByMonth.get(key) ?? 0) + Number(row.igv));
+  }
+
+  const nowLima = toLimaDate(new Date());
+  const shownKeys = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(Date.UTC(nowLima.getUTCFullYear(), nowLima.getUTCMonth() - i, 1));
+    shownKeys.push(`${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}`);
+  }
+  const earliestShown = shownKeys[0];
+
+  let running = 0;
+  for (const [key, igv] of creditByMonth) {
+    if (key < earliestShown) running += igv;
+  }
+
+  const months = shownKeys.map((key) => {
+    running += creditByMonth.get(key) ?? 0;
+    return { month: key, creditoFiscalAcumulado: running, igvDeclarado: igvByMonth.get(key) ?? 0 };
+  });
+  res.json(months);
+});
+
 app.get("/api/orders", requireAuth, async (req, res) => {
   // Los items y los pagos se agregan cada uno en su propio subquery LATERAL
   // (en vez de un solo LEFT JOIN a las dos tablas) para que uno no multiplique

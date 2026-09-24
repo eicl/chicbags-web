@@ -605,6 +605,18 @@ export interface DailySalesBySeller {
 export const fetchDailySalesBySeller = (): Promise<DailySalesBySeller> =>
   fetch(`${API_URL}/dashboard/daily-sales-by-seller`, { credentials: "include" }).then((res) => handle<DailySalesBySeller>(res));
 
+// Crédito fiscal (IGV de compras, acumulado corriendo desde el inicio) vs
+// IGV declarado en boletas emitidas (por mes, sin acumular) — ver el
+// comentario del endpoint en server/index.js.
+export interface IgvComparisonMonth {
+  month: string; // "YYYY-MM"
+  creditoFiscalAcumulado: number;
+  igvDeclarado: number;
+}
+
+export const fetchIgvComparison = (): Promise<IgvComparisonMonth[]> =>
+  fetch(`${API_URL}/dashboard/igv-comparison`, { credentials: "include" }).then((res) => handle<IgvComparisonMonth[]>(res));
+
 // Si el pedido es de tipo "Pedido" (no una Regularización), el servidor
 // devuelve el stock de cada ítem a su producto y color antes de borrarlo.
 export const deleteOrder = (id: number): Promise<void> =>
