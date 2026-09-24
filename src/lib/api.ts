@@ -576,6 +576,10 @@ export interface OrderBoleta {
   // Solo tiene contenido útil cuando status es "error_envio" o "rechazado"
   // por un soap:Fault — el mensaje de red/timeout o del fault de SUNAT.
   errorMessage: string;
+  // Id del archivo en Google Drive si el respaldo automático se subió bien;
+  // null si Drive no está configurado o si la subida falló (ver errorMessage
+  // del lado del servidor — este campo del frontend no distingue el motivo).
+  driveFileId: string | null;
   createdAt: string;
 }
 

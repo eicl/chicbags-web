@@ -30,6 +30,7 @@ import {
   buildBoletaQrPng,
   buildBoletaPdf,
 } from "./sunat.js";
+import { isDriveConfigured, uploadPdfToDrive } from "./googleDrive.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Las imágenes viven dentro del frontend (carpeta public/) para que Vite
@@ -1797,7 +1798,7 @@ app.get("/api/orders", requireAuth, async (req, res) => {
       SELECT json_build_object(
         'id', b.id, 'serie', b.serie, 'correlativo', b.correlativo, 'status', b.status,
         'sunatResponseCode', b.sunat_response_code, 'sunatResponseDescription', b.sunat_response_description,
-        'errorMessage', b.error_message, 'createdAt', b.created_at
+        'errorMessage', b.error_message, 'driveFileId', NULLIF(b.drive_file_id, ''), 'createdAt', b.created_at
       ) AS boleta
       FROM sunat_boletas b WHERE b.order_id = o.id ORDER BY b.id DESC LIMIT 1
     ) boleta ON true
@@ -3065,8 +3066,36 @@ const mapBoleta = (row) => ({
   sunatResponseCode: row.sunat_response_code,
   sunatResponseDescription: row.sunat_response_description,
   errorMessage: row.error_message,
+  driveFileId: row.drive_file_id || null,
   createdAt: row.created_at,
 });
+
+// Arma la representación impresa (PDF) de una boleta ya aceptada — usado
+// tanto por GET /boleta/pdf (bajo demanda) como por el respaldo automático
+// en Google Drive justo después de la aceptación de SUNAT. Recibe la fila
+// de sunat_boletas (foto del momento de la emisión) y el breakdown de
+// ítems ya calculado, para no repetir esa parte entre los dos call sites.
+const generateBoletaPdfBuffer = async (boletaRow, breakdown, issueDateLima) => {
+  const qrText = buildBoletaQrText({
+    serie: boletaRow.serie,
+    correlativo: boletaRow.correlativo,
+    issueDateLima,
+    customerDocTypeCode: boletaRow.customer_document_type,
+    customerDocNumber: boletaRow.customer_document_number,
+    breakdown,
+  });
+  const qrPng = await buildBoletaQrPng(qrText);
+  return buildBoletaPdf({
+    serie: boletaRow.serie,
+    correlativo: boletaRow.correlativo,
+    issueDateLima,
+    customerName: boletaRow.customer_name,
+    customerDocLabel: documentTypeLabel(boletaRow.customer_document_type),
+    customerDocNumber: boletaRow.customer_document_number,
+    breakdown,
+    qrPng,
+  });
+};
 
 // Emite (o reintenta) la boleta electrónica de un pedido ante SUNAT. Cubre
 // tanto la primera emisión como el reintento tras una falla de red — ver
@@ -3124,6 +3153,7 @@ app.post("/api/orders/:id/boleta", requireAuth, async (req, res) => {
     quantity: i.quantity,
     subtotal: Number(i.subtotal),
   }));
+  const breakdown = computeIgvBreakdown(items);
 
   const { rows: existingRows } = await pool.query(
     "SELECT * FROM sunat_boletas WHERE order_id = $1 ORDER BY id DESC LIMIT 1",
@@ -3172,7 +3202,6 @@ app.post("/api/orders/:id/boleta", requireAuth, async (req, res) => {
     }
 
     try {
-      const breakdown = computeIgvBreakdown(items);
       const { issueDateLima, issueTimeLima } = limaDateTimeStrings(new Date());
       const unsignedXml = buildBoletaXml({ serie, correlativo, issueDateLima, issueTimeLima, customer, breakdown });
       const signedXml = signXml(unsignedXml);
@@ -3234,7 +3263,33 @@ app.post("/api/orders/:id/boleta", requireAuth, async (req, res) => {
     if (status === "rechazado") {
       return res.status(422).json({ error: parsed.description || "SUNAT rechazó la boleta", boleta: mapBoleta(rows[0]) });
     }
-    res.json(mapBoleta(rows[0]));
+
+    let acceptedRow = rows[0];
+    // Respaldo en Google Drive — best effort: SUNAT ya aceptó el
+    // comprobante real, eso es lo legalmente relevante. Un fallo acá nunca
+    // debe leerse como que la boleta falló, solo queda logueado para
+    // reintentar la subida manualmente si hace falta.
+    if (isDriveConfigured()) {
+      try {
+        const { issueDateLima } = limaDateTimeStrings(new Date(acceptedRow.created_at));
+        const pdfBuffer = await generateBoletaPdfBuffer(acceptedRow, breakdown, issueDateLima);
+        const filename = `${acceptedRow.serie}-${acceptedRow.correlativo} - ${acceptedRow.customer_name}.pdf`;
+        const driveFileId = await uploadPdfToDrive(filename, pdfBuffer);
+        const { rows: driveRows } = await pool.query(
+          "UPDATE sunat_boletas SET drive_file_id = $1 WHERE id = $2 RETURNING *",
+          [driveFileId, acceptedRow.id]
+        );
+        acceptedRow = driveRows[0];
+      } catch (driveErr) {
+        console.error("No se pudo subir la boleta a Google Drive:", driveErr);
+        const { rows: driveRows } = await pool.query(
+          "UPDATE sunat_boletas SET drive_upload_error = $1 WHERE id = $2 RETURNING *",
+          [driveErr.message, acceptedRow.id]
+        );
+        acceptedRow = driveRows[0];
+      }
+    }
+    res.json(mapBoleta(acceptedRow));
   } catch (err) {
     console.error("Error de red/timeout enviando la boleta a SUNAT:", err);
     await pool.query("UPDATE sunat_boletas SET status = 'error_envio', error_message = $1 WHERE id = $2", [err.message, boletaRow.id]);
@@ -3301,26 +3356,7 @@ app.get("/api/orders/:id/boleta/pdf", requireAuth, async (req, res) => {
   }));
   const breakdown = computeIgvBreakdown(items);
   const { issueDateLima } = limaDateTimeStrings(new Date(boleta.created_at));
-
-  const qrText = buildBoletaQrText({
-    serie: boleta.serie,
-    correlativo: boleta.correlativo,
-    issueDateLima,
-    customerDocTypeCode: boleta.customer_document_type,
-    customerDocNumber: boleta.customer_document_number,
-    breakdown,
-  });
-  const qrPng = await buildBoletaQrPng(qrText);
-  const pdfBuffer = await buildBoletaPdf({
-    serie: boleta.serie,
-    correlativo: boleta.correlativo,
-    issueDateLima,
-    customerName: boleta.customer_name,
-    customerDocLabel: documentTypeLabel(boleta.customer_document_type),
-    customerDocNumber: boleta.customer_document_number,
-    breakdown,
-    qrPng,
-  });
+  const pdfBuffer = await generateBoletaPdfBuffer(boleta, breakdown, issueDateLima);
 
   res.set("Content-Type", "application/pdf");
   res.set("Content-Disposition", `inline; filename="${boleta.serie}-${boleta.correlativo}.pdf"`);

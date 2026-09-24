@@ -56,6 +56,14 @@ services:
         sync: false
       - key: SUNAT_CERT_PASSWORD
         sync: false
+      - key: GOOGLE_DRIVE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_DRIVE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_DRIVE_REFRESH_TOKEN
+        sync: false
+      - key: GOOGLE_DRIVE_FOLDER_ID
+        sync: false
     disk:
       name: product-images
       mountPath: /opt/render/project/src/public/product-images

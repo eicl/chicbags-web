@@ -1,7 +1,7 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ArchiveRestore, Check, ChevronDown, ChevronUp, FileText, Flag, MessageCircle, Loader2, PackageCheck, Pencil, Plus, Printer, Search, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
+import { Archive, ArchiveRestore, CalendarSearch, Check, ChevronDown, ChevronUp, ExternalLink, FileText, Flag, MessageCircle, Loader2, PackageCheck, Pencil, Plus, Printer, Search, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
 import {
   AdminOrder, ChargeType, DeliveryType, OrderItem, OrderStatus, PaymentInput, Service,
   addOrderItem, deleteOrder, deleteOrderItem, emitBoleta, fetchOrders, fetchServices, fetchSettings, markOrderAccumulating,
@@ -93,6 +93,32 @@ const isNearSeparationDeadline = (order: AdminOrder, separationDays: number, nea
   const paid = order.payments.reduce((sum, p) => sum + p.amount, 0);
   return order.total - paid > 0;
 };
+
+// Misma regla que decide si en la fila expandida se muestra el botón
+// "Emitir boleta"/"Reintentar" (vs. el badge de aceptada o el spinner de
+// pendiente) — reusada también para decidir qué filas se pueden marcar por
+// checkbox, así nunca se selecciona un pedido que el backend igual
+// rechazaría con 409 ("ya tiene una boleta emitida").
+const canEmitBoleta = (order: AdminOrder) => {
+  if (order.status === "Registrado") return false;
+  if (!order.boleta) return true;
+  return order.boleta.status === "rechazado" || order.boleta.status === "error_envio";
+};
+
+// Mismo offset fijo (Perú no tiene horario de verano) que limaCalendarDayStart
+// de arriba — usado para agrupar pedidos "por día"/"por mes" según la fecha
+// de su último pago, sin depender de la zona horaria del navegador del admin.
+const limaDateKey = (iso: string, mode: "dia" | "mes") => {
+  const LIMA_OFFSET_MS = 5 * 60 * 60 * 1000;
+  const shifted = new Date(new Date(iso).getTime() - LIMA_OFFSET_MS);
+  const year = shifted.getUTCFullYear();
+  const month = String(shifted.getUTCMonth() + 1).padStart(2, "0");
+  if (mode === "mes") return `${year}-${month}`;
+  return `${year}-${month}-${String(shifted.getUTCDate()).padStart(2, "0")}`;
+};
+
+const lastPaymentDate = (order: AdminOrder): Date | null =>
+  order.payments.length === 0 ? null : new Date(Math.max(...order.payments.map((p) => new Date(p.createdAt).getTime())));
 
 const STATUS_BADGE_CLASS: Record<OrderStatus, string> = {
   "Registrado": "bg-muted text-muted-foreground",
@@ -900,6 +926,11 @@ const AdminOrders = () => {
   const [page, setPage] = useState(1);
   const [salesFrom, setSalesFrom] = useState(todayDate);
   const [salesTo, setSalesTo] = useState(todayDate);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<number>>(new Set());
+  const [bulkEmitting, setBulkEmitting] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+  const [periodMode, setPeriodMode] = useState<"dia" | "mes">("dia");
+  const [periodValue, setPeriodValue] = useState("");
 
   // Con el filtro en "Todos", los pedidos con la banderita (cerca del plazo
   // de separación) van primero — orden estable, así que dentro de cada
@@ -915,6 +946,88 @@ const AdminOrders = () => {
     });
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
   const pageOrders = filteredOrders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const pageSelectableIds = pageOrders.filter(canEmitBoleta).map((o) => o.id);
+  const allPageSelected = pageSelectableIds.length > 0 && pageSelectableIds.every((id) => selectedOrderIds.has(id));
+  const toggleOrderSelected = (orderId: number) => {
+    setSelectedOrderIds((current) => {
+      const next = new Set(current);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  };
+  const toggleSelectAllPage = () => {
+    setSelectedOrderIds((current) => {
+      const next = new Set(current);
+      pageSelectableIds.forEach((id) => (allPageSelected ? next.delete(id) : next.add(id)));
+      return next;
+    });
+  };
+  const selectedOrders = orders.filter((o) => selectedOrderIds.has(o.id));
+
+  // Junta, para revisar antes de emitir, los pedidos sin saldo restante y ya
+  // entregados a delivery cuyo último pago cae en el día/mes elegido —
+  // reemplaza la selección (no la suma a checkboxes marcados manualmente
+  // antes), para que el lote sea exactamente "lo que califica para esta
+  // fecha". Recorre `orders` completo, no `pageOrders`: un lote "por mes"
+  // cruza páginas fácilmente.
+  const handlePeriodSearch = () => {
+    if (!periodValue) return;
+    const matches = orders.filter((o) => {
+      if (o.status !== "Entregado a delivery") return false;
+      const paid = o.payments.reduce((sum, p) => sum + p.amount, 0);
+      if (paid < o.total) return false;
+      if (!canEmitBoleta(o)) return false;
+      const lastPay = lastPaymentDate(o);
+      if (!lastPay) return false;
+      return limaDateKey(lastPay.toISOString(), periodMode) === periodValue;
+    });
+    if (matches.length === 0) {
+      toast.info("No se encontraron pedidos entregados y pagados en ese periodo");
+      return;
+    }
+    setSelectedOrderIds(new Set(matches.map((o) => o.id)));
+  };
+
+  // Secuencial a propósito, nunca en paralelo: cada emisión ya reserva su
+  // correlativo y llama a SUNAT de forma transaccional en el backend — una
+  // a la vez evita saturar el webservice de SUNAT con llamadas concurrentes
+  // bajo el mismo usuario SOL. Invalida ["orders"] después de cada pedido
+  // para que el resumen/los badges se actualicen en vivo, no solo al final.
+  const handleBulkEmit = async () => {
+    const ids = Array.from(selectedOrderIds);
+    if (ids.length === 0) return;
+    setBulkEmitting(true);
+    setBulkProgress({ done: 0, total: ids.length });
+    const failures: { orderId: number; message: string }[] = [];
+    let successCount = 0;
+    for (let i = 0; i < ids.length; i++) {
+      const orderId = ids[i];
+      try {
+        const boleta = await emitBoleta(orderId);
+        if (boleta.status === "aceptado" || boleta.status === "aceptado_con_observaciones") {
+          successCount++;
+        } else {
+          failures.push({ orderId, message: boleta.status });
+        }
+      } catch (err) {
+        failures.push({ orderId, message: err instanceof Error ? err.message : "Error desconocido" });
+      }
+      setBulkProgress({ done: i + 1, total: ids.length });
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    }
+    setBulkEmitting(false);
+    setBulkProgress(null);
+    setSelectedOrderIds(new Set());
+    if (failures.length === 0) {
+      toast.success(`${successCount} boleta(s) emitida(s) correctamente`);
+    } else {
+      toast.warning(`${successCount} emitida(s), ${failures.length} con error`, {
+        description: failures.map((f) => `#${f.orderId}: ${f.message}`).join(" · "),
+      });
+    }
+  };
 
   // Resumen de ventas del rango de fechas elegido (por defecto, hoy): monto
   // vendido, carteras (ítems de producto, sin contar servicios) y ganancia
@@ -1099,11 +1212,76 @@ const AdminOrders = () => {
         </Link>
       </div>
 
+      <div className="flex flex-wrap items-center gap-3 mb-4 p-3 rounded-lg border border-border bg-muted/20">
+        <span className="text-xs uppercase tracking-widest text-muted-foreground">Emitir boletas por periodo</span>
+        <select
+          value={periodMode}
+          onChange={(e) => {
+            setPeriodMode(e.target.value as "dia" | "mes");
+            setPeriodValue("");
+          }}
+          className="flex h-9 rounded-md border border-input bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          <option value="dia">Por día</option>
+          <option value="mes">Por mes</option>
+        </select>
+        <Input
+          type={periodMode === "dia" ? "date" : "month"}
+          value={periodValue}
+          onChange={(e) => setPeriodValue(e.target.value)}
+          className="w-auto"
+        />
+        <Button variant="outline" size="sm" onClick={handlePeriodSearch} disabled={!periodValue} className="gap-2">
+          <CalendarSearch className="w-3.5 h-3.5" /> Buscar pedidos del periodo
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          Junta pedidos sin saldo restante y "Entregado a delivery", según la fecha de su último pago.
+        </span>
+      </div>
+
+      {selectedOrderIds.size > 0 && (
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-4 p-3 rounded-lg border border-primary/30 bg-primary/5">
+          <div className="flex-1 min-w-[240px]">
+            <p className="text-sm font-medium mb-1">{selectedOrderIds.size} pedido(s) seleccionado(s)</p>
+            <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+              {selectedOrders.map((o) => (
+                <span key={o.id} className="text-xs px-2 py-0.5 rounded-md bg-background border border-border">
+                  #{o.id} {o.customerName} · S/.{o.total.toFixed(2)}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setSelectedOrderIds(new Set())}
+              disabled={bulkEmitting}
+              className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+            >
+              Cancelar selección
+            </button>
+            <Button onClick={handleBulkEmit} disabled={bulkEmitting} className="gap-2">
+              <FileText className="w-3.5 h-3.5" />
+              {bulkEmitting && bulkProgress ? `Emitiendo ${bulkProgress.done} de ${bulkProgress.total}...` : `Emitir boletas seleccionadas (${selectedOrderIds.size})`}
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="border border-border rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-border bg-muted/30">
+                <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">
+                  <input
+                    type="checkbox"
+                    checked={allPageSelected}
+                    onChange={toggleSelectAllPage}
+                    disabled={pageSelectableIds.length === 0}
+                    aria-label="Seleccionar todos los pedidos elegibles de esta página"
+                  />
+                </th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Pedido</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Cliente</th>
                 <th className="text-left text-xs uppercase tracking-widest text-muted-foreground py-3 px-4">Celular</th>
@@ -1129,6 +1307,21 @@ const AdminOrders = () => {
                       onClick={() => setExpandedId(isExpanded ? null : order.id)}
                       className="border-b border-border last:border-0 hover:bg-muted/10 transition-colors cursor-pointer"
                     >
+                      <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedOrderIds.has(order.id)}
+                          onChange={() => toggleOrderSelected(order.id)}
+                          disabled={!canEmitBoleta(order)}
+                          title={
+                            !canEmitBoleta(order)
+                              ? order.status === "Registrado"
+                                ? "Registra un pago primero"
+                                : "Este pedido ya tiene una boleta emitida"
+                              : "Seleccionar para emitir boleta"
+                          }
+                        />
+                      </td>
                       <td className="py-3 px-4 text-sm font-medium text-primary">
                         <span className="inline-flex items-center gap-1.5">
                           #{order.id}
@@ -1173,7 +1366,7 @@ const AdminOrders = () => {
                     </tr>
                     {isExpanded && (
                       <tr key={`${order.id}-detail`} className="border-b border-border last:border-0 bg-muted/20">
-                        <td colSpan={12} className="px-4 py-3 space-y-4">
+                        <td colSpan={13} className="px-4 py-3 space-y-4">
                           <p className="text-sm">
                             <span className="text-muted-foreground">Documento:</span> <span className="font-medium">{order.customerDocument}</span>
                             {" · "}
@@ -1307,21 +1500,36 @@ const AdminOrders = () => {
                               const boleta = order.boleta;
                               if (boleta?.status === "aceptado" || boleta?.status === "aceptado_con_observaciones") {
                                 return (
-                                  <a
-                                    href={`/api/orders/${order.id}/boleta/pdf`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md hover:opacity-80 ${
+                                  <span
+                                    className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md ${
                                       boleta.status === "aceptado" ? "bg-emerald-500/10 text-emerald-600" : "bg-amber-500/10 text-amber-600"
                                     }`}
-                                    title={
-                                      boleta.status === "aceptado_con_observaciones"
-                                        ? `${boleta.sunatResponseDescription} — clic para ver el PDF`
-                                        : "Clic para ver/descargar el PDF"
-                                    }
                                   >
-                                    <FileText className="w-3.5 h-3.5" /> Boleta {boleta.serie}-{boleta.correlativo}
-                                  </a>
+                                    <a
+                                      href={`/api/orders/${order.id}/boleta/pdf`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1.5 hover:opacity-80"
+                                      title={
+                                        boleta.status === "aceptado_con_observaciones"
+                                          ? `${boleta.sunatResponseDescription} — clic para ver el PDF`
+                                          : "Clic para ver/descargar el PDF"
+                                      }
+                                    >
+                                      <FileText className="w-3.5 h-3.5" /> Boleta {boleta.serie}-{boleta.correlativo}
+                                    </a>
+                                    {boleta.driveFileId && (
+                                      <a
+                                        href={`https://drive.google.com/file/d/${boleta.driveFileId}/view`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        title="Ver copia en Google Drive"
+                                        className="hover:opacity-80"
+                                      >
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                      </a>
+                                    )}
+                                  </span>
                                 );
                               }
                               if (boleta?.status === "pendiente") {
@@ -1434,17 +1642,17 @@ const AdminOrders = () => {
               })}
               {isLoading && (
                 <tr>
-                  <td colSpan={12} className="py-12 text-center text-muted-foreground">Cargando pedidos...</td>
+                  <td colSpan={13} className="py-12 text-center text-muted-foreground">Cargando pedidos...</td>
                 </tr>
               )}
               {isError && (
                 <tr>
-                  <td colSpan={12} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
+                  <td colSpan={13} className="py-12 text-center text-destructive">No se pudo conectar con la API.</td>
                 </tr>
               )}
               {!isLoading && !isError && filteredOrders.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="py-12 text-center text-muted-foreground">
+                  <td colSpan={13} className="py-12 text-center text-muted-foreground">
                     {orders.length === 0 ? "No hay pedidos registrados." : "Ningún pedido coincide con la búsqueda."}
                   </td>
                 </tr>

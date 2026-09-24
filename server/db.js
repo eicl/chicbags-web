@@ -506,6 +506,11 @@ export const initSchema = async () => {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS sunat_boletas_order_id_idx ON sunat_boletas (order_id);`);
   await pool.query(`INSERT INTO sunat_series (serie) VALUES ('B001') ON CONFLICT (serie) DO NOTHING;`);
+  // Respaldo del PDF en Google Drive (ver server/googleDrive.js) — best
+  // effort: si falla la subida, queda el motivo acá pero nunca se toca
+  // status/sunat_response_*, porque SUNAT ya aceptó el comprobante real.
+  await pool.query(`ALTER TABLE sunat_boletas ADD COLUMN IF NOT EXISTS drive_file_id TEXT NOT NULL DEFAULT '';`);
+  await pool.query(`ALTER TABLE sunat_boletas ADD COLUMN IF NOT EXISTS drive_upload_error TEXT NOT NULL DEFAULT '';`);
 
   // Plantillas de los mensajes que se abren en WhatsApp (registro de
   // pedido, aviso de estado, registro de cliente) — editables desde el
