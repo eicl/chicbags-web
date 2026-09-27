@@ -729,6 +729,25 @@ export const createPaymentCardLogo = (image: string): Promise<PaymentCardLogo> =
 export const deletePaymentCardLogo = (id: number): Promise<void> =>
   fetch(`${API_URL}/payment-card-logos/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
 
+// Logo por tipo de delivery para la esquina de la etiqueta de envío impresa
+// (ver buildShippingLabelHtml en AdminOrders.tsx) — editable desde Admin >
+// Tipos de delivery. Mantenimiento fijo: no se agregan/quitan tipos.
+export interface DeliveryCornerLogo {
+  deliveryType: DeliveryType;
+  image: string;
+}
+
+export const fetchDeliveryCornerLogos = (): Promise<DeliveryCornerLogo[]> =>
+  fetch(`${API_URL}/delivery-corner-logos`, { credentials: "include" }).then((res) => handle<DeliveryCornerLogo[]>(res));
+
+export const updateDeliveryCornerLogo = (deliveryType: DeliveryType, image: string): Promise<DeliveryCornerLogo> =>
+  fetch(`${API_URL}/delivery-corner-logos/${encodeURIComponent(deliveryType)}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image }),
+  }).then((res) => handle<DeliveryCornerLogo>(res));
+
 // Título y descripción que se muestran al compartir cada link (ej. por
 // WhatsApp): editables desde el panel. path/label son solo informativos
 // (a qué página corresponde cada fila); el ícono queda fijo en el servidor.

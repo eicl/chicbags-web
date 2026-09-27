@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, ArchiveRestore, CalendarSearch, Check, ChevronDown, ChevronUp, ExternalLink, FileText, Flag, MessageCircle, Loader2, PackageCheck, Pencil, Plus, Printer, Search, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
 import {
   AdminOrder, ChargeType, DeliveryType, OrderItem, OrderStatus, PaymentInput, Service,
-  addOrderItem, deleteOrder, deleteOrderItem, emitBoleta, fetchOrders, fetchServices, fetchSettings, markOrderAccumulating,
+  addOrderItem, deleteOrder, deleteOrderItem, emitBoleta, fetchDeliveryCornerLogos, fetchOrders, fetchServices, fetchSettings, markOrderAccumulating,
   markOrderDelivered, markOrderReadyForDelivery, markOrderWarehouseSeparated, registerPayment, releaseOrderAccumulating,
   sendOrderStatusWhatsApp, updateOrderChargeType, updateOrderItemColor, updateOrderItemDiscount, updateOrderReceipt, updateOrderServiceItem,
   uploadImage,
@@ -158,12 +158,23 @@ const COURIER_DELIVERY_TYPES = ["Shalom", "Olva", "Marvisur"];
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-// Ícono de moto para la etiqueta de envío de los "motorizado": rojo para
-// Motorizado Delivery (Pitaya), verde para Motorizado Express — así se
-// distingue de un vistazo qué motorizado le toca a cada paquete apilado.
-const MOTO_ICON_SRC: Partial<Record<DeliveryType, string>> = {
+// Respaldo fijo mientras Admin > Tipos de delivery no tenga un logo
+// configurado para Motorizado Delivery/Express (rojo para Pitaya, verde
+// para Express — así se distingue de un vistazo qué motorizado le toca a
+// cada paquete apilado). Olva no tiene respaldo fijo: no imprime nada hasta
+// que se suba un logo.
+const STATIC_MOTO_ICON_FALLBACK: Partial<Record<DeliveryType, string>> = {
   "Motorizado Delivery": "/motorizadoDelivery.png",
   "Motorizado Express": "/motorizadoExpress.png",
+};
+
+// El logo configurado (subido desde Admin > Tipos de delivery) manda si
+// existe; si no, cae al respaldo fijo de arriba (solo para los dos
+// motorizados, ver comentario de STATIC_MOTO_ICON_FALLBACK).
+const cornerLogoSrc = (deliveryType: DeliveryType, cornerLogos: Record<string, string>) => {
+  const configured = cornerLogos[deliveryType];
+  if (configured) return productImageUrl(configured);
+  return STATIC_MOTO_ICON_FALLBACK[deliveryType] ?? "";
 };
 
 // Reglas comunes a los dos reportes; el tamaño de página va aparte porque
@@ -181,7 +192,7 @@ const PRINT_BASE_STYLES = `
 // número de pedido en la superior derecha; el resto son filas fijas:
 // Delivery (tipo + agencia), Ubicación/Documento (o, si es "motorizado",
 // Distrito + Dirección en su lugar y sin Documento), Nombre, Celular.
-const buildShippingLabelHtml = (order: AdminOrder) => {
+const buildShippingLabelHtml = (order: AdminOrder, cornerLogos: Record<string, string>) => {
   const showMode = DELIVERY_MODE_TYPES.includes(order.customerDeliveryType);
   const isMotorized = ADDRESS_TYPES.includes(order.customerDeliveryType);
   const paid = order.payments.reduce((sum, p) => sum + p.amount, 0);
@@ -191,7 +202,7 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
   // Delivery); las agencias/courier cobran en efectivo al entregar, así que
   // no tiene sentido mostrárselo a ellas.
   const showYapeQr = showCobrar && !COURIER_DELIVERY_TYPES.includes(order.customerDeliveryType);
-  const motoIconSrc = MOTO_ICON_SRC[order.customerDeliveryType];
+  const cornerLogo = cornerLogoSrc(order.customerDeliveryType, cornerLogos);
   // Si el cliente registró que otra persona recibe sus envíos y esos datos
   // están completos, la etiqueta final (Pendiente de envío en adelante) va
   // con los datos de quien recepciona en vez de los del cliente — a quien
@@ -238,7 +249,7 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
           .items-list div { margin: 1px 0; break-inside: avoid; }
           .items-list.two-col { column-count: 2; column-gap: 8px; }
           .yape-qr { position: absolute; right: 0; bottom: 0; width: 24mm; height: 24mm; object-fit: contain; }
-          .moto-icon { position: absolute; left: 0; bottom: 2mm; width: 20mm; height: 20mm; object-fit: contain; }
+          .corner-logo { position: absolute; left: 0; bottom: 2mm; width: 20mm; height: 20mm; object-fit: contain; }
         </style>
       </head>
       <body>
@@ -252,14 +263,14 @@ const buildShippingLabelHtml = (order: AdminOrder) => {
         ${
           productItems.length > 0
             ? `<div class="items-list${productItems.length > 2 ? " two-col" : ""}" style="margin-left: ${
-                motoIconSrc ? "20mm" : "4mm"
+                cornerLogo ? "20mm" : "4mm"
               }; margin-right: ${showYapeQr ? "24mm" : "4mm"};">${productItems
                 .map((item) => `<div>${escapeHtml(item.productCode || "—")} · x${item.quantity} · ${escapeHtml(item.colorName || "—")}</div>`)
                 .join("")}</div>`
             : ""
         }
         ${showYapeQr ? `<img class="yape-qr" src="${window.location.origin}/yapeChicBags.jpg" alt="QR Yape ChicBags" />` : ""}
-        ${motoIconSrc ? `<img class="moto-icon" src="${window.location.origin}${motoIconSrc}" alt="Moto" />` : ""}
+        ${cornerLogo ? `<img class="corner-logo" src="${cornerLogo.startsWith("http") ? cornerLogo : window.location.origin + cornerLogo}" alt="Logo" />` : ""}
       </body>
     </html>
   `;
@@ -310,13 +321,13 @@ const buildSeparationLabelHtml = (order: AdminOrder) => {
 `;
 };
 
-const printOrder = (order: AdminOrder) => {
+const printOrder = (order: AdminOrder, cornerLogos: Record<string, string>) => {
   const html =
     order.status === "Pendiente de envío" ||
     order.status === "Listo para delivery" ||
     order.status === "Entregado a delivery" ||
     order.status === "Pendiente de envío en almacén por acumulación"
-      ? buildShippingLabelHtml(order)
+      ? buildShippingLabelHtml(order, cornerLogos)
       : buildSeparationLabelHtml(order);
   const printWindow = window.open("", "_blank", "width=600,height=800");
   if (!printWindow) {
@@ -920,6 +931,8 @@ const AdminOrders = () => {
   const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
   const nearSeparationDeadlineDays = settings?.nearSeparationDeadlineDays ?? FALLBACK_NEAR_SEPARATION_DEADLINE_DAYS;
   const separationDays = settings?.separationDays ?? FALLBACK_SEPARATION_DAYS;
+  const { data: deliveryCornerLogos = [] } = useQuery({ queryKey: ["deliveryCornerLogos"], queryFn: fetchDeliveryCornerLogos });
+  const cornerLogosMap = Object.fromEntries(deliveryCornerLogos.map((l) => [l.deliveryType, l.image]));
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "Todos">("Todos");
@@ -1489,7 +1502,7 @@ const AdminOrders = () => {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => printOrder(order)}
+                              onClick={() => printOrder(order, cornerLogosMap)}
                               disabled={order.status === "Registrado"}
                               title={order.status === "Registrado" ? "Registra un pago primero" : "Imprimir reporte A5"}
                               className="gap-2"

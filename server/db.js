@@ -422,6 +422,24 @@ export const initSchema = async () => {
     WHERE NOT EXISTS (SELECT 1 FROM payment_card_logos);
   `);
 
+  // Logo que se imprime en la esquina inferior izquierda de la etiqueta de
+  // envío (ver buildShippingLabelHtml en AdminOrders.tsx), por tipo de
+  // delivery — editable desde Admin > Tipos de delivery. Vacío = sin logo
+  // (Motorizado Delivery/Express usan de respaldo el ícono de moto fijo del
+  // frontend mientras no se suba un reemplazo; Olva no tiene respaldo fijo,
+  // así que no imprime nada hasta que se suba uno).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS delivery_corner_logos (
+      delivery_type TEXT PRIMARY KEY,
+      image TEXT NOT NULL DEFAULT ''
+    );
+  `);
+  await pool.query(`
+    INSERT INTO delivery_corner_logos (delivery_type) VALUES
+      ('Motorizado Delivery'), ('Motorizado Express'), ('Olva')
+    ON CONFLICT (delivery_type) DO NOTHING;
+  `);
+
   // Título y descripción que se muestran al compartir cada link (ej. por
   // WhatsApp) — editables desde el panel. La imagen y a qué ruta aplica
   // cada fila siguen fijas en el código (server/index.js), solo el texto
