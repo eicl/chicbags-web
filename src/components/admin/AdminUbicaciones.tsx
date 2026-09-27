@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Search, Trash2, X, Save } from "lucide-react";
+import { Plus, Pencil, Printer, Search, Trash2, X, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -9,6 +9,71 @@ import { errorLabelClass, errorInputClass } from "@/lib/utils";
 import Pagination from "@/components/admin/Pagination";
 
 const PAGE_SIZE = 20;
+
+const escapeHtml = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+// A más caracteres, letra más chica — para que nombres cortos ("A1") salgan
+// gigantes y nombres largos ("Estante trasero derecho") todavía entren en
+// una A6 sin desbordarse.
+const fontSizeForName = (name: string) => {
+  const len = name.length;
+  if (len <= 3) return 220;
+  if (len <= 6) return 160;
+  if (len <= 10) return 120;
+  if (len <= 16) return 85;
+  if (len <= 24) return 60;
+  return 42;
+};
+
+// Etiqueta para pegar en el estante/rack físico: el nombre de la ubicación
+// solo, lo más grande posible, en A6 horizontal — mismo criterio de
+// impresión (@page + window.print()) que las etiquetas de pedido en
+// AdminOrders.tsx.
+const printLocation = (name: string) => {
+  const html = `
+    <html>
+      <head>
+        <title>${escapeHtml(name)}</title>
+        <style>
+          @page { size: A6 landscape; margin: 6mm; }
+          * { box-sizing: border-box; }
+          body {
+            font-family: Arial, Helvetica, sans-serif;
+            color: #111;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+          }
+          .name {
+            font-size: ${fontSizeForName(name)}px;
+            font-weight: 800;
+            line-height: 1.05;
+            overflow-wrap: break-word;
+            width: 100%;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="name">${escapeHtml(name)}</div>
+      </body>
+    </html>
+  `;
+  const printWindow = window.open("", "_blank", "width=600,height=450");
+  if (!printWindow) {
+    toast.error("El navegador bloqueó la ventana de impresión");
+    return;
+  }
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.onload = () => {
+    printWindow.focus();
+    printWindow.print();
+  };
+};
 
 // Lista plana global de ubicaciones físicas de almacén (ej. "Estante A1"),
 // para control de stock/inventario — se asignan a un pedido al pasarlo a
@@ -164,6 +229,9 @@ const AdminUbicaciones = () => {
                   <td className="py-3 px-4 font-medium">{location.name}</td>
                   <td className="py-3 px-4">
                     <div className="flex gap-2 justify-end">
+                      <Button variant="ghost" size="icon" onClick={() => printLocation(location.name)} title="Imprimir etiqueta (A6 horizontal)">
+                        <Printer className="w-4 h-4" />
+                      </Button>
                       <Button variant="ghost" size="icon" onClick={() => handleEdit(location)}>
                         <Pencil className="w-4 h-4" />
                       </Button>
