@@ -4,9 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, ArchiveRestore, CalendarSearch, Check, ChevronDown, ChevronUp, ExternalLink, FileText, Flag, MessageCircle, Loader2, PackageCheck, Pencil, Plus, Printer, Search, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
 import {
   AdminOrder, ChargeType, DeliveryType, OrderItem, OrderStatus, PaymentInput, Service,
-  addOrderItem, deleteOrder, deleteOrderItem, emitBoleta, fetchDeliveryCornerLogos, fetchOrders, fetchServices, fetchSettings, markOrderAccumulating,
+  addOrderItem, deleteOrder, deleteOrderItem, emitBoleta, fetchDeliveryCornerLogos, fetchOrders, fetchServices, fetchSettings,
+  fetchWarehouseLocations, markOrderAccumulating,
   markOrderDelivered, markOrderReadyForDelivery, markOrderWarehouseSeparated, registerPayment, releaseOrderAccumulating,
-  sendOrderStatusWhatsApp, updateOrderChargeType, updateOrderItemColor, updateOrderItemDiscount, updateOrderReceipt, updateOrderServiceItem,
+  sendOrderStatusWhatsApp, updateOrderChargeType, updateOrderItemColor, updateOrderItemDiscount, updateOrderReceipt,
+  updateOrderServiceItem, updateOrderWarehouseLocation,
   uploadImage,
 } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
@@ -725,6 +727,57 @@ const PaymentForm = ({ orderId }: { orderId: number }) => {
   );
 };
 
+// Para pedidos en "Separación": elige y guarda la ubicación física de
+// almacén (para control de stock/inventario), por separado del cambio de
+// estado en sí — mismo criterio que ReceiptForm. Sin ubicación guardada, el
+// botón "Marcar como separado en almacén" de más abajo queda deshabilitado.
+const WarehouseLocationForm = ({ order }: { order: AdminOrder }) => {
+  const queryClient = useQueryClient();
+  const { data: locations = [] } = useQuery({ queryKey: ["warehouseLocations"], queryFn: fetchWarehouseLocations });
+  const [location, setLocation] = useState(order.warehouseLocation);
+
+  const mutation = useMutation({
+    mutationFn: (loc: string) => updateOrderWarehouseLocation(order.id, loc),
+    onSuccess: () => {
+      toast.success("Ubicación guardada");
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo guardar la ubicación"),
+  });
+
+  const handleSubmit = () => {
+    if (!location) {
+      toast.error("Selecciona una ubicación");
+      return;
+    }
+    mutation.mutate(location);
+  };
+
+  return (
+    <div>
+      <h4 className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Ubicación en almacén</h4>
+      <div className="flex flex-wrap items-end gap-3 p-3 rounded-md border border-dashed border-border">
+        <div>
+          <label className="block text-xs text-muted-foreground mb-1">Ubicación</label>
+          <select
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            className="flex h-9 w-48 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <option value="">Selecciona...</option>
+            {locations.map((l) => (
+              <option key={l.id} value={l.name}>{l.name}</option>
+            ))}
+          </select>
+        </div>
+        <Button size="sm" onClick={handleSubmit} disabled={mutation.isPending} className="h-9">
+          {mutation.isPending ? "Guardando..." : "Guardar"}
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 // Solo para pedidos con delivery Shalom/Olva/Marvisur: deja subir el
 // recibo del envío (comprobante de la agencia) y una clave de rastreo
 // opcional. Sin recibo, el servidor no deja marcar el pedido como
@@ -1392,6 +1445,12 @@ const AdminOrders = () => {
                                 <span className="text-muted-foreground">Dirección:</span> <span className="font-medium">{order.customerAddress}</span>
                               </>
                             )}
+                            {order.warehouseLocation && (
+                              <>
+                                {" · "}
+                                <span className="text-muted-foreground">Ubicación:</span> <span className="font-medium">{order.warehouseLocation}</span>
+                              </>
+                            )}
                           </p>
                           <h4 className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
                             Productos ({order.items.length})
@@ -1499,6 +1558,8 @@ const AdminOrders = () => {
                             <ReceiptForm order={order} />
                           )}
 
+                          {order.status === "Separación" && <WarehouseLocationForm order={order} />}
+
                           <div className="flex flex-wrap items-center gap-3">
                             <SendStatusWhatsAppButton orderId={order.id} />
                             <Button
@@ -1580,7 +1641,8 @@ const AdminOrders = () => {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => warehouseMutation.mutate(order.id)}
-                                disabled={warehouseMutation.isPending}
+                                disabled={warehouseMutation.isPending || !order.warehouseLocation}
+                                title={!order.warehouseLocation ? "Guarda una ubicación de almacén primero" : undefined}
                                 className="gap-2 text-sky-600 hover:text-sky-600"
                               >
                                 <Warehouse className="w-3.5 h-3.5" /> Marcar como separado en almacén

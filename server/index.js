@@ -486,6 +486,51 @@ app.delete("/api/brands/:id", requireAuth, async (req, res) => {
   res.status(204).end();
 });
 
+// Ubicaciones físicas de almacén (Admin > Ubicaciones) — lista plana global,
+// mismo patrón que brands. Se asignan a un pedido al pasarlo a "Separado en
+// almacén" (ver PUT /api/orders/:id/warehouse-location más abajo).
+app.get("/api/warehouse-locations", requireAuth, async (req, res) => {
+  const { rows } = await pool.query("SELECT id, name FROM warehouse_locations ORDER BY name");
+  res.json(rows);
+});
+
+app.post("/api/warehouse-locations", requireAuth, async (req, res) => {
+  const name = (req.body.name ?? "").trim();
+  if (!name) return res.status(400).json({ error: "El nombre es obligatorio" });
+  const { rows: existing } = await pool.query("SELECT id FROM warehouse_locations WHERE lower(name) = lower($1)", [name]);
+  if (existing.length > 0) return res.status(409).json({ error: "Ya existe una ubicación con ese nombre" });
+  const { rows } = await pool.query("INSERT INTO warehouse_locations (name) VALUES ($1) RETURNING id, name", [name]);
+  res.status(201).json(rows[0]);
+});
+
+app.put("/api/warehouse-locations/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const name = (req.body.name ?? "").trim();
+  if (!name) return res.status(400).json({ error: "El nombre es obligatorio" });
+  const { rows: current } = await pool.query("SELECT name FROM warehouse_locations WHERE id = $1", [id]);
+  if (current.length === 0) return res.status(404).json({ error: "Ubicación no encontrada" });
+  const { rows: existing } = await pool.query(
+    "SELECT id FROM warehouse_locations WHERE lower(name) = lower($1) AND id != $2",
+    [name, id]
+  );
+  if (existing.length > 0) return res.status(409).json({ error: "Ya existe una ubicación con ese nombre" });
+  await pool.query("UPDATE orders SET warehouse_location = $1 WHERE warehouse_location = $2", [name, current[0].name]);
+  const { rows } = await pool.query("UPDATE warehouse_locations SET name = $1 WHERE id = $2 RETURNING id, name", [name, id]);
+  res.json(rows[0]);
+});
+
+app.delete("/api/warehouse-locations/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const { rows: current } = await pool.query("SELECT name FROM warehouse_locations WHERE id = $1", [id]);
+  if (current.length === 0) return res.status(404).json({ error: "Ubicación no encontrada" });
+  const { rows: inUse } = await pool.query("SELECT COUNT(*)::int AS count FROM orders WHERE warehouse_location = $1", [current[0].name]);
+  if (inUse[0].count > 0) {
+    return res.status(409).json({ error: "No puedes eliminar una ubicación que está en uso por pedidos" });
+  }
+  await pool.query("DELETE FROM warehouse_locations WHERE id = $1", [id]);
+  res.status(204).end();
+});
+
 // Servicios: mantenimiento aparte de productos, solo código, nombre,
 // descripción y precio (sin colores, categorías, marca, stock ni fotos).
 const mapService = (row) => ({
@@ -1419,6 +1464,7 @@ const mapOrder = (order, items, payments = []) => ({
   chargeType: order.charge_type,
   receiptImage: order.receipt_image,
   trackingCode: order.tracking_code,
+  warehouseLocation: order.warehouse_location,
   separationDeadline: order.separation_deadline,
   total: Number(order.total),
   createdAt: order.created_at,
@@ -1898,7 +1944,7 @@ app.get("/api/orders", requireAuth, async (req, res) => {
   const { rows } = await pool.query(`
     SELECT
       o.id, o.customer_id, o.seller_id, o.type, o.status, o.charge_type, o.receipt_image, o.tracking_code,
-      o.separation_deadline, o.total, o.created_at,
+      o.warehouse_location, o.separation_deadline, o.total, o.created_at,
       c.first_name, c.paternal_surname, c.maternal_surname, c.document_type, c.document_number, c.mobile,
       c.department, c.province, c.district, c.delivery_type, c.delivery_mode, c.agency, c.address,
       c.different_receiver, c.receiver_document_type, c.receiver_document_number, c.receiver_first_name,
@@ -1970,6 +2016,7 @@ app.get("/api/orders", requireAuth, async (req, res) => {
       chargeType: row.charge_type,
       receiptImage: row.receipt_image,
       trackingCode: row.tracking_code,
+      warehouseLocation: row.warehouse_location,
       separationDeadline: row.separation_deadline,
       total: Number(row.total),
       createdAt: row.created_at,
@@ -2752,6 +2799,32 @@ app.put("/api/orders/:id/receipt", requireAuth, async (req, res) => {
     "UPDATE orders SET receipt_image = $1, tracking_code = $2 WHERE id = $3 RETURNING *",
     [receiptImage.trim(), (trackingCode ?? "").trim(), id]
   );
+  if (rows.length === 0) return res.status(404).json({ error: "Pedido no encontrado" });
+  const { rows: itemRows } = await pool.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [id]);
+  const { rows: paymentRows } = await pool.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [id]);
+  res.json(mapOrder(rows[0], itemRows, paymentRows));
+});
+
+// Ubicación física donde quedó guardado el producto mientras el pedido
+// sigue en "Separación" — se guarda por separado del cambio de estado en
+// sí (mismo criterio que el recibo del envío arriba): el admin la elige y
+// la guarda primero, y recién con eso puesto se habilita el botón de abajo
+// para pasar a "Separado en almacén" (para control de stock/inventario:
+// nunca queda un pedido separado en almacén sin saber dónde está).
+app.put("/api/orders/:id/warehouse-location", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const location = (req.body.location ?? "").toString().trim();
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  if (!location) {
+    return res.status(400).json({ error: "Selecciona una ubicación" });
+  }
+  const { rows: validLocation } = await pool.query("SELECT 1 FROM warehouse_locations WHERE name = $1", [location]);
+  if (validLocation.length === 0) {
+    return res.status(400).json({ error: "Ubicación inválida" });
+  }
+  const { rows } = await pool.query("UPDATE orders SET warehouse_location = $1 WHERE id = $2 RETURNING *", [location, id]);
   if (rows.length === 0) return res.status(404).json({ error: "Pedido no encontrado" });
   const { rows: itemRows } = await pool.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [id]);
   const { rows: paymentRows } = await pool.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [id]);

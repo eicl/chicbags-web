@@ -283,6 +283,19 @@ export const initSchema = async () => {
   // "Entregado a delivery" (ver PUT /api/orders/:id/deliver).
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS receipt_image TEXT NOT NULL DEFAULT '';`);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_code TEXT NOT NULL DEFAULT '';`);
+  // Lista fija de ubicaciones físicas de almacén (ej. "Estante A1"),
+  // mantenimiento aparte (Admin > Ubicaciones) — mismo criterio que brands
+  // (lista plana global, sin agrupar por nada).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS warehouse_locations (
+      id SERIAL PRIMARY KEY,
+      name TEXT UNIQUE NOT NULL
+    );
+  `);
+  // Ubicación asignada al pedido al pasarlo de "Separación" a "Separado en
+  // almacén" — se guarda por nombre (no FK), mismo criterio que
+  // customers.district contra la tabla districts.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS warehouse_location TEXT NOT NULL DEFAULT '';`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS payments (
       id SERIAL PRIMARY KEY,

@@ -273,6 +273,36 @@ export const updateDistrict = (id: number, name: string): Promise<District> =>
 export const deleteDistrict = (id: number): Promise<void> =>
   fetch(`${API_URL}/districts/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
 
+// Ubicaciones físicas de almacén (Admin > Ubicaciones) — lista plana global,
+// asignada a un pedido al pasarlo a "Separado en almacén" (para control de
+// stock/inventario).
+export interface WarehouseLocation {
+  id: number;
+  name: string;
+}
+
+export const fetchWarehouseLocations = (): Promise<WarehouseLocation[]> =>
+  fetch(`${API_URL}/warehouse-locations`, { credentials: "include" }).then((res) => handle<WarehouseLocation[]>(res));
+
+export const createWarehouseLocation = (name: string): Promise<WarehouseLocation> =>
+  fetch(`${API_URL}/warehouse-locations`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  }).then((res) => handle<WarehouseLocation>(res));
+
+export const updateWarehouseLocation = (location: WarehouseLocation): Promise<WarehouseLocation> =>
+  fetch(`${API_URL}/warehouse-locations/${location.id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: location.name }),
+  }).then((res) => handle<WarehouseLocation>(res));
+
+export const deleteWarehouseLocation = (id: number): Promise<void> =>
+  fetch(`${API_URL}/warehouse-locations/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
+
 export const createCustomer = (data: CustomerInput): Promise<Customer> =>
   fetch(`${API_URL}/customers`, {
     method: "POST",
@@ -461,6 +491,9 @@ export interface Order {
   // pedido como "Entregado a delivery" en esos tipos de delivery.
   receiptImage: string;
   trackingCode: string;
+  // Ubicación física de almacén (Admin > Ubicaciones); vacío ("") hasta que
+  // se asigna una al pasar el pedido a "Separado en almacén".
+  warehouseLocation: string;
   // Fecha límite para cancelar (15 días calendario), fijada solo mientras el
   // pedido está en "Separación"; null en cualquier otro estado.
   separationDeadline: string | null;
@@ -861,6 +894,16 @@ export const markOrderWarehouseSeparated = (orderId: number): Promise<Order> =>
   fetch(`${API_URL}/orders/${orderId}/warehouse`, {
     method: "PUT",
     credentials: "include",
+  }).then((res) => handle<Order>(res));
+
+// Asigna la ubicación física de almacén de un pedido — por separado del
+// cambio de estado en sí (ver comentario del endpoint en server/index.js).
+export const updateOrderWarehouseLocation = (orderId: number, location: string): Promise<Order> =>
+  fetch(`${API_URL}/orders/${orderId}/warehouse-location`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ location }),
   }).then((res) => handle<Order>(res));
 
 // Guarda un pedido ya pagado del todo ("Pendiente de envío") en almacén
