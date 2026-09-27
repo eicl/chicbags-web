@@ -729,24 +729,38 @@ export const createPaymentCardLogo = (image: string): Promise<PaymentCardLogo> =
 export const deletePaymentCardLogo = (id: number): Promise<void> =>
   fetch(`${API_URL}/payment-card-logos/${id}`, { method: "DELETE", credentials: "include" }).then((res) => handle<void>(res));
 
-// Logo por tipo de delivery para la esquina de la etiqueta de envío impresa
-// (ver buildShippingLabelHtml en AdminOrders.tsx) — editable desde Admin >
-// Tipos de delivery. Mantenimiento fijo: no se agregan/quitan tipos.
+// Configuración por tipo de delivery — editable desde Admin > Tipos de
+// delivery (mantenimiento fijo: no se agregan/quitan tipos): el logo para
+// la esquina de la etiqueta de envío impresa (ver buildShippingLabelHtml
+// en AdminOrders.tsx), y si aparece como opción en el registro de cliente
+// público (/registro-cliente, ver CustomerRegister.tsx).
 export interface DeliveryCornerLogo {
   deliveryType: DeliveryType;
   image: string;
+  visible: boolean;
 }
 
 export const fetchDeliveryCornerLogos = (): Promise<DeliveryCornerLogo[]> =>
   fetch(`${API_URL}/delivery-corner-logos`, { credentials: "include" }).then((res) => handle<DeliveryCornerLogo[]>(res));
 
-export const updateDeliveryCornerLogo = (deliveryType: DeliveryType, image: string): Promise<DeliveryCornerLogo> =>
+// Parcial a propósito: la subida de logo solo manda { image }, el toggle de
+// visibilidad solo manda { visible } — el servidor conserva lo que no se
+// mande.
+export const updateDeliveryCornerLogo = (
+  deliveryType: DeliveryType,
+  data: Partial<Pick<DeliveryCornerLogo, "image" | "visible">>
+): Promise<DeliveryCornerLogo> =>
   fetch(`${API_URL}/delivery-corner-logos/${encodeURIComponent(deliveryType)}`, {
     method: "PUT",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image }),
+    body: JSON.stringify(data),
   }).then((res) => handle<DeliveryCornerLogo>(res));
+
+// Público (sin sesión) — qué tipos de delivery mostrar en el <select> del
+// registro de cliente por link.
+export const fetchVisibleDeliveryTypes = (): Promise<DeliveryType[]> =>
+  fetch(`${API_URL}/delivery-types/visible`).then((res) => handle<DeliveryType[]>(res));
 
 // Título y descripción que se muestran al compartir cada link (ej. por
 // WhatsApp): editables desde el panel. path/label son solo informativos

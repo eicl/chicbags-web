@@ -422,18 +422,22 @@ export const initSchema = async () => {
     WHERE NOT EXISTS (SELECT 1 FROM payment_card_logos);
   `);
 
-  // Logo que se imprime en la esquina inferior izquierda de la etiqueta de
-  // envío (ver buildShippingLabelHtml en AdminOrders.tsx), por tipo de
-  // delivery — editable desde Admin > Tipos de delivery. Vacío = sin logo
-  // (Motorizado Delivery/Express usan de respaldo el ícono de moto fijo del
-  // frontend mientras no se suba un reemplazo; el resto no tiene respaldo
-  // fijo, así que no imprimen nada hasta que se suba uno).
+  // Configuración por tipo de delivery, editable desde Admin > Tipos de
+  // delivery: el logo que se imprime en la esquina inferior izquierda de la
+  // etiqueta de envío (ver buildShippingLabelHtml en AdminOrders.tsx) —
+  // vacío = sin logo (Motorizado Delivery/Express usan de respaldo el
+  // ícono de moto fijo del frontend mientras no se suba un reemplazo; el
+  // resto no tiene respaldo fijo) — y si aparece como opción elegible en el
+  // registro de cliente público (/registro-cliente). Ambas cosas viven en
+  // la misma tabla porque las dos son "configuración por tipo de delivery",
+  // no dos conceptos separados.
   await pool.query(`
     CREATE TABLE IF NOT EXISTS delivery_corner_logos (
       delivery_type TEXT PRIMARY KEY,
       image TEXT NOT NULL DEFAULT ''
     );
   `);
+  await pool.query(`ALTER TABLE delivery_corner_logos ADD COLUMN IF NOT EXISTS visible BOOLEAN NOT NULL DEFAULT true;`);
   await pool.query(`
     INSERT INTO delivery_corner_logos (delivery_type) VALUES
       ('Shalom'), ('Motorizado Express'), ('Motorizado Delivery'), ('Motorizado Cliente'), ('Olva'), ('Marvisur')

@@ -10,7 +10,7 @@ const DeliveryLogoCard = ({ logo }: { logo: DeliveryCornerLogo }) => {
   const [uploading, setUploading] = useState(false);
 
   const mutation = useMutation({
-    mutationFn: (image: string) => updateDeliveryCornerLogo(logo.deliveryType, image),
+    mutationFn: (data: Partial<Pick<DeliveryCornerLogo, "image" | "visible">>) => updateDeliveryCornerLogo(logo.deliveryType, data),
     onSuccess: () => {
       toast.success("Guardado");
       queryClient.invalidateQueries({ queryKey: ["deliveryCornerLogos"] });
@@ -22,7 +22,7 @@ const DeliveryLogoCard = ({ logo }: { logo: DeliveryCornerLogo }) => {
     setUploading(true);
     try {
       const { filename } = await uploadImage(file);
-      mutation.mutate(filename);
+      mutation.mutate({ image: filename });
     } catch {
       toast.error("No se pudo subir el logo");
     } finally {
@@ -57,21 +57,31 @@ const DeliveryLogoCard = ({ logo }: { logo: DeliveryCornerLogo }) => {
         </label>
       </div>
       <p className="text-xs text-muted-foreground">Se guarda de inmediato al subirlo.</p>
+      <label className="flex items-center gap-2 cursor-pointer pt-2 border-t border-border">
+        <input
+          type="checkbox"
+          checked={logo.visible}
+          disabled={mutation.isPending}
+          onChange={(e) => mutation.mutate({ visible: e.target.checked })}
+        />
+        <span className="text-sm">Visible en registro de cliente por link</span>
+      </label>
     </div>
   );
 };
 
 // Mantenimiento fijo (no se agregan/quitan tipos de delivery acá, solo se
-// sube/cambia el logo de cada uno) — mismo criterio que Vistas previas
-// (route_meta): una tarjeta por fila fija, sin alta/baja.
+// edita cada uno) — mismo criterio que Vistas previas (route_meta): una
+// tarjeta por fila fija, sin alta/baja.
 const AdminDeliveryLogos = () => {
   const { data: logos = [], isLoading, isError } = useQuery({ queryKey: ["deliveryCornerLogos"], queryFn: fetchDeliveryCornerLogos });
 
   return (
     <div>
       <p className="text-sm text-muted-foreground mb-6">
-        Logo que se imprime en la esquina inferior izquierda de la etiqueta de envío, según el tipo de delivery del
-        pedido (ej. el logo de la agencia, o el ícono de la moto).
+        Por tipo de delivery: el logo que se imprime en la esquina inferior izquierda de la etiqueta de envío (ej. el
+        logo de la agencia, o el ícono de la moto), y si aparece como opción elegible en el registro de cliente
+        público (/registro-cliente).
       </p>
       {isLoading && <p className="text-sm text-muted-foreground">Cargando...</p>}
       {isError && <p className="text-sm text-destructive">No se pudo conectar con la API.</p>}

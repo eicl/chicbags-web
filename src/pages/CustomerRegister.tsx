@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import Header from "@/components/Header";
 import {
   registerCustomer, requestMobileVerification, confirmMobileVerification, lookupDni,
-  fetchDistricts, fetchAgencies, Customer, CustomerInput, DeliveryType, DeliveryMode,
+  fetchDistricts, fetchAgencies, fetchVisibleDeliveryTypes, Customer, CustomerInput, DeliveryType, DeliveryMode,
 } from "@/lib/api";
 import { PERU_DEPARTMENTS, PERU_LOCATIONS, isLimaMetroProvince } from "@/lib/peru-locations";
 import { errorLabelClass, errorInputClass, cn } from "@/lib/utils";
@@ -266,8 +266,13 @@ const CustomerRegister = () => {
   };
 
   const provinces = form.department ? PERU_LOCATIONS[form.department] ?? [] : [];
+  // Sin data todavía (carga inicial) => no filtra por visibilidad, para no
+  // mostrar el <select> vacío mientras responde la API.
+  const { data: visibleDeliveryTypes } = useQuery({ queryKey: ["visibleDeliveryTypes"], queryFn: fetchVisibleDeliveryTypes });
   const availableDeliveryTypes = DELIVERY_TYPES.filter(
-    (t) => isLimaMetroProvince(form.province) || !LIMA_ONLY_DELIVERY_TYPES.includes(t) || t === form.deliveryType
+    (t) =>
+      (isLimaMetroProvince(form.province) || !LIMA_ONLY_DELIVERY_TYPES.includes(t) || t === form.deliveryType) &&
+      (!visibleDeliveryTypes || visibleDeliveryTypes.includes(t) || t === form.deliveryType)
   );
 
   const { data: districts = [] } = useQuery({
