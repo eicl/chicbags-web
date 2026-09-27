@@ -18,6 +18,7 @@ import { PERU_DEPARTMENTS, PERU_LOCATIONS, isLimaMetroProvince } from "@/lib/per
 import { errorLabelClass, errorInputClass, cn } from "@/lib/utils";
 import AgencyPicker from "@/components/AgencyPicker";
 import ProductOrderPicker from "@/components/ProductOrderPicker";
+import { useDeliveryTypeLabel } from "@/hooks/useDeliveryTypeLabel";
 import ServiceOrderPicker from "@/components/ServiceOrderPicker";
 
 const PAYMENT_SOURCES = ["Yape", "Plin", "Otro"];
@@ -164,6 +165,7 @@ const OrderRegularization = () => {
   const availableDeliveryTypes = DELIVERY_TYPES.filter(
     (t) => isLimaMetroProvince(customerForm.province) || !LIMA_ONLY_DELIVERY_TYPES.includes(t) || t === customerForm.deliveryType
   );
+  const deliveryTypeLabel = useDeliveryTypeLabel();
   const { data: districts = [] } = useQuery({
     queryKey: ["districts", customerForm.province],
     queryFn: () => fetchDistricts(customerForm.province),
@@ -651,7 +653,7 @@ const OrderRegularization = () => {
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {availableDeliveryTypes.map((t) => (
-                      <option key={t} value={t}>{t}</option>
+                      <option key={t} value={t}>{deliveryTypeLabel(t)}</option>
                     ))}
                   </select>
                   {customerForm.province && !isLimaMetroProvince(customerForm.province) && (

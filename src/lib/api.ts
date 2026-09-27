@@ -738,17 +738,23 @@ export interface DeliveryCornerLogo {
   deliveryType: DeliveryType;
   image: string;
   visible: boolean;
+  // Nombre mostrado al cliente/admin en vez del identificador real — vacío
+  // significa que se sigue mostrando el identificador tal cual. El
+  // identificador (deliveryType) nunca cambia: queda grabado en
+  // clientes/pedidos ya registrados y en las reglas de negocio de
+  // Lima/dirección/cobro, así que renombrar acá nunca las afecta.
+  displayName: string;
 }
 
 export const fetchDeliveryCornerLogos = (): Promise<DeliveryCornerLogo[]> =>
   fetch(`${API_URL}/delivery-corner-logos`, { credentials: "include" }).then((res) => handle<DeliveryCornerLogo[]>(res));
 
 // Parcial a propósito: la subida de logo solo manda { image }, el toggle de
-// visibilidad solo manda { visible } — el servidor conserva lo que no se
-// mande.
+// visibilidad solo manda { visible }, el campo de nombre solo manda
+// { displayName } — el servidor conserva lo que no se mande.
 export const updateDeliveryCornerLogo = (
   deliveryType: DeliveryType,
-  data: Partial<Pick<DeliveryCornerLogo, "image" | "visible">>
+  data: Partial<Pick<DeliveryCornerLogo, "image" | "visible" | "displayName">>
 ): Promise<DeliveryCornerLogo> =>
   fetch(`${API_URL}/delivery-corner-logos/${encodeURIComponent(deliveryType)}`, {
     method: "PUT",
@@ -757,10 +763,19 @@ export const updateDeliveryCornerLogo = (
     body: JSON.stringify(data),
   }).then((res) => handle<DeliveryCornerLogo>(res));
 
-// Público (sin sesión) — qué tipos de delivery mostrar en el <select> del
-// registro de cliente por link.
-export const fetchVisibleDeliveryTypes = (): Promise<DeliveryType[]> =>
-  fetch(`${API_URL}/delivery-types/visible`).then((res) => handle<DeliveryType[]>(res));
+// Público (sin sesión) — nombre a mostrar y visibilidad de cada tipo de
+// delivery. Los 6 siempre, no solo los visibles (ver comentario del
+// endpoint en server/index.js): sirve tanto para el <select> del registro
+// de cliente por link (que sí filtra por visible) como para resolver la
+// etiqueta de un tipo ya elegido en cualquier otra pantalla.
+export interface PublicDeliveryType {
+  deliveryType: DeliveryType;
+  displayName: string;
+  visible: boolean;
+}
+
+export const fetchDeliveryTypes = (): Promise<PublicDeliveryType[]> =>
+  fetch(`${API_URL}/delivery-types`).then((res) => handle<PublicDeliveryType[]>(res));
 
 // Título y descripción que se muestran al compartir cada link (ej. por
 // WhatsApp): editables desde el panel. path/label son solo informativos

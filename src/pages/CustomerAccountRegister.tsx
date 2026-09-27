@@ -15,6 +15,7 @@ import {
 import { PERU_DEPARTMENTS, PERU_LOCATIONS, isLimaMetroProvince } from "@/lib/peru-locations";
 import { errorLabelClass, errorInputClass, cn } from "@/lib/utils";
 import AgencyPicker from "@/components/AgencyPicker";
+import { useDeliveryTypeLabel } from "@/hooks/useDeliveryTypeLabel";
 
 const DOCUMENT_TYPES = ["DNI", "Carné de Extranjería", "Pasaporte", "RUC"];
 const DELIVERY_TYPES: DeliveryType[] = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Motorizado Cliente", "Olva", "Marvisur"];
@@ -176,6 +177,7 @@ const CustomerAccountRegister = () => {
   const availableDeliveryTypes = DELIVERY_TYPES.filter(
     (t) => isLimaMetroProvince(form.province) || !LIMA_ONLY_DELIVERY_TYPES.includes(t) || t === form.deliveryType
   );
+  const deliveryTypeLabel = useDeliveryTypeLabel();
   const { data: districts = [] } = useQuery({
     queryKey: ["districts", form.province],
     queryFn: () => fetchDistricts(form.province),
@@ -486,7 +488,7 @@ const CustomerAccountRegister = () => {
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {availableDeliveryTypes.map((t) => (
-                  <option key={t} value={t}>{t}</option>
+                  <option key={t} value={t}>{deliveryTypeLabel(t)}</option>
                 ))}
               </select>
               {form.province && !isLimaMetroProvince(form.province) && (

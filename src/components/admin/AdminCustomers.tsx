@@ -12,6 +12,7 @@ import { PERU_DEPARTMENTS, PERU_LOCATIONS, isLimaMetroProvince } from "@/lib/per
 import { errorLabelClass, errorInputClass, cn } from "@/lib/utils";
 import AgencyPicker from "@/components/AgencyPicker";
 import Pagination from "@/components/admin/Pagination";
+import { useDeliveryTypeLabel } from "@/hooks/useDeliveryTypeLabel";
 
 const PAGE_SIZE = 20;
 
@@ -285,6 +286,7 @@ const AdminCustomers = () => {
   const availableDeliveryTypes = DELIVERY_TYPES.filter(
     (t) => isLimaMetroProvince(form.province) || !LIMA_ONLY_DELIVERY_TYPES.includes(t) || t === form.deliveryType
   );
+  const deliveryTypeLabel = useDeliveryTypeLabel();
 
   const { data: districts = [] } = useQuery({
     queryKey: ["districts", form.province],
@@ -576,7 +578,7 @@ const AdminCustomers = () => {
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {availableDeliveryTypes.map((t) => (
-                  <option key={t} value={t}>{t}</option>
+                  <option key={t} value={t}>{deliveryTypeLabel(t)}</option>
                 ))}
               </select>
               {form.province && !isLimaMetroProvince(form.province) && (
@@ -687,7 +689,7 @@ const AdminCustomers = () => {
                   <td className="py-3 px-4 text-muted-foreground text-sm">{customer.mobile}</td>
                   <td className="py-3 px-4 text-muted-foreground text-sm">{customer.district}, {customer.province}, {customer.department}</td>
                   <td className="py-3 px-4 text-muted-foreground text-sm">
-                    {customer.deliveryType}
+                    {deliveryTypeLabel(customer.deliveryType)}
                     {customer.deliveryMode && <span> ({customer.deliveryMode})</span>}
                     {customer.agency && <div className="text-xs">Sede: {customer.agency}</div>}
                     {customer.address && <div className="text-xs">Dirección: {customer.address}</div>}

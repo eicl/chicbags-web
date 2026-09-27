@@ -7,11 +7,12 @@ import { toast } from "sonner";
 import Header from "@/components/Header";
 import {
   registerCustomer, requestMobileVerification, confirmMobileVerification, lookupDni,
-  fetchDistricts, fetchAgencies, fetchVisibleDeliveryTypes, Customer, CustomerInput, DeliveryType, DeliveryMode,
+  fetchDistricts, fetchAgencies, fetchDeliveryTypes, Customer, CustomerInput, DeliveryType, DeliveryMode,
 } from "@/lib/api";
 import { PERU_DEPARTMENTS, PERU_LOCATIONS, isLimaMetroProvince } from "@/lib/peru-locations";
 import { errorLabelClass, errorInputClass, cn } from "@/lib/utils";
 import AgencyPicker from "@/components/AgencyPicker";
+import { useDeliveryTypeLabel } from "@/hooks/useDeliveryTypeLabel";
 
 const DOCUMENT_TYPES = ["DNI", "Carné de Extranjería", "Pasaporte", "RUC"];
 const DELIVERY_TYPES: DeliveryType[] = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Motorizado Cliente", "Olva", "Marvisur"];
@@ -268,7 +269,9 @@ const CustomerRegister = () => {
   const provinces = form.department ? PERU_LOCATIONS[form.department] ?? [] : [];
   // Sin data todavía (carga inicial) => no filtra por visibilidad, para no
   // mostrar el <select> vacío mientras responde la API.
-  const { data: visibleDeliveryTypes } = useQuery({ queryKey: ["visibleDeliveryTypes"], queryFn: fetchVisibleDeliveryTypes });
+  const { data: deliveryTypesConfig } = useQuery({ queryKey: ["deliveryTypes"], queryFn: fetchDeliveryTypes });
+  const visibleDeliveryTypes = deliveryTypesConfig?.filter((d) => d.visible).map((d) => d.deliveryType);
+  const deliveryTypeLabel = useDeliveryTypeLabel();
   const availableDeliveryTypes = DELIVERY_TYPES.filter(
     (t) =>
       (isLimaMetroProvince(form.province) || !LIMA_ONLY_DELIVERY_TYPES.includes(t) || t === form.deliveryType) &&
@@ -590,7 +593,7 @@ const CustomerRegister = () => {
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {availableDeliveryTypes.map((t) => (
-                  <option key={t} value={t}>{t}</option>
+                  <option key={t} value={t}>{deliveryTypeLabel(t)}</option>
                 ))}
               </select>
               {form.province && !isLimaMetroProvince(form.province) && (

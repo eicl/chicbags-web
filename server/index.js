@@ -763,7 +763,7 @@ app.delete("/api/payment-card-logos/:id", requireAuth, async (req, res) => {
 // tipos, solo se edita cada uno), por eso PUT hace upsert en vez de haber
 // un POST/DELETE como en payment-card-logos.
 const DELIVERY_CORNER_LOGO_TYPES = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Motorizado Cliente", "Olva", "Marvisur"];
-const mapDeliveryCornerLogo = (r) => ({ deliveryType: r.delivery_type, image: r.image, visible: r.visible });
+const mapDeliveryCornerLogo = (r) => ({ deliveryType: r.delivery_type, image: r.image, visible: r.visible, displayName: r.display_name });
 
 app.get("/api/delivery-corner-logos", requireAuth, async (req, res) => {
   const { rows } = await pool.query("SELECT * FROM delivery_corner_logos ORDER BY delivery_type");
@@ -771,32 +771,35 @@ app.get("/api/delivery-corner-logos", requireAuth, async (req, res) => {
 });
 
 // PUT parcial: solo actualiza los campos presentes en el body (la subida de
-// logo no manda "visible", y viceversa el toggle de visibilidad no manda
-// "image") — el resto conserva lo que ya había.
+// logo no manda "visible"/"displayName", el toggle de visibilidad no manda
+// "image"/"displayName", etc.) — el resto conserva lo que ya había.
 app.put("/api/delivery-corner-logos/:deliveryType", requireAuth, async (req, res) => {
   const { deliveryType } = req.params;
   if (!DELIVERY_CORNER_LOGO_TYPES.includes(deliveryType)) {
     return res.status(400).json({ error: "Tipo de delivery inválido" });
   }
   const { rows: existingRows } = await pool.query("SELECT * FROM delivery_corner_logos WHERE delivery_type = $1", [deliveryType]);
-  const existing = existingRows[0] ?? { image: "", visible: true };
+  const existing = existingRows[0] ?? { image: "", visible: true, display_name: "" };
   const image = req.body.image !== undefined ? req.body.image.toString().trim() : existing.image;
   const visible = req.body.visible !== undefined ? Boolean(req.body.visible) : existing.visible;
+  const displayName = req.body.displayName !== undefined ? req.body.displayName.toString().trim() : existing.display_name;
   const { rows } = await pool.query(
-    `INSERT INTO delivery_corner_logos (delivery_type, image, visible) VALUES ($1, $2, $3)
-     ON CONFLICT (delivery_type) DO UPDATE SET image = $2, visible = $3 RETURNING *`,
-    [deliveryType, image, visible]
+    `INSERT INTO delivery_corner_logos (delivery_type, image, visible, display_name) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (delivery_type) DO UPDATE SET image = $2, visible = $3, display_name = $4 RETURNING *`,
+    [deliveryType, image, visible, displayName]
   );
   res.json(mapDeliveryCornerLogo(rows[0]));
 });
 
-// Público (sin sesión): qué tipos de delivery mostrar en el <select> del
-// registro de cliente por link (/registro-cliente). Solo el nombre — el
-// logo es un detalle interno de la etiqueta impresa, no hace falta
-// exponerlo acá.
-app.get("/api/delivery-types/visible", async (req, res) => {
-  const { rows } = await pool.query("SELECT delivery_type FROM delivery_corner_logos WHERE visible = true ORDER BY delivery_type");
-  res.json(rows.map((r) => r.delivery_type));
+// Público (sin sesión): nombre a mostrar y visibilidad de cada tipo de
+// delivery — usado tanto por el <select> del registro de cliente por link
+// (filtra por visible) como por cualquier otra pantalla que solo necesita
+// resolver la etiqueta visible de un tipo ya elegido (sin filtrar). Los 6
+// tipos siempre, no solo los visibles. Sin el logo — es un detalle interno
+// de la etiqueta impresa, no hace falta exponerlo acá.
+app.get("/api/delivery-types", async (req, res) => {
+  const { rows } = await pool.query("SELECT delivery_type, display_name, visible FROM delivery_corner_logos ORDER BY delivery_type");
+  res.json(rows.map((r) => ({ deliveryType: r.delivery_type, displayName: r.display_name, visible: r.visible })));
 });
 
 const DELIVERY_MODE_REQUIRED = ["Shalom", "Olva"];

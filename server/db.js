@@ -438,6 +438,12 @@ export const initSchema = async () => {
     );
   `);
   await pool.query(`ALTER TABLE delivery_corner_logos ADD COLUMN IF NOT EXISTS visible BOOLEAN NOT NULL DEFAULT true;`);
+  // Nombre para mostrar al cliente/admin en vez del identificador real
+  // (delivery_type) — vacío = se sigue mostrando el identificador tal cual.
+  // El identificador NUNCA cambia (queda grabado en customers/orders y en
+  // las reglas de negocio de Lima/dirección/cobro); esto es solo la
+  // etiqueta visible, editable las veces que haga falta sin ese riesgo.
+  await pool.query(`ALTER TABLE delivery_corner_logos ADD COLUMN IF NOT EXISTS display_name TEXT NOT NULL DEFAULT '';`);
   await pool.query(`
     INSERT INTO delivery_corner_logos (delivery_type) VALUES
       ('Shalom'), ('Motorizado Express'), ('Motorizado Delivery'), ('Motorizado Cliente'), ('Olva'), ('Marvisur')

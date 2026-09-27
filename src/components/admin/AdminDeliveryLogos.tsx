@@ -1,19 +1,26 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Upload, Loader2 } from "lucide-react";
+import { Upload, Loader2, Save } from "lucide-react";
 import { fetchDeliveryCornerLogos, updateDeliveryCornerLogo, uploadImage, DeliveryCornerLogo } from "@/lib/api";
 import { productImageUrl } from "@/lib/images";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 const DeliveryLogoCard = ({ logo }: { logo: DeliveryCornerLogo }) => {
   const queryClient = useQueryClient();
   const [uploading, setUploading] = useState(false);
+  const [displayName, setDisplayName] = useState(logo.displayName);
 
   const mutation = useMutation({
-    mutationFn: (data: Partial<Pick<DeliveryCornerLogo, "image" | "visible">>) => updateDeliveryCornerLogo(logo.deliveryType, data),
+    mutationFn: (data: Partial<Pick<DeliveryCornerLogo, "image" | "visible" | "displayName">>) => updateDeliveryCornerLogo(logo.deliveryType, data),
     onSuccess: () => {
       toast.success("Guardado");
       queryClient.invalidateQueries({ queryKey: ["deliveryCornerLogos"] });
+      // También lo usan CustomerRegister.tsx/AdminOrders.tsx/etc. vía el
+      // endpoint público — sin invalidar esto, seguirían mostrando el
+      // nombre viejo hasta el próximo refetch natural.
+      queryClient.invalidateQueries({ queryKey: ["deliveryTypes"] });
     },
     onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo guardar"),
   });
@@ -57,6 +64,25 @@ const DeliveryLogoCard = ({ logo }: { logo: DeliveryCornerLogo }) => {
         </label>
       </div>
       <p className="text-xs text-muted-foreground">Se guarda de inmediato al subirlo.</p>
+      <div className="pt-2 border-t border-border">
+        <label className="text-xs text-muted-foreground mb-1 block">Nombre mostrado al cliente</label>
+        <div className="flex items-center gap-2">
+          <Input
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder={logo.deliveryType}
+            className="h-9"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => mutation.mutate({ displayName })}
+            disabled={mutation.isPending || displayName === logo.displayName}
+          >
+            <Save className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      </div>
       <label className="flex items-center gap-2 cursor-pointer pt-2 border-t border-border">
         <input
           type="checkbox"
@@ -80,8 +106,8 @@ const AdminDeliveryLogos = () => {
     <div>
       <p className="text-sm text-muted-foreground mb-6">
         Por tipo de delivery: el logo que se imprime en la esquina inferior izquierda de la etiqueta de envío (ej. el
-        logo de la agencia, o el ícono de la moto), y si aparece como opción elegible en el registro de cliente
-        público (/registro-cliente).
+        logo de la agencia, o el ícono de la moto), si aparece como opción elegible en el registro de cliente
+        público (/registro-cliente), y el nombre que se muestra en vez del identificador interno (que nunca cambia).
       </p>
       {isLoading && <p className="text-sm text-muted-foreground">Cargando...</p>}
       {isError && <p className="text-sm text-destructive">No se pudo conectar con la API.</p>}

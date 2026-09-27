@@ -192,7 +192,7 @@ const PRINT_BASE_STYLES = `
 // número de pedido en la superior derecha; el resto son filas fijas:
 // Delivery (tipo + agencia), Ubicación/Documento (o, si es "motorizado",
 // Distrito + Dirección en su lugar y sin Documento), Nombre, Celular.
-const buildShippingLabelHtml = (order: AdminOrder, cornerLogos: Record<string, string>) => {
+const buildShippingLabelHtml = (order: AdminOrder, cornerLogos: Record<string, string>, deliveryLabels: Record<string, string>) => {
   const showMode = DELIVERY_MODE_TYPES.includes(order.customerDeliveryType);
   const isMotorized = ADDRESS_TYPES.includes(order.customerDeliveryType);
   const paid = order.payments.reduce((sum, p) => sum + p.amount, 0);
@@ -203,6 +203,7 @@ const buildShippingLabelHtml = (order: AdminOrder, cornerLogos: Record<string, s
   // no tiene sentido mostrárselo a ellas.
   const showYapeQr = showCobrar && !COURIER_DELIVERY_TYPES.includes(order.customerDeliveryType);
   const cornerLogo = cornerLogoSrc(order.customerDeliveryType, cornerLogos);
+  const deliveryLabel = deliveryLabels[order.customerDeliveryType] || order.customerDeliveryType;
   // Si el cliente registró que otra persona recibe sus envíos y esos datos
   // están completos, la etiqueta final (Pendiente de envío en adelante) va
   // con los datos de quien recepciona en vez de los del cliente — a quien
@@ -214,7 +215,7 @@ const buildShippingLabelHtml = (order: AdminOrder, cornerLogos: Record<string, s
   const recipientDocumentNumber = usesReceiver ? order.customerReceiverDocumentNumber : order.customerDocumentNumber;
   const recipientMobile = usesReceiver ? order.customerReceiverMobile : order.customerMobile;
   const rows: [string, string][] = [
-    ["Delivery", order.customerAgency ? `${order.customerDeliveryType} - ${order.customerAgency}` : order.customerDeliveryType],
+    ["Delivery", order.customerAgency ? `${deliveryLabel} - ${order.customerAgency}` : deliveryLabel],
     ...(isMotorized
       ? ([
           ["Distrito", order.customerDistrict],
@@ -321,13 +322,13 @@ const buildSeparationLabelHtml = (order: AdminOrder) => {
 `;
 };
 
-const printOrder = (order: AdminOrder, cornerLogos: Record<string, string>) => {
+const printOrder = (order: AdminOrder, cornerLogos: Record<string, string>, deliveryLabels: Record<string, string>) => {
   const html =
     order.status === "Pendiente de envío" ||
     order.status === "Listo para delivery" ||
     order.status === "Entregado a delivery" ||
     order.status === "Pendiente de envío en almacén por acumulación"
-      ? buildShippingLabelHtml(order, cornerLogos)
+      ? buildShippingLabelHtml(order, cornerLogos, deliveryLabels)
       : buildSeparationLabelHtml(order);
   const printWindow = window.open("", "_blank", "width=600,height=800");
   if (!printWindow) {
@@ -933,6 +934,7 @@ const AdminOrders = () => {
   const separationDays = settings?.separationDays ?? FALLBACK_SEPARATION_DAYS;
   const { data: deliveryCornerLogos = [] } = useQuery({ queryKey: ["deliveryCornerLogos"], queryFn: fetchDeliveryCornerLogos });
   const cornerLogosMap = Object.fromEntries(deliveryCornerLogos.map((l) => [l.deliveryType, l.image]));
+  const deliveryLabelMap = Object.fromEntries(deliveryCornerLogos.map((l) => [l.deliveryType, l.displayName || l.deliveryType]));
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "Todos">("Todos");
@@ -1356,7 +1358,7 @@ const AdminOrders = () => {
                       <td className="py-3 px-4 text-muted-foreground text-sm">
                         {order.customerDistrict}, {order.customerProvince}, {order.customerDepartment}
                       </td>
-                      <td className="py-3 px-4 text-muted-foreground text-sm">{order.customerDeliveryType}</td>
+                      <td className="py-3 px-4 text-muted-foreground text-sm">{deliveryLabelMap[order.customerDeliveryType] ?? order.customerDeliveryType}</td>
                       <td className="py-3 px-4 text-muted-foreground text-sm">{order.sellerName || "—"}</td>
                       <td className="py-3 px-4">
                         <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-semibold ${STATUS_BADGE_CLASS[order.status]}`}>
@@ -1502,7 +1504,7 @@ const AdminOrders = () => {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => printOrder(order, cornerLogosMap)}
+                              onClick={() => printOrder(order, cornerLogosMap, deliveryLabelMap)}
                               disabled={order.status === "Registrado"}
                               title={order.status === "Registrado" ? "Registra un pago primero" : "Imprimir reporte A5"}
                               className="gap-2"

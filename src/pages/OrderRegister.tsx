@@ -14,6 +14,7 @@ import { productImageUrl } from "@/lib/images";
 import { isLimaMetroProvince } from "@/lib/peru-locations";
 import ProductOrderPicker from "@/components/ProductOrderPicker";
 import ServiceOrderPicker from "@/components/ServiceOrderPicker";
+import { useDeliveryTypeLabel } from "@/hooks/useDeliveryTypeLabel";
 
 const PAYMENT_SOURCES = ["Yape", "Plin", "Otro"];
 const CHARGE_TYPES: ChargeType[] = ["Normal", "Contraentrega"];
@@ -81,6 +82,7 @@ const OrderRegister = () => {
   const queryClient = useQueryClient();
   const { products } = useProducts();
   const { user } = useAuth();
+  const deliveryTypeLabel = useDeliveryTypeLabel();
   const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
   const maxItemDiscount = user
     ? settings?.maxItemDiscountAdmin ?? FALLBACK_ADMIN_MAX_ITEM_DISCOUNT
@@ -414,7 +416,7 @@ const OrderRegister = () => {
                   {customer.district}, {customer.province}, {customer.department}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  {customer.deliveryType}
+                  {deliveryTypeLabel(customer.deliveryType)}
                   {customer.deliveryMode && ` (${customer.deliveryMode})`}
                   {customer.agency && ` — Sede: ${customer.agency}`}
                   {customer.address && ` — ${customer.address}`}

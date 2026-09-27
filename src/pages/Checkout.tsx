@@ -19,6 +19,7 @@ import { useCustomerAuth } from "@/context/CustomerAuthContext";
 import { productImageUrl } from "@/lib/images";
 import { registerOrder, fetchSellers, fetchSettings, fetchPaymentCardLogos, ChargeType, Order } from "@/lib/api";
 import { isLimaMetroProvince } from "@/lib/peru-locations";
+import { useDeliveryTypeLabel } from "@/hooks/useDeliveryTypeLabel";
 
 // Mismas listas que OrderRegister.tsx: quién puede elegir pagar contra
 // entrega en vez de con tarjeta.
@@ -58,6 +59,7 @@ const Checkout = () => {
   const navigate = useNavigate();
   const { items, totalPrice, clearCart } = useCart();
   const { customer, isLoading: isLoadingCustomer } = useCustomerAuth();
+  const deliveryTypeLabel = useDeliveryTypeLabel();
 
   const [chargeType, setChargeType] = useState<ChargeType>("Normal");
   const [submitting, setSubmitting] = useState(false);
@@ -374,7 +376,7 @@ const Checkout = () => {
                 {customer.firstName} {customer.paternalSurname} · {customer.mobile}
               </p>
               <p className="text-sm text-muted-foreground">
-                {customer.deliveryType}
+                {deliveryTypeLabel(customer.deliveryType)}
                 {customer.agency && ` — ${customer.agency}`}
                 {customer.address && ` — ${customer.address}`}
                 {" · "}
