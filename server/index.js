@@ -761,7 +761,7 @@ app.delete("/api/payment-card-logos/:id", requireAuth, async (req, res) => {
 // — mantenimiento fijo (no se agregan/quitan tipos, solo se sube/cambia el
 // logo de cada uno), por eso PUT hace upsert en vez de haber un POST/DELETE
 // como en payment-card-logos.
-const DELIVERY_CORNER_LOGO_TYPES = ["Motorizado Delivery", "Motorizado Express", "Olva"];
+const DELIVERY_CORNER_LOGO_TYPES = ["Shalom", "Motorizado Express", "Motorizado Delivery", "Motorizado Cliente", "Olva", "Marvisur"];
 
 app.get("/api/delivery-corner-logos", requireAuth, async (req, res) => {
   const { rows } = await pool.query("SELECT * FROM delivery_corner_logos ORDER BY delivery_type");

@@ -426,8 +426,8 @@ export const initSchema = async () => {
   // envío (ver buildShippingLabelHtml en AdminOrders.tsx), por tipo de
   // delivery — editable desde Admin > Tipos de delivery. Vacío = sin logo
   // (Motorizado Delivery/Express usan de respaldo el ícono de moto fijo del
-  // frontend mientras no se suba un reemplazo; Olva no tiene respaldo fijo,
-  // así que no imprime nada hasta que se suba uno).
+  // frontend mientras no se suba un reemplazo; el resto no tiene respaldo
+  // fijo, así que no imprimen nada hasta que se suba uno).
   await pool.query(`
     CREATE TABLE IF NOT EXISTS delivery_corner_logos (
       delivery_type TEXT PRIMARY KEY,
@@ -436,7 +436,7 @@ export const initSchema = async () => {
   `);
   await pool.query(`
     INSERT INTO delivery_corner_logos (delivery_type) VALUES
-      ('Motorizado Delivery'), ('Motorizado Express'), ('Olva')
+      ('Shalom'), ('Motorizado Express'), ('Motorizado Delivery'), ('Motorizado Cliente'), ('Olva'), ('Marvisur')
     ON CONFLICT (delivery_type) DO NOTHING;
   `);
 
