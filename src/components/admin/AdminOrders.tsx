@@ -1,11 +1,11 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ArchiveRestore, CalendarSearch, Check, ChevronDown, ChevronUp, ExternalLink, FileText, Flag, MessageCircle, Loader2, PackageCheck, Pencil, Plus, Printer, Search, Trash2, Truck, Upload, Warehouse, X } from "lucide-react";
+import { Archive, ArchiveRestore, CalendarSearch, Check, ChevronDown, ChevronUp, ExternalLink, FileText, Flag, MessageCircle, Loader2, PackageCheck, Pencil, Plus, Printer, Search, Trash2, Truck, Unlock, Upload, Warehouse, X } from "lucide-react";
 import {
   AdminOrder, ChargeType, DeliveryType, OrderItem, OrderStatus, PaymentInput, Service,
   addOrderItem, deleteOrder, deleteOrderItem, emitBoleta, fetchDeliveryCornerLogos, fetchOrders, fetchServices, fetchSettings,
-  fetchWarehouseLocations, markOrderAccumulating,
+  fetchWarehouseLocations, liberateOrder, markOrderAccumulating,
   markOrderDelivered, markOrderReadyForDelivery, markOrderWarehouseSeparated, registerPayment, releaseOrderAccumulating,
   sendOrderStatusWhatsApp, updateOrderChargeType, updateOrderItemColor, updateOrderItemDiscount, updateOrderReceipt,
   updateOrderServiceItem, updateOrderWarehouseLocation,
@@ -130,6 +130,7 @@ const STATUS_BADGE_CLASS: Record<OrderStatus, string> = {
   "Pendiente de envío": "bg-primary/10 text-primary",
   "Listo para delivery": "bg-purple-500/10 text-purple-600",
   "Entregado a delivery": "bg-emerald-500/10 text-emerald-600",
+  "Liberado": "bg-destructive/10 text-destructive",
 };
 
 // Mismo orden del ciclo de vida, para el filtro por estado del panel.
@@ -141,6 +142,7 @@ const ORDER_STATUSES: OrderStatus[] = [
   "Pendiente de envío",
   "Listo para delivery",
   "Entregado a delivery",
+  "Liberado",
 ];
 
 // Solo estos tipos de delivery piden vía de envío (terrestre/aéreo) — misma
@@ -1153,6 +1155,22 @@ const AdminOrders = () => {
     deleteMutation.mutate(order.id);
   };
 
+  const liberateMutation = useMutation({
+    mutationFn: liberateOrder,
+    onSuccess: () => {
+      toast.success("Pedido liberado");
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo liberar el pedido"),
+  });
+
+  const handleLiberar = (order: AdminOrder) => {
+    const stockNote = order.type === "Pedido" ? " Se devolverá el stock descontado." : "";
+    if (!confirm(`¿Liberar el pedido #${order.id}?${stockNote} Quedará marcado como Liberado.`)) return;
+    liberateMutation.mutate(order.id);
+  };
+
   const deliverMutation = useMutation({
     mutationFn: markOrderDelivered,
     onSuccess: () => {
@@ -1653,6 +1671,18 @@ const AdminOrders = () => {
                                 className="gap-2 text-sky-600 hover:text-sky-600"
                               >
                                 <Warehouse className="w-3.5 h-3.5" /> Marcar como separado en almacén
+                              </Button>
+                            )}
+                            {isNearSeparationDeadline(order, separationDays, nearSeparationDeadlineDays) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleLiberar(order)}
+                                disabled={liberateMutation.isPending}
+                                title="Plazo de separación vencido con saldo pendiente — libera el pedido y devuelve el stock"
+                                className="gap-2 text-destructive hover:text-destructive"
+                              >
+                                <Unlock className="w-3.5 h-3.5" /> Liberar pedido
                               </Button>
                             )}
                             {order.status === "Pendiente de envío" && (

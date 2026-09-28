@@ -461,7 +461,12 @@ export type OrderStatus =
   | "Pendiente de envío en almacén por acumulación"
   | "Pendiente de envío"
   | "Listo para delivery"
-  | "Entregado a delivery";
+  | "Entregado a delivery"
+  // Se llega acá manualmente desde "Separación"/"Separado en almacén" con la
+  // bandera roja (plazo vencido y saldo pendiente) — el stock reservado
+  // vuelve al producto y el pedido queda como registro histórico, sin
+  // eliminarse. Estado terminal, no hay transición de vuelta.
+  | "Liberado";
 export type OrderType = "Pedido" | "Regularización";
 
 export interface Payment {
@@ -892,6 +897,15 @@ export const markOrderDelivered = (orderId: number): Promise<Order> =>
 // Marca un pedido "Separación" como ya apartado físicamente en el almacén.
 export const markOrderWarehouseSeparated = (orderId: number): Promise<Order> =>
   fetch(`${API_URL}/orders/${orderId}/warehouse`, {
+    method: "PUT",
+    credentials: "include",
+  }).then((res) => handle<Order>(res));
+
+// Libera un pedido en "Separación"/"Separado en almacén" con el plazo
+// vencido: pasa a "Liberado" y devuelve el stock reservado al producto (si
+// es tipo "Pedido" — igual que al eliminar un pedido, ver deleteOrder).
+export const liberateOrder = (orderId: number): Promise<Order> =>
+  fetch(`${API_URL}/orders/${orderId}/liberar`, {
     method: "PUT",
     credentials: "include",
   }).then((res) => handle<Order>(res));

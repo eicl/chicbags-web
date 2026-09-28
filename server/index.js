@@ -2259,6 +2259,58 @@ app.delete("/api/orders/:id", requireAuth, async (req, res) => {
   }
 });
 
+// Libera un pedido con la bandera roja (plazo de separación vencido y
+// saldo pendiente): a diferencia de eliminarlo, el pedido queda como
+// registro histórico con status 'Liberado' — mismo bloque de devolución de
+// stock que DELETE /api/orders/:id de arriba (solo para type 'Pedido'),
+// pero sin borrar la fila.
+app.put("/api/orders/:id/liberar", requireAuth, async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!Number.isInteger(orderId)) {
+    return res.status(400).json({ error: "Pedido inválido" });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const { rows: orderRows } = await client.query("SELECT type, status FROM orders WHERE id = $1 FOR UPDATE", [orderId]);
+    if (orderRows.length === 0) {
+      throw new Error("El pedido no existe");
+    }
+    if (!["Separación", "Separado en almacén"].includes(orderRows[0].status)) {
+      throw new Error("Solo se puede liberar un pedido en Separación o Separado en almacén");
+    }
+
+    if (orderRows[0].type === "Pedido") {
+      const { rows: items } = await client.query(
+        "SELECT product_id, color_name, quantity FROM order_items WHERE order_id = $1 AND product_id IS NOT NULL",
+        [orderId]
+      );
+      for (const item of items) {
+        const { rows: productRows } = await client.query("SELECT colors FROM products WHERE id = $1 FOR UPDATE", [item.product_id]);
+        if (productRows.length === 0) continue;
+        const colors = productRows[0].colors ?? [];
+        const colorIndex = colors.findIndex((c) => c.name.trim() === item.color_name.trim());
+        if (colorIndex === -1) continue;
+        colors[colorIndex] = { ...colors[colorIndex], stock: colors[colorIndex].stock + item.quantity };
+        await client.query("UPDATE products SET colors = $1 WHERE id = $2", [JSON.stringify(colors), item.product_id]);
+      }
+    }
+
+    const { rows } = await client.query("UPDATE orders SET status = 'Liberado' WHERE id = $1 RETURNING *", [orderId]);
+    await client.query("COMMIT");
+
+    const { rows: itemRows } = await pool.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [orderId]);
+    const { rows: paymentRows } = await pool.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [orderId]);
+    res.json(mapOrder(rows[0], itemRows, paymentRows));
+  } catch (err) {
+    await client.query("ROLLBACK");
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 // Cambia el color de un ítem de un pedido, desde el panel admin. En un
 // pedido normal ("Pedido") con producto de catálogo, ajusta el stock: le
 // devuelve al color anterior lo que tenía descontado y le descuenta al
