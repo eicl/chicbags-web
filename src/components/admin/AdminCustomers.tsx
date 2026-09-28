@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Search, Trash2, X, Save, Info } from "lucide-react";
+import { Plus, Pencil, Search, Trash2, X, Save, Info, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -57,6 +57,8 @@ const emptyForm: CustomerInput = {
   deliveryMode: null,
   agency: "",
   address: "",
+  locationLat: null,
+  locationLng: null,
   differentReceiver: false,
   receiverDocumentType: "DNI",
   receiverDocumentNumber: "",
@@ -158,6 +160,8 @@ const AdminCustomers = () => {
       deliveryMode: customer.deliveryMode,
       agency: customer.agency,
       address: customer.address,
+      locationLat: customer.locationLat ?? null,
+      locationLng: customer.locationLng ?? null,
       differentReceiver: customer.differentReceiver,
       receiverDocumentType: customer.receiverDocumentType || "DNI",
       receiverDocumentNumber: customer.receiverDocumentNumber,
@@ -262,6 +266,8 @@ const AdminCustomers = () => {
       deliveryMode: needsDeliveryMode ? form.deliveryMode : null,
       agency: needsAgency ? form.agency.trim() : "",
       address: needsAddress ? form.address.trim() : "",
+      locationLat: needsAddress ? form.locationLat : null,
+      locationLng: needsAddress ? form.locationLng : null,
       receiverDocumentType: form.differentReceiver ? form.receiverDocumentType : "",
       receiverDocumentNumber: form.differentReceiver ? form.receiverDocumentNumber.trim() : "",
       receiverFirstName: form.differentReceiver ? form.receiverFirstName.trim() : "",
@@ -617,6 +623,42 @@ const AdminCustomers = () => {
                 />
               </div>
             )}
+            {needsAddress && (
+              <div className="md:col-span-3">
+                <label className="text-sm text-muted-foreground mb-1 block">
+                  Ubicación GPS (opcional) — se captura sola cuando el cliente se registra desde el link público; acá
+                  se puede corregir a mano.
+                </label>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Input
+                    type="number"
+                    step="any"
+                    value={form.locationLat ?? ""}
+                    onChange={(e) => setForm({ ...form, locationLat: e.target.value === "" ? null : Number(e.target.value) })}
+                    placeholder="Latitud"
+                    className="w-40"
+                  />
+                  <Input
+                    type="number"
+                    step="any"
+                    value={form.locationLng ?? ""}
+                    onChange={(e) => setForm({ ...form, locationLng: e.target.value === "" ? null : Number(e.target.value) })}
+                    placeholder="Longitud"
+                    className="w-40"
+                  />
+                  {form.locationLat != null && form.locationLng != null && (
+                    <a
+                      href={`https://www.google.com/maps?q=${form.locationLat},${form.locationLng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-primary hover:underline inline-flex items-center gap-1"
+                    >
+                      <MapPin className="w-3.5 h-3.5" /> Ver en Google Maps
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
             {needsDeliveryMode && (
               <div>
                 <label className={errorLabelClass(hasError("deliveryMode"))}>Vía de envío *</label>
@@ -693,6 +735,18 @@ const AdminCustomers = () => {
                     {customer.deliveryMode && <span> ({customer.deliveryMode})</span>}
                     {customer.agency && <div className="text-xs">Sede: {customer.agency}</div>}
                     {customer.address && <div className="text-xs">Dirección: {customer.address}</div>}
+                    {customer.locationLat != null && customer.locationLng != null && (
+                      <div className="text-xs">
+                        <a
+                          href={`https://www.google.com/maps?q=${customer.locationLat},${customer.locationLng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline inline-flex items-center gap-1"
+                        >
+                          <MapPin className="w-3 h-3" /> Ver ubicación GPS
+                        </a>
+                      </div>
+                    )}
                   </td>
                   <td className="py-3 px-4">
                     <div className="flex gap-2 justify-end">
