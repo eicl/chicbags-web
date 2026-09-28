@@ -727,10 +727,13 @@ const PaymentForm = ({ orderId }: { orderId: number }) => {
   );
 };
 
-// Para pedidos en "Separación": elige y guarda la ubicación física de
-// almacén (para control de stock/inventario), por separado del cambio de
-// estado en sí — mismo criterio que ReceiptForm. Sin ubicación guardada, el
-// botón "Marcar como separado en almacén" de más abajo queda deshabilitado.
+// Para pedidos en "Separación" o ya "Separado en almacén": elige y guarda
+// la ubicación física de almacén (para control de stock/inventario), por
+// separado del cambio de estado en sí — mismo criterio que ReceiptForm. En
+// "Separación", sin ubicación guardada el botón "Marcar como separado en
+// almacén" de más abajo queda deshabilitado; en "Separado en almacén" ya
+// no hay ningún botón que gatear, pero sigue permitiendo corregir/cambiar
+// la ubicación si el producto se movió de estante.
 const WarehouseLocationForm = ({ order }: { order: AdminOrder }) => {
   const queryClient = useQueryClient();
   const { data: locations = [] } = useQuery({ queryKey: ["warehouseLocations"], queryFn: fetchWarehouseLocations });
@@ -1558,7 +1561,9 @@ const AdminOrders = () => {
                             <ReceiptForm order={order} />
                           )}
 
-                          {order.status === "Separación" && <WarehouseLocationForm order={order} />}
+                          {(order.status === "Separación" || order.status === "Separado en almacén") && (
+                            <WarehouseLocationForm order={order} />
+                          )}
 
                           <div className="flex flex-wrap items-center gap-3">
                             <SendStatusWhatsAppButton orderId={order.id} />
