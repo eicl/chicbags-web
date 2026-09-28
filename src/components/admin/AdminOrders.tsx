@@ -727,13 +727,15 @@ const PaymentForm = ({ orderId }: { orderId: number }) => {
   );
 };
 
-// Para pedidos en "Separación" o ya "Separado en almacén": elige y guarda
-// la ubicación física de almacén (para control de stock/inventario), por
-// separado del cambio de estado en sí — mismo criterio que ReceiptForm. En
-// "Separación", sin ubicación guardada el botón "Marcar como separado en
-// almacén" de más abajo queda deshabilitado; en "Separado en almacén" ya
-// no hay ningún botón que gatear, pero sigue permitiendo corregir/cambiar
-// la ubicación si el producto se movió de estante.
+// Para pedidos en "Separación", "Separado en almacén" o "Pendiente de
+// envío en almacén por acumulación" (los tres estados donde el producto
+// físicamente vive en el almacén): elige y guarda la ubicación física
+// (para control de stock/inventario), por separado del cambio de estado en
+// sí — mismo criterio que ReceiptForm. Solo en "Separación" gatea un botón
+// (el de "Marcar como separado en almacén", deshabilitado sin ubicación
+// guardada); en los otros dos estados no hay ningún botón que gatear, pero
+// igual permite corregir/cambiar la ubicación si el producto se movió de
+// estante.
 const WarehouseLocationForm = ({ order }: { order: AdminOrder }) => {
   const queryClient = useQueryClient();
   const { data: locations = [] } = useQuery({ queryKey: ["warehouseLocations"], queryFn: fetchWarehouseLocations });
@@ -1561,9 +1563,9 @@ const AdminOrders = () => {
                             <ReceiptForm order={order} />
                           )}
 
-                          {(order.status === "Separación" || order.status === "Separado en almacén") && (
-                            <WarehouseLocationForm order={order} />
-                          )}
+                          {(order.status === "Separación" ||
+                            order.status === "Separado en almacén" ||
+                            order.status === "Pendiente de envío en almacén por acumulación") && <WarehouseLocationForm order={order} />}
 
                           <div className="flex flex-wrap items-center gap-3">
                             <SendStatusWhatsAppButton orderId={order.id} />
