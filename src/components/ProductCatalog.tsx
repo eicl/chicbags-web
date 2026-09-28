@@ -1,5 +1,8 @@
 import { useState } from "react";
+import { Search } from "lucide-react";
 import { useProducts } from "@/context/ProductContext";
+import { Product } from "@/context/CartContext";
+import { Input } from "@/components/ui/input";
 import ProductCard from "./ProductCard";
 
 // Stock total del producto (suma del stock de todos sus colores) — el
@@ -7,9 +10,19 @@ import ProductCard from "./ProductCard";
 const totalStock = (product: { colors?: { stock: number }[] }) =>
   (product.colors ?? []).reduce((sum, c) => sum + c.stock, 0);
 
+// Misma búsqueda que el panel admin (AdminProducts.tsx): nombre, código,
+// marca y categorías.
+const matchesProduct = (product: Product, query: string) => {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return [product.name, product.code, product.brand, ...product.categories]
+    .some((field) => (field ?? "").toLowerCase().includes(q));
+};
+
 const ProductCatalog = () => {
   const { products: allProducts, isLoading, isError } = useProducts();
   const [activeCategory, setActiveCategory] = useState("Todos");
+  const [query, setQuery] = useState("");
 
   // El contexto trae todos los productos cuando hay sesión de admin (para
   // poder gestionar los ocultos desde el panel) — el catálogo público
@@ -18,6 +31,7 @@ const ProductCatalog = () => {
   const products = allProducts.filter((p) => p.visible);
   const categories = ["Todos", ...Array.from(new Set(products.flatMap((p) => p.categories))).sort()];
   const filtered = (activeCategory === "Todos" ? products : products.filter((p) => p.categories.includes(activeCategory)))
+    .filter((p) => matchesProduct(p, query))
     .slice()
     .sort((a, b) => totalStock(b) - totalStock(a));
   const newestIds = new Set(
@@ -34,6 +48,16 @@ const ProductCatalog = () => {
         <p className="text-muted-foreground max-w-md mx-auto">
           Encuentra las carteras que buscas, al mejor precio del mercado.
         </p>
+      </div>
+
+      <div className="relative max-w-md mx-auto mb-8">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Buscar por nombre, código, marca o categoría..."
+          className="pl-9"
+        />
       </div>
 
       <div className="flex justify-center gap-4 md:gap-6 mb-12 flex-wrap">
@@ -62,7 +86,11 @@ const ProductCatalog = () => {
         </p>
       )}
 
-      {!isLoading && !isError && (
+      {!isLoading && !isError && filtered.length === 0 && (
+        <p className="text-center text-muted-foreground py-12">Ningún producto coincide con la búsqueda.</p>
+      )}
+
+      {!isLoading && !isError && filtered.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 md:gap-10">
           {filtered.map((product) => (
             <ProductCard key={product.id} product={product} isNew={newestIds.has(product.id)} />
