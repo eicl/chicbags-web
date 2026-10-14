@@ -25,6 +25,7 @@ const AdminSettings = () => {
   const [paymentGatewayLogo, setPaymentGatewayLogo] = useState("");
   const [uploadingGatewayLogo, setUploadingGatewayLogo] = useState(false);
   const [requireDeliveryReceipt, setRequireDeliveryReceipt] = useState(true);
+  const [whatsappSemiAutomatic, setWhatsappSemiAutomatic] = useState(false);
 
   useEffect(() => {
     if (settings) {
@@ -34,6 +35,7 @@ const AdminSettings = () => {
       setNearSeparationDeadlineDays(String(settings.nearSeparationDeadlineDays));
       setPaymentGatewayLogo(settings.paymentGatewayLogo);
       setRequireDeliveryReceipt(settings.requireDeliveryReceipt);
+      setWhatsappSemiAutomatic(settings.whatsappSemiAutomatic);
     }
   }, [settings]);
 
@@ -74,6 +76,7 @@ const AdminSettings = () => {
       nearSeparationDeadlineDays: nearDeadlineValue,
       paymentGatewayLogo,
       requireDeliveryReceipt,
+      whatsappSemiAutomatic,
     });
   };
 
@@ -177,6 +180,24 @@ const AdminSettings = () => {
             <span className="text-xs text-muted-foreground block">
               Aplica a pedidos por Shalom/Olva/Marvisur. Si se apaga, el recibo y la clave de rastreo desaparecen del
               mantenimiento de pedido y dejan de ser obligatorios para pasar a ese estado.
+            </span>
+          </span>
+        </label>
+
+        <label className="flex items-start gap-2 mb-6 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={whatsappSemiAutomatic}
+            onChange={(e) => setWhatsappSemiAutomatic(e.target.checked)}
+            className="mt-1"
+          />
+          <span>
+            <span className="text-sm block">Mensajes de WhatsApp semi-automáticos (sin API)</span>
+            <span className="text-xs text-muted-foreground block">
+              Afecta solo al botón "Enviar estado por WhatsApp" de Pedidos: en vez de mandar el mensaje solo por la
+              API de Migo, abre WhatsApp con el mensaje ya armado para que lo mandes tú mismo con un clic. El resto
+              de mensajes (código de verificación, recuperar contraseña, confirmaciones de registro/pedido) siguen
+              siempre automáticos.
             </span>
           </span>
         </label>

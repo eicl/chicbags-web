@@ -13,7 +13,10 @@ import sharp from "sharp";
 import path from "path";
 import { fileURLToPath } from "url";
 import { pool, initSchema, getOrCreateBrandId, ensureCategoryExists, ensureDistrictExists } from "./db.js";
-import { sendCustomerRegistrationWhatsApp, sendCustomerAccountWhatsApp, sendOrderRegistrationWhatsApp, sendOrderStatusWhatsApp, sendMobileVerificationPin, sendPasswordResetWhatsApp } from "./whatsapp.js";
+import {
+  sendCustomerRegistrationWhatsApp, sendCustomerAccountWhatsApp, sendOrderRegistrationWhatsApp, sendOrderStatusWhatsApp,
+  sendMobileVerificationPin, sendPasswordResetWhatsApp, buildOrderStatusMessage,
+} from "./whatsapp.js";
 import { lookupDni } from "./migo.js";
 import {
   loadCertificate as loadSunatCertificate,
@@ -743,6 +746,7 @@ const mapSettings = (row) => ({
   nearSeparationDeadlineDays: Number(row.near_separation_deadline_days),
   paymentGatewayLogo: row.payment_gateway_logo,
   requireDeliveryReceipt: row.require_delivery_receipt,
+  whatsappSemiAutomatic: row.whatsapp_semi_automatic,
 });
 
 const getSettings = async () => {
@@ -755,8 +759,10 @@ app.get("/api/settings", async (req, res) => {
 });
 
 app.put("/api/settings", requireAuth, async (req, res) => {
-  const { maxItemDiscountPublic, maxItemDiscountAdmin, separationDays, nearSeparationDeadlineDays, paymentGatewayLogo, requireDeliveryReceipt } =
-    req.body;
+  const {
+    maxItemDiscountPublic, maxItemDiscountAdmin, separationDays, nearSeparationDeadlineDays, paymentGatewayLogo,
+    requireDeliveryReceipt, whatsappSemiAutomatic,
+  } = req.body;
   if (typeof maxItemDiscountPublic !== "number" || !Number.isFinite(maxItemDiscountPublic) || maxItemDiscountPublic < 0) {
     return res.status(400).json({ error: "El descuento máximo del link público es inválido" });
   }
@@ -771,8 +777,12 @@ app.put("/api/settings", requireAuth, async (req, res) => {
   }
   const { rows } = await pool.query(
     `UPDATE settings SET max_item_discount_public = $1, max_item_discount_admin = $2, separation_days = $3,
-       near_separation_deadline_days = $4, payment_gateway_logo = $5, require_delivery_receipt = $6 WHERE id = 1 RETURNING *`,
-    [maxItemDiscountPublic, maxItemDiscountAdmin, separationDays, nearSeparationDeadlineDays, (paymentGatewayLogo ?? "").trim(), Boolean(requireDeliveryReceipt)]
+       near_separation_deadline_days = $4, payment_gateway_logo = $5, require_delivery_receipt = $6,
+       whatsapp_semi_automatic = $7 WHERE id = 1 RETURNING *`,
+    [
+      maxItemDiscountPublic, maxItemDiscountAdmin, separationDays, nearSeparationDeadlineDays, (paymentGatewayLogo ?? "").trim(),
+      Boolean(requireDeliveryReceipt), Boolean(whatsappSemiAutomatic),
+    ]
   );
   res.json(mapSettings(rows[0]));
 });
@@ -2659,7 +2669,15 @@ app.put("/api/orders/:id/send-status-whatsapp", requireAuth, async (req, res) =>
   const { rows: itemRows } = await pool.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [id]);
   const { rows: paymentRows } = await pool.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [id]);
   const order = mapOrder(orderRows[0], itemRows, paymentRows);
-  const sent = await sendOrderStatusWhatsApp(order, { firstName: customerRows[0].first_name, mobile: customerRows[0].mobile });
+  const customer = { firstName: customerRows[0].first_name, mobile: customerRows[0].mobile };
+
+  const settings = await getSettings();
+  if (settings.whatsappSemiAutomatic) {
+    const { phone, message } = await buildOrderStatusMessage(order, customer);
+    return res.json({ sent: false, phone, message });
+  }
+
+  const sent = await sendOrderStatusWhatsApp(order, customer);
   if (!sent) return res.status(502).json({ error: "No se pudo enviar el mensaje de WhatsApp" });
   res.json({ sent: true });
 });

@@ -926,7 +926,18 @@ const ChargeTypeSelector = ({ order }: { order: AdminOrder }) => {
 const SendStatusWhatsAppButton = ({ orderId }: { orderId: number }) => {
   const mutation = useMutation({
     mutationFn: () => sendOrderStatusWhatsApp(orderId),
-    onSuccess: () => toast.success("Estado enviado por WhatsApp"),
+    onSuccess: (result) => {
+      if (result.sent) {
+        toast.success("Estado enviado por WhatsApp");
+        return;
+      }
+      // Modo semi-automático (settings.whatsappSemiAutomatic): el mensaje
+      // ya está armado, falta que un admin lo mande a mano.
+      if (result.phone && result.message) {
+        window.open(`https://wa.me/${result.phone}?text=${encodeURIComponent(result.message)}`, "_blank");
+        toast.success("Abrí WhatsApp con el mensaje listo — dale enviar para completarlo");
+      }
+    },
     onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo enviar el mensaje"),
   });
 

@@ -732,6 +732,12 @@ export interface AppSettings {
   // del mantenimiento de pedido (AdminOrders) y dejan de ser obligatorios
   // para pasar un pedido a "Entregado a delivery".
   requireDeliveryReceipt: boolean;
+  // Si está prendido, el botón "Enviar estado por WhatsApp" deja de mandar
+  // el mensaje solo por la API de Migo — arma el mismo mensaje y abre un
+  // link de wa.me para mandarlo a mano. Solo afecta ese botón puntual; el
+  // resto de mensajes (OTP, recuperar contraseña, confirmaciones desde
+  // flujos públicos) siguen siempre automáticos.
+  whatsappSemiAutomatic: boolean;
 }
 
 export const fetchSettings = (): Promise<AppSettings> =>
@@ -954,13 +960,22 @@ export const updateOrderChargeType = (orderId: number, chargeType: ChargeType): 
     body: JSON.stringify({ chargeType }),
   }).then((res) => handle<Order>(res));
 
-// Manda por WhatsApp el estado actual del pedido al cliente (vía la API de
-// migo.pe, del lado del servidor) — ya no abre un link wa.me a mano.
-export const sendOrderStatusWhatsApp = (orderId: number): Promise<{ sent: boolean }> =>
+// Manda por WhatsApp el estado actual del pedido al cliente. Normalmente
+// vía la API de migo.pe del lado del servidor (sent: true) — pero si
+// settings.whatsappSemiAutomatic está prendido, el servidor arma el mismo
+// mensaje sin mandarlo (sent: false) y devuelve phone/message para que el
+// caller abra un link de wa.me y lo mande a mano.
+export interface SendOrderStatusWhatsAppResult {
+  sent: boolean;
+  phone?: string;
+  message?: string;
+}
+
+export const sendOrderStatusWhatsApp = (orderId: number): Promise<SendOrderStatusWhatsAppResult> =>
   fetch(`${API_URL}/orders/${orderId}/send-status-whatsapp`, {
     method: "PUT",
     credentials: "include",
-  }).then((res) => handle<{ sent: boolean }>(res));
+  }).then((res) => handle<SendOrderStatusWhatsAppResult>(res));
 
 // Recibo del envío (Shalom/Olva/Marvisur) + clave de rastreo opcional.
 export const updateOrderReceipt = (

@@ -12,13 +12,19 @@ const MIGO_API_URL = "https://chat.migo.pe";
 // window.location.origin, que no existe acá.
 const SITE_URL = process.env.SITE_URL || "";
 
+// Mismo criterio en todo el proyecto (server y frontend) para anteponer el
+// código de país: si ya viene con 51 al inicio se deja tal cual.
+export const normalizePhone = (phone) => {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  return digits.startsWith("51") ? digits : `51${digits}`;
+};
+
 export const sendWhatsAppMessage = async (phone, text) => {
   if (!MIGO_INSTANCE || !MIGO_APIKEY) {
     console.warn("WhatsApp (migo.pe) no está configurado — se omite el envío.");
     return false;
   }
-  const digits = (phone ?? "").replace(/\D/g, "");
-  const number = digits.startsWith("51") ? digits : `51${digits}`;
+  const number = normalizePhone(phone);
   try {
     const response = await fetch(`${MIGO_API_URL}/message/sendText/${MIGO_INSTANCE}`, {
       method: "POST",
@@ -182,7 +188,11 @@ export const sendOrderRegistrationWhatsApp = async (order, customer) => {
   return sendWhatsAppMessage(customer.mobile, message);
 };
 
-export const sendOrderStatusWhatsApp = async (order, customer) => {
+// Separado de sendOrderStatusWhatsApp para el modo "semi-automático" (ver
+// settings.whatsappSemiAutomatic): arma el mismo mensaje (misma plantilla
+// editable "order_status_update") sin mandarlo por la API — el caller abre
+// un link de wa.me para que un admin lo mande a mano.
+export const buildOrderStatusMessage = async (order, customer) => {
   const template = await getMessageTemplate("order_status_update");
   const message = renderMessageTemplate(template, {
     cliente: customer.firstName,
@@ -190,5 +200,10 @@ export const sendOrderStatusWhatsApp = async (order, customer) => {
     items: buildOrderItemsText(order),
     estado_texto: await buildOrderStatusText(order),
   });
-  return sendWhatsAppMessage(customer.mobile, message);
+  return { phone: normalizePhone(customer.mobile), message };
+};
+
+export const sendOrderStatusWhatsApp = async (order, customer) => {
+  const { phone, message } = await buildOrderStatusMessage(order, customer);
+  return sendWhatsAppMessage(phone, message);
 };

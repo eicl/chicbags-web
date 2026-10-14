@@ -410,6 +410,15 @@ export const initSchema = async () => {
   // "Entregado a delivery" (ver PUT /api/orders/:id/deliver). Por defecto
   // sigue exigiéndose, igual que antes de que esto fuera configurable.
   await pool.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS require_delivery_receipt BOOLEAN NOT NULL DEFAULT true;`);
+  // Si se prende, "Enviar estado por WhatsApp" deja de mandar el mensaje
+  // solo por la API de Migo — en su lugar arma el mismo mensaje (misma
+  // plantilla editable) y lo deja listo en un link de wa.me para que un
+  // admin lo revise y lo mande a mano. Solo aplica a ese botón puntual (ver
+  // PUT /api/orders/:id/send-status-whatsapp) — el resto de mensajes (OTP,
+  // recuperar contraseña, confirmaciones desde flujos públicos) siguen
+  // siempre automáticos, a propósito: no hay nadie del lado del negocio
+  // presente en esos flujos para mandarlos a mano.
+  await pool.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS whatsapp_semi_automatic BOOLEAN NOT NULL DEFAULT false;`);
   await pool.query(`INSERT INTO settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`);
   // Se siembra un logo de ejemplo solo si la fila sigue con el vacío por
   // defecto (nunca se pisa una elección real del usuario).
