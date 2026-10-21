@@ -245,6 +245,7 @@ const buildShippingLabelHtml = (order: AdminOrder, cornerLogos: Record<string, s
           body { position: relative; min-height: 89mm; }
           .logo { display: block; margin: 0 auto 6px; width: 20mm; height: 20mm; border-radius: 9999px; object-fit: cover; }
           .via-corner { position: absolute; top: 0; left: 0; font-size: 12px; font-weight: 700; color: #444; }
+          .via-corner-icon { position: absolute; top: 0; left: 0; width: 14mm; height: 14mm; object-fit: contain; }
           .order-corner { position: absolute; top: 0; right: 0; font-size: 16px; font-weight: 800; }
           table { width: 100%; border-collapse: collapse; font-size: 17px; }
           td { padding: 4px 4px; border-bottom: 1px solid #ddd; vertical-align: top; }
@@ -258,7 +259,13 @@ const buildShippingLabelHtml = (order: AdminOrder, cornerLogos: Record<string, s
         </style>
       </head>
       <body>
-        ${showMode && order.customerDeliveryMode ? `<div class="via-corner">Vía: ${escapeHtml(order.customerDeliveryMode)}</div>` : ""}
+        ${
+          showMode && order.customerDeliveryMode
+            ? order.customerDeliveryMode === "Aéreo"
+              ? `<img class="via-corner-icon" src="${window.location.origin}/via-aerea.png" alt="Vía Aérea" />`
+              : `<div class="via-corner">Vía: ${escapeHtml(order.customerDeliveryMode)}</div>`
+            : ""
+        }
         <div class="order-corner">Pedido #${order.id}</div>
         <img class="logo" src="${window.location.origin}/chicBags.jpeg" alt="ChicBags" />
         <table>
