@@ -233,6 +233,10 @@ export const initSchema = async () => {
   await pool.query(`ALTER TABLE agencies ADD COLUMN IF NOT EXISTS reference TEXT NOT NULL DEFAULT '';`);
   await pool.query(`ALTER TABLE agencies ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT '';`);
   await pool.query(`ALTER TABLE agencies ADD COLUMN IF NOT EXISTS schedule TEXT NOT NULL DEFAULT '';`);
+  // Borrado lógico: una sede desactivada deja de ofrecerse en el registro
+  // público (AgencyPicker) pero no se borra, porque pedidos/clientes ya
+  // guardan su nombre como texto plano (igual que agency/district en customers).
+  await pool.query(`ALTER TABLE agencies ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true;`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS districts (
       id SERIAL PRIMARY KEY,

@@ -241,6 +241,7 @@ export const fetchDistricts = (province: string): Promise<District[]> =>
 
 export interface Agency {
   id: number;
+  provider: string;
   name: string;
   department: string;
   province: string;
@@ -249,10 +250,34 @@ export interface Agency {
   reference: string;
   phone: string;
   schedule: string;
+  active: boolean;
 }
+
+export type AgencyInput = Omit<Agency, "id" | "active">;
 
 export const fetchAgencies = (provider: string): Promise<Agency[]> =>
   fetch(`${API_URL}/agencies?provider=${encodeURIComponent(provider)}`).then((res) => handle<Agency[]>(res));
+
+export const fetchAgenciesAdmin = (provider: string): Promise<Agency[]> =>
+  fetch(`${API_URL}/agencies/admin?provider=${encodeURIComponent(provider)}`, { credentials: "include" }).then((res) =>
+    handle<Agency[]>(res)
+  );
+
+export const createAgency = (data: AgencyInput): Promise<Agency> =>
+  fetch(`${API_URL}/agencies`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<Agency>(res));
+
+export const updateAgency = ({ id, ...data }: Partial<AgencyInput> & { id: number; active?: boolean }): Promise<Agency> =>
+  fetch(`${API_URL}/agencies/${id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((res) => handle<Agency>(res));
 
 export const createDistrict = (province: string, name: string): Promise<District> =>
   fetch(`${API_URL}/districts`, {
@@ -705,6 +730,17 @@ export const updateOrderItemDiscount = (orderId: number, itemId: number, discoun
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ discount }),
+  }).then((res) => handle<Order>(res));
+
+// Edita la cantidad de un producto ya agregado a un pedido. En un pedido
+// normal, el servidor ajusta el stock del color por la diferencia (lo
+// descuenta si sube, lo devuelve si baja — rechaza el cambio si no alcanza).
+export const updateOrderItemQuantity = (orderId: number, itemId: number, quantity: number): Promise<Order> =>
+  fetch(`${API_URL}/orders/${orderId}/items/${itemId}/quantity`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ quantity }),
   }).then((res) => handle<Order>(res));
 
 // Quita un producto o servicio de un pedido. Si es un producto de un

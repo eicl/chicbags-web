@@ -7,7 +7,7 @@ import {
   addOrderItem, deleteOrder, deleteOrderItem, emitBoleta, fetchDeliveryCornerLogos, fetchOrders, fetchServices, fetchSettings,
   fetchWarehouseLocations, liberateOrder, markOrderAccumulating,
   markOrderDelivered, markOrderReadyForDelivery, markOrderWarehouseSeparated, registerPayment, releaseOrderAccumulating,
-  sendOrderStatusWhatsApp, updateOrderChargeType, updateOrderItemColor, updateOrderItemDiscount, updateOrderReceipt,
+  sendOrderStatusWhatsApp, updateOrderChargeType, updateOrderItemColor, updateOrderItemDiscount, updateOrderItemQuantity, updateOrderReceipt,
   updateOrderServiceItem, updateOrderWarehouseLocation,
   uploadImage,
 } from "@/lib/api";
@@ -523,6 +523,74 @@ const ProductDiscountEditor = ({ orderId, item }: { orderId: number; item: Order
         aria-label="Quitar producto"
       >
         <Trash2 className="w-3 h-3" />
+      </button>
+    </span>
+  );
+};
+
+// Deja editar la cantidad de un producto ya agregado a un pedido. En un
+// pedido normal el servidor ajusta el stock del color por la diferencia
+// (descuenta si sube, devuelve si baja — rechaza si no alcanza el stock).
+const ProductQuantityEditor = ({ orderId, item }: { orderId: number; item: OrderItem }) => {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [quantity, setQuantity] = useState(item.quantity);
+
+  const updateMutation = useMutation({
+    mutationFn: (q: number) => updateOrderItemQuantity(orderId, item.id, q),
+    onSuccess: () => {
+      toast.success("Cantidad actualizada");
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      setEditing(false);
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "No se pudo actualizar la cantidad"),
+  });
+
+  if (editing) {
+    return (
+      <span className="inline-flex items-center gap-1.5 justify-end">
+        <Input
+          type="number"
+          min={1}
+          value={quantity}
+          onChange={(e) => setQuantity(e.target.valueAsNumber)}
+          className="h-7 w-14 text-xs px-1 text-right"
+        />
+        <button
+          type="button"
+          onClick={() => updateMutation.mutate(quantity)}
+          disabled={updateMutation.isPending || !Number.isInteger(quantity) || quantity <= 0}
+          className="text-primary hover:text-primary/80 disabled:opacity-50"
+          aria-label="Guardar cantidad"
+        >
+          <Check className="w-3.5 h-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setEditing(false)}
+          className="text-muted-foreground hover:text-destructive"
+          aria-label="Cancelar"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5 justify-end">
+      {item.quantity}
+      <button
+        type="button"
+        onClick={() => {
+          setQuantity(item.quantity);
+          setEditing(true);
+        }}
+        className="text-muted-foreground hover:text-primary"
+        aria-label="Editar cantidad"
+      >
+        <Pencil className="w-3 h-3" />
       </button>
     </span>
   );
@@ -1523,7 +1591,11 @@ const AdminOrders = () => {
                                   </td>
                                   <td className="py-1.5 text-right">S/.{item.unitPrice.toFixed(2)}</td>
                                   <td className="py-1.5 text-right">
-                                    {item.serviceId !== null ? <ServiceItemEditor orderId={order.id} item={item} /> : item.quantity}
+                                    {item.serviceId !== null ? (
+                                      <ServiceItemEditor orderId={order.id} item={item} />
+                                    ) : (
+                                      <ProductQuantityEditor orderId={order.id} item={item} />
+                                    )}
                                   </td>
                                   <td className="py-1.5 text-right text-muted-foreground">
                                     {item.serviceId === null ? (

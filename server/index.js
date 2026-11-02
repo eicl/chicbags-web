@@ -443,17 +443,76 @@ app.delete("/api/districts/:id", requireAuth, async (req, res) => {
   res.status(204).end();
 });
 
-// Sedes de courriers (por ahora solo Shalom Lima, cargadas desde
-// server/import-shalom-agencies.mjs). Solo lectura por API: se cargan por
-// script, no hay mantenimiento CRUD todavía.
+// Sedes de courriers (ej. Shalom). Público: solo las activas, para el
+// AgencyPicker del registro de clientes. El mantenimiento CRUD (incluye
+// las desactivadas) está en /api/agencies/admin.
 app.get("/api/agencies", async (req, res) => {
   const provider = (req.query.provider ?? "").toString();
   if (!provider) return res.json([]);
   const { rows } = await pool.query(
-    "SELECT id, name, department, province, district, address, reference, phone, schedule FROM agencies WHERE provider = $1 ORDER BY district, name",
+    "SELECT id, provider, name, department, province, district, address, reference, phone, schedule, active FROM agencies WHERE provider = $1 AND active = true ORDER BY district, name",
     [provider]
   );
   res.json(rows);
+});
+
+app.get("/api/agencies/admin", requireAuth, async (req, res) => {
+  const provider = (req.query.provider ?? "").toString();
+  if (!provider) return res.json([]);
+  const { rows } = await pool.query(
+    "SELECT id, provider, name, department, province, district, address, reference, phone, schedule, active FROM agencies WHERE provider = $1 ORDER BY district, name",
+    [provider]
+  );
+  res.json(rows);
+});
+
+app.post("/api/agencies", requireAuth, async (req, res) => {
+  const { provider, name, department, province, district, address, reference, phone, schedule } = req.body;
+  if (!(provider ?? "").trim()) return res.status(400).json({ error: "El proveedor es obligatorio" });
+  if (!(name ?? "").trim()) return res.status(400).json({ error: "El nombre es obligatorio" });
+  if (!(district ?? "").trim()) return res.status(400).json({ error: "El distrito es obligatorio" });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO agencies (provider, name, department, province, district, address, reference, phone, schedule)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id, provider, name, department, province, district, address, reference, phone, schedule, active`,
+      [provider.trim(), name.trim(), (department ?? "").trim(), (province ?? "").trim(), district.trim(), (address ?? "").trim(), (reference ?? "").trim(), (phone ?? "").trim(), (schedule ?? "").trim()]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    if (err.code === "23505") return res.status(409).json({ error: "Ya existe esa sede en ese distrito" });
+    throw err;
+  }
+});
+
+app.put("/api/agencies/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const { rows: current } = await pool.query("SELECT * FROM agencies WHERE id = $1", [id]);
+  if (current.length === 0) return res.status(404).json({ error: "Sede no encontrada" });
+  const existing = current[0];
+  const name = req.body.name !== undefined ? req.body.name.trim() : existing.name;
+  const department = req.body.department !== undefined ? req.body.department.trim() : existing.department;
+  const province = req.body.province !== undefined ? req.body.province.trim() : existing.province;
+  const district = req.body.district !== undefined ? req.body.district.trim() : existing.district;
+  const address = req.body.address !== undefined ? req.body.address.trim() : existing.address;
+  const reference = req.body.reference !== undefined ? req.body.reference.trim() : existing.reference;
+  const phone = req.body.phone !== undefined ? req.body.phone.trim() : existing.phone;
+  const schedule = req.body.schedule !== undefined ? req.body.schedule.trim() : existing.schedule;
+  const active = req.body.active !== undefined ? !!req.body.active : existing.active;
+  if (!name) return res.status(400).json({ error: "El nombre es obligatorio" });
+  if (!district) return res.status(400).json({ error: "El distrito es obligatorio" });
+  try {
+    const { rows } = await pool.query(
+      `UPDATE agencies SET name = $1, department = $2, province = $3, district = $4, address = $5, reference = $6, phone = $7, schedule = $8, active = $9
+       WHERE id = $10
+       RETURNING id, provider, name, department, province, district, address, reference, phone, schedule, active`,
+      [name, department, province, district, address, reference, phone, schedule, active, id]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    if (err.code === "23505") return res.status(409).json({ error: "Ya existe esa sede en ese distrito" });
+    throw err;
+  }
 });
 
 app.get("/api/brands", async (req, res) => {
@@ -2446,6 +2505,90 @@ app.put("/api/orders/:orderId/items/:itemId/discount", requireAuth, async (req, 
 
     await client.query("UPDATE order_items SET discount = $1, subtotal = $2 WHERE id = $3", [newDiscount, newSubtotal, itemId]);
 
+    const { status: newStatus, separationDeadline: newDeadline } = await recomputeOrderStatusForTotal(client, orderId, newTotal, order, settings.separationDays);
+    await client.query("UPDATE orders SET total = $1, status = $2, separation_deadline = $3 WHERE id = $4", [newTotal, newStatus, newDeadline, orderId]);
+
+    const { rows: finalOrderRows } = await client.query("SELECT * FROM orders WHERE id = $1", [orderId]);
+    const { rows: finalItemRows } = await client.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [orderId]);
+    const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [orderId]);
+    await client.query("COMMIT");
+    res.json(mapOrder(finalOrderRows[0], finalItemRows, paymentRows));
+  } catch (err) {
+    await client.query("ROLLBACK");
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// Edita la cantidad de un producto ya agregado a un pedido (no aplica a
+// servicios, ahí lo editable es la cantidad con /service más arriba, que
+// tiene su propia ruta porque un servicio no toca stock). En un pedido
+// normal ("Pedido", no Regularización, que nunca descontó stock) ajusta el
+// stock del color por la diferencia: si sube la cantidad descuenta stock
+// (rechaza el cambio si no alcanza), si baja la devuelve. El descuento
+// existente se recorta si ya no cabe en el nuevo subtotal.
+app.put("/api/orders/:orderId/items/:itemId/quantity", requireAuth, async (req, res) => {
+  const orderId = Number(req.params.orderId);
+  const itemId = Number(req.params.itemId);
+  const { quantity } = req.body;
+  if (!Number.isInteger(orderId) || !Number.isInteger(itemId)) {
+    return res.status(400).json({ error: "Pedido o ítem inválido" });
+  }
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    return res.status(400).json({ error: "Cantidad inválida" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: orderRows } = await client.query(
+      "SELECT id, type, total, status, charge_type, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
+      [orderId]
+    );
+    if (orderRows.length === 0) {
+      throw new Error("El pedido no existe");
+    }
+    const order = orderRows[0];
+
+    const { rows: itemRows } = await client.query(
+      "SELECT id, product_id, service_id, color_name, unit_price, quantity, discount, subtotal FROM order_items WHERE id = $1 AND order_id = $2",
+      [itemId, orderId]
+    );
+    if (itemRows.length === 0) {
+      throw new Error("El ítem no existe en este pedido");
+    }
+    const item = itemRows[0];
+    if (item.service_id !== null) {
+      throw new Error("Para editar la cantidad de un servicio usa esa opción");
+    }
+
+    const delta = quantity - item.quantity;
+    if (delta !== 0 && order.type === "Pedido" && item.product_id !== null) {
+      const { rows: productRows } = await client.query("SELECT colors FROM products WHERE id = $1 FOR UPDATE", [item.product_id]);
+      if (productRows.length === 0) {
+        throw new Error("El producto de este ítem ya no existe");
+      }
+      const colors = productRows[0].colors ?? [];
+      const colorIndex = colors.findIndex((c) => c.name.trim() === item.color_name.trim());
+      if (colorIndex === -1) {
+        throw new Error(`El producto ya no tiene el color "${item.color_name}"`);
+      }
+      if (delta > 0 && colors[colorIndex].stock < delta) {
+        throw new Error(`No hay suficiente stock de "${item.color_name}": quedan ${colors[colorIndex].stock}`);
+      }
+      colors[colorIndex] = { ...colors[colorIndex], stock: colors[colorIndex].stock - delta };
+      await client.query("UPDATE products SET colors = $1 WHERE id = $2", [JSON.stringify(colors), item.product_id]);
+    }
+
+    const unitPrice = Number(item.unit_price);
+    const newDiscount = Math.min(Number(item.discount), unitPrice * quantity);
+    const newSubtotal = unitPrice * quantity - newDiscount;
+    const newTotal = Number(order.total) - Number(item.subtotal) + newSubtotal;
+
+    await client.query("UPDATE order_items SET quantity = $1, discount = $2, subtotal = $3 WHERE id = $4", [quantity, newDiscount, newSubtotal, itemId]);
+
+    const settings = await getSettings();
     const { status: newStatus, separationDeadline: newDeadline } = await recomputeOrderStatusForTotal(client, orderId, newTotal, order, settings.separationDays);
     await client.query("UPDATE orders SET total = $1, status = $2, separation_deadline = $3 WHERE id = $4", [newTotal, newStatus, newDeadline, orderId]);
 

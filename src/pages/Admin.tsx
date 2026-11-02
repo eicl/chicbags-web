@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, LogOut, Package, Tag, Layers, Users, IdCard, MapPin, ShoppingBag, Share2, Wrench, FileSpreadsheet, Receipt, MessageCircle, Settings, LayoutDashboard, Truck, Warehouse } from "lucide-react";
+import { ArrowLeft, LogOut, Package, Tag, Layers, Users, IdCard, MapPin, ShoppingBag, Share2, Wrench, FileSpreadsheet, Receipt, MessageCircle, Settings, LayoutDashboard, Truck, Warehouse, Building2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import AdminDashboard from "@/components/admin/AdminDashboard";
@@ -19,8 +19,9 @@ import AdminMessageTemplates from "@/components/admin/AdminMessageTemplates";
 import AdminSettings from "@/components/admin/AdminSettings";
 import AdminDeliveryLogos from "@/components/admin/AdminDeliveryLogos";
 import AdminUbicaciones from "@/components/admin/AdminUbicaciones";
+import AdminAgencias from "@/components/admin/AdminAgencias";
 
-type Tab = "dashboard" | "products" | "services" | "brands" | "categories" | "customers" | "districts" | "ubicaciones" | "orders" | "users" | "linkPreviews" | "pitaya" | "purchases" | "messageTemplates" | "settings" | "deliveryLogos";
+type Tab = "dashboard" | "products" | "services" | "brands" | "categories" | "customers" | "districts" | "ubicaciones" | "agencias" | "orders" | "users" | "linkPreviews" | "pitaya" | "purchases" | "messageTemplates" | "settings" | "deliveryLogos";
 
 const TABS: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -32,6 +33,7 @@ const TABS: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "categories", label: "Categorías", icon: Layers },
   { id: "districts", label: "Distritos", icon: MapPin },
   { id: "ubicaciones", label: "Ubicaciones", icon: Warehouse },
+  { id: "agencias", label: "Agencias Shalom", icon: Building2 },
   { id: "users", label: "Usuarios", icon: Users },
   { id: "linkPreviews", label: "Vistas previas", icon: Share2 },
   { id: "pitaya", label: "Programación de Envío", icon: FileSpreadsheet },
@@ -94,6 +96,7 @@ const Admin = () => {
         {tab === "customers" && <AdminCustomers />}
         {tab === "districts" && <AdminDistricts />}
         {tab === "ubicaciones" && <AdminUbicaciones />}
+        {tab === "agencias" && <AdminAgencias />}
         {tab === "orders" && <AdminOrders />}
         {tab === "users" && <AdminUsers />}
         {tab === "linkPreviews" && <AdminLinkPreviews />}
