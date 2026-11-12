@@ -3132,15 +3132,27 @@ const ACCUMULATING_STATUS = "Pendiente de envío en almacén por acumulación";
 // descuento, la cantidad de un servicio, o quitar un ítem NO mueven el
 // plazo — siguen dejando el que ya había (o poniendo uno recién si todavía
 // no tenía, ej. un pedido que recién pasa a deber por primera vez).
+const RECOMPUTABLE_STATUSES = ["Separación", "Separado en almacén", "Pendiente de envío", ACCUMULATING_STATUS];
 const recomputeOrderStatusForTotal = async (client, orderId, newTotal, order, separationDays, { extendDeadline = false } = {}) => {
-  if (order.status !== "Separación" && order.status !== "Pendiente de envío" && order.status !== ACCUMULATING_STATUS) {
+  if (!RECOMPUTABLE_STATUSES.includes(order.status)) {
     return { status: order.status, separationDeadline: order.separation_deadline };
   }
   const { rows: paidRows } = await client.query("SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE order_id = $1", [orderId]);
   const paid = Number(paidRows[0].paid);
   const isContraentrega = order.charge_type === "Contraentrega";
   const stillFullyPaid = paid >= newTotal || isContraentrega;
-  const status = stillFullyPaid ? (order.status === ACCUMULATING_STATUS ? ACCUMULATING_STATUS : "Pendiente de envío") : "Separación";
+  let status;
+  if (stillFullyPaid) {
+    status = order.status === ACCUMULATING_STATUS ? ACCUMULATING_STATUS : "Pendiente de envío";
+  } else if (order.status === "Separado en almacén") {
+    // Ya tiene ubicación de almacén asignada: si un cambio de descuento
+    // deja saldo pendiente de nuevo, no se regresa a "Separación" (perdería
+    // la ubicación física); se queda en "Separado en almacén" hasta que se
+    // pague o se libere manualmente.
+    status = "Separado en almacén";
+  } else {
+    status = "Separación";
+  }
   const freshDeadline = new Date(limaCalendarDayStart(new Date()).getTime() + separationDays * 24 * 60 * 60 * 1000);
   const separationDeadline =
     status === "Separación" ? (extendDeadline ? freshDeadline : order.separation_deadline ?? freshDeadline) : order.separation_deadline;
