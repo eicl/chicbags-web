@@ -19,9 +19,21 @@ const matches = (product: Product, query: string) => {
     .some((field) => (field ?? "").toLowerCase().includes(q));
 };
 
+// Totalmente agotado: ningún color le queda stock. Se oculta de la
+// búsqueda en los tres usos (panel y Regularización por link), aunque en
+// Regularización el stock no se descuente — ya no tiene sentido ofrecer un
+// producto sin stock para una venta nueva.
+const isFullyOutOfStock = (product: Product) => {
+  const colors = product.colors ?? [];
+  return colors.length > 0 && colors.every((c) => c.stock <= 0);
+};
+
 const ProductOrderPicker = ({ products, onAdd, ignoreStock = false }: ProductOrderPickerProps) => {
   const [query, setQuery] = useState("");
-  const filtered = products.filter((p) => matches(p, query)).slice(0, 20);
+  const filtered = products
+    .filter((p) => matches(p, query))
+    .filter((p) => !isFullyOutOfStock(p))
+    .slice(0, 20);
 
   return (
     <div>
