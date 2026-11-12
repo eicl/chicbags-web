@@ -1602,7 +1602,8 @@ const applyPayment = async (
   currentDeadline,
   currentStatus,
   { amount, source, proofImage, registeredBy, date, operationNumber },
-  separationDays
+  separationDays,
+  chargeType
 ) => {
   // "date" llega como fecha sin hora ("YYYY-MM-DD", del selector de fecha
   // del formulario) pensada como día calendario en Lima. new Date(date) a
@@ -1621,9 +1622,13 @@ const applyPayment = async (
   );
   const paid = Number(paidRows[0].paid);
   const untouched = PAYMENT_UNTOUCHED_STATUSES.includes(currentStatus) || currentStatus === ACCUMULATING_STATUS;
+  // Contraentrega no necesita estar pagado del todo para pasar a "Pendiente
+  // de envío" (se cobra el saldo recién al entregar) — mismo criterio que
+  // recomputeOrderStatusForTotal, usado al editar descuento/cantidad.
+  const stillFullyPaid = paid >= total || chargeType === "Contraentrega";
   const status = untouched
     ? currentStatus
-    : paid >= total
+    : stillFullyPaid
       ? "Pendiente de envío"
       : currentStatus === "Separado en almacén"
         ? "Separado en almacén"
@@ -1650,14 +1655,14 @@ const registerPaymentTx = async (orderId, paymentData) => {
   try {
     await client.query("BEGIN");
     const { rows: orderRows } = await client.query(
-      "SELECT id, total, status, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
+      "SELECT id, total, status, charge_type, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
       [orderId]
     );
     if (orderRows.length === 0) {
       throw new Error("El pedido no existe");
     }
     const order = orderRows[0];
-    await applyPayment(client, orderId, Number(order.total), order.separation_deadline, order.status, paymentData, settings.separationDays);
+    await applyPayment(client, orderId, Number(order.total), order.separation_deadline, order.status, paymentData, settings.separationDays, order.charge_type);
 
     const { rows: updatedRows } = await client.query("SELECT * FROM orders WHERE id = $1", [orderId]);
     const { rows: itemRows } = await client.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [orderId]);
@@ -1694,7 +1699,7 @@ const recordIzipayPayment = async (orderId, operationNumber) => {
   try {
     await client.query("BEGIN");
     const { rows: orderRows } = await client.query(
-      "SELECT id, total, status, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
+      "SELECT id, total, status, charge_type, separation_deadline FROM orders WHERE id = $1 FOR UPDATE",
       [orderId]
     );
     if (orderRows.length === 0) {
@@ -1723,7 +1728,8 @@ const recordIzipayPayment = async (orderId, operationNumber) => {
         order.separation_deadline,
         order.status,
         { amount: remaining, source: "Tarjeta (Izipay)", proofImage: "", registeredBy: "Izipay (automático)", operationNumber },
-        settings.separationDays
+        settings.separationDays,
+        order.charge_type
       );
     }
     await client.query("COMMIT");
@@ -2761,7 +2767,7 @@ app.post("/api/orders/register", async (req, res) => {
       let deadline = null;
       let status = order.status;
       for (const p of payments) {
-        const result = await applyPayment(client, order.id, total, deadline, status, { ...p, registeredBy: seller.username }, settings.separationDays);
+        const result = await applyPayment(client, order.id, total, deadline, status, { ...p, registeredBy: seller.username }, settings.separationDays, resolvedChargeType);
         deadline = result.separationDeadline;
         status = result.status;
       }
@@ -2894,7 +2900,7 @@ app.post("/api/orders/regularize", async (req, res) => {
     if (payment !== undefined) {
       validatePaymentInput(payment);
       const settings = await getSettings();
-      await applyPayment(client, order.id, total, null, order.status, { ...payment, registeredBy: seller.username }, settings.separationDays);
+      await applyPayment(client, order.id, total, null, order.status, { ...payment, registeredBy: seller.username }, settings.separationDays, order.charge_type);
     }
     const { rows: finalOrderRows } = await client.query("SELECT * FROM orders WHERE id = $1", [order.id]);
     const { rows: paymentRows } = await client.query("SELECT * FROM payments WHERE order_id = $1 ORDER BY id", [order.id]);
