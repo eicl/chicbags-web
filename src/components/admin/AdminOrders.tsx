@@ -313,7 +313,7 @@ const buildSeparationLabelHtml = (order: AdminOrder) => {
     </head>
     <body>
       <div></div>
-      <div class="order-number">P${order.id}</div>
+      <div class="order-number">${order.id}</div>
       <div>
         <div class="customer-name">${escapeHtml(order.customerName)}</div>
         ${firstPaymentDate ? `<div class="payment-date">Primer pago: ${formatDayMonth(firstPaymentDate)}</div>` : ""}
