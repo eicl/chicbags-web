@@ -238,7 +238,7 @@ const buildShippingLabelHtml = (order: AdminOrder, cornerLogos: Record<string, s
     <html>
       <head>
         <meta charset="utf-8" />
-        <title>Pedido #${order.id}</title>
+        <title>Pedido P${order.id}</title>
         <style>
           @page { size: A6 landscape; margin: 8mm; }
           ${PRINT_BASE_STYLES}
@@ -266,7 +266,7 @@ const buildShippingLabelHtml = (order: AdminOrder, cornerLogos: Record<string, s
               : `<div class="via-corner">Vía: ${escapeHtml(order.customerDeliveryMode)}</div>`
             : ""
         }
-        <div class="order-corner">Pedido #${order.id}</div>
+        <div class="order-corner">Pedido P${order.id}</div>
         <img class="logo" src="${window.location.origin}/chicBags.jpeg" alt="ChicBags" />
         <table>
           ${rows.map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(value)}</td></tr>`).join("")}
@@ -299,7 +299,7 @@ const buildSeparationLabelHtml = (order: AdminOrder) => {
   <html>
     <head>
       <meta charset="utf-8" />
-      <title>Pedido #${order.id}</title>
+      <title>Pedido P${order.id}</title>
       <style>
         @page { size: A5 portrait; margin: 14mm; }
         ${PRINT_BASE_STYLES}
@@ -313,7 +313,7 @@ const buildSeparationLabelHtml = (order: AdminOrder) => {
     </head>
     <body>
       <div></div>
-      <div class="order-number">${order.id}</div>
+      <div class="order-number">P${order.id}</div>
       <div>
         <div class="customer-name">${escapeHtml(order.customerName)}</div>
         ${firstPaymentDate ? `<div class="payment-date">Primer pago: ${formatDayMonth(firstPaymentDate)}</div>` : ""}
@@ -1185,7 +1185,7 @@ const AdminOrders = () => {
       toast.success(`${successCount} boleta(s) emitida(s) correctamente`);
     } else {
       toast.warning(`${successCount} emitida(s), ${failures.length} con error`, {
-        description: failures.map((f) => `#${f.orderId}: ${f.message}`).join(" · "),
+        description: failures.map((f) => `P${f.orderId}: ${f.message}`).join(" · "),
       });
     }
   };
@@ -1237,7 +1237,7 @@ const AdminOrders = () => {
 
   const handleDelete = (order: AdminOrder) => {
     const stockNote = order.type === "Pedido" ? " Se devolverá el stock descontado." : "";
-    if (!confirm(`¿Eliminar el pedido #${order.id}?${stockNote}`)) return;
+    if (!confirm(`¿Eliminar el pedido P${order.id}?${stockNote}`)) return;
     deleteMutation.mutate(order.id);
   };
 
@@ -1253,7 +1253,7 @@ const AdminOrders = () => {
 
   const handleLiberar = (order: AdminOrder) => {
     const stockNote = order.type === "Pedido" ? " Se devolverá el stock descontado." : "";
-    if (!confirm(`¿Liberar el pedido #${order.id}?${stockNote} Quedará marcado como Liberado.`)) return;
+    if (!confirm(`¿Liberar el pedido P${order.id}?${stockNote} Quedará marcado como Liberado.`)) return;
     liberateMutation.mutate(order.id);
   };
 
@@ -1423,7 +1423,7 @@ const AdminOrders = () => {
             <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
               {selectedOrders.map((o) => (
                 <span key={o.id} className="text-xs px-2 py-0.5 rounded-md bg-background border border-border">
-                  #{o.id} {o.customerName} · S/.{o.total.toFixed(2)}
+                  P{o.id} {o.customerName} · S/.{o.total.toFixed(2)}
                 </span>
               ))}
             </div>
@@ -1501,7 +1501,7 @@ const AdminOrders = () => {
                       </td>
                       <td className="py-3 px-4 text-sm font-medium text-primary">
                         <span className="inline-flex items-center gap-1.5">
-                          #{order.id}
+                          P{order.id}
                           {isNearSeparationDeadline(order, separationDays, nearSeparationDeadlineDays) && (
                             <span title="Cerca del plazo de separación (o ya vencido)">
                               <Flag className="w-3.5 h-3.5 text-destructive fill-destructive shrink-0" aria-label="Cerca del plazo de separación" />

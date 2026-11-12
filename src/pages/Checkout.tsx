@@ -331,7 +331,7 @@ const Checkout = () => {
           </p>
           {order && (
             <span className="inline-block px-4 py-2 rounded-md bg-primary/10 text-primary font-semibold text-lg tracking-wide">
-              Pedido #{order.id}
+              Pedido P{order.id}
             </span>
           )}
           {order && customer && (

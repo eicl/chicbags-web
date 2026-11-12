@@ -335,7 +335,7 @@ const OrderRegister = () => {
             ¡Pedido registrado!
           </h1>
           <span className="inline-block px-4 py-2 rounded-md bg-primary/10 text-primary font-semibold text-lg tracking-wide">
-            Pedido #{order.id}
+            Pedido P{order.id}
           </span>
           <p className="text-sm text-muted-foreground -mt-4">Registrado el {formatDateTime(order.createdAt)}</p>
           <span className="inline-block px-3 py-1 rounded-md bg-muted text-sm font-medium">

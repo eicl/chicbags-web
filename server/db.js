@@ -578,7 +578,7 @@ export const initSchema = async () => {
   `);
   await pool.query(`
     INSERT INTO message_templates (template_key, template) VALUES
-      ('order_registration', 'Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}}:
+      ('order_registration', 'Hola {{cliente}}, tu pedido P{{pedido}} fue registrado el {{fecha}}:
 
 {{items}}
 
@@ -587,7 +587,7 @@ Total: S/.{{total}}
 {{estado_texto}}
 
 Gracias por tu compra. Cualquier consulta, escríbenos por este medio.'),
-      ('order_registration_separacion', 'Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}} y quedó en Separación:
+      ('order_registration_separacion', 'Hola {{cliente}}, tu pedido P{{pedido}} fue registrado el {{fecha}} y quedó en Separación:
 
 {{items}}
 
@@ -596,7 +596,7 @@ Total: S/.{{total}}
 {{estado_texto}}
 
 Gracias por tu compra. Cualquier consulta, escríbenos por este medio.'),
-      ('order_registration_contraentrega', 'Hola {{cliente}}, tu pedido #{{pedido}} fue registrado el {{fecha}} para pago contra entrega:
+      ('order_registration_contraentrega', 'Hola {{cliente}}, tu pedido P{{pedido}} fue registrado el {{fecha}} para pago contra entrega:
 
 {{items}}
 
@@ -605,7 +605,7 @@ Total: S/.{{total}}
 {{estado_texto}}
 
 Gracias por tu compra. Cualquier consulta, escríbenos por este medio.'),
-      ('order_status_update', 'Hola {{cliente}}, novedades de tu pedido #{{pedido}}:
+      ('order_status_update', 'Hola {{cliente}}, novedades de tu pedido P{{pedido}}:
 
 {{items}}
 

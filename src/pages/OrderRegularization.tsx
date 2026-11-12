@@ -111,7 +111,7 @@ const buildOrderWhatsAppLink = (order: Order, customer: Customer) => {
       return `- ${item.productName}${code}${color} x${item.quantity}: S/.${item.subtotal.toFixed(2)}`;
     })
     .join("\n");
-  const message = `Hola ${customer.firstName}, tu pedido #${order.id} (regularización) quedó registrado el ${formatDateTime(order.createdAt)}:\n\n${itemsText}\n\nTotal: S/.${order.total.toFixed(2)}\n\n${buildOrderStatusText(order)}`;
+  const message = `Hola ${customer.firstName}, tu pedido P${order.id} (regularización) quedó registrado el ${formatDateTime(order.createdAt)}:\n\n${itemsText}\n\nTotal: S/.${order.total.toFixed(2)}\n\n${buildOrderStatusText(order)}`;
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 };
 
@@ -423,7 +423,7 @@ const OrderRegularization = () => {
             ¡Regularización registrada!
           </h1>
           <span className="inline-block px-4 py-2 rounded-md bg-primary/10 text-primary font-semibold text-lg tracking-wide">
-            Pedido #{order.id}
+            Pedido P{order.id}
           </span>
           <p className="text-sm text-muted-foreground -mt-4">Registrado el {formatDateTime(order.createdAt)} · No afectó el stock</p>
           <span className="inline-block px-3 py-1 rounded-md bg-muted text-sm font-medium">
