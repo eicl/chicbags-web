@@ -355,6 +355,73 @@ const buildSeparationLabelHtml = (order: AdminOrder) => {
 `;
 };
 
+// Reporte imprimible del botón "Reporte de separación" — A4 vertical, una
+// fila por pedido, mismas columnas que el modal en pantalla.
+const buildSeparationReportHtml = (orders: AdminOrder[]) => {
+  const rows = orders
+    .map((order) => {
+      const paid = order.payments.reduce((sum, p) => sum + p.amount, 0);
+      const lastPay = lastPaymentDate(order);
+      return `
+        <tr>
+          <td>P${order.id}</td>
+          <td>${formatFullDateTime(order.createdAt)}</td>
+          <td>${lastPay ? formatFullDateTime(lastPay.toISOString()) : "—"}</td>
+          <td>${escapeHtml(order.customerName)}</td>
+          <td class="num">${daysSince(order.createdAt)}</td>
+          <td class="num">S/.${order.total.toFixed(2)}</td>
+          <td class="num">S/.${paid.toFixed(2)}</td>
+          <td class="num">S/.${(order.total - paid).toFixed(2)}</td>
+        </tr>`;
+    })
+    .join("");
+  return `
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>Reporte de separación</title>
+      <style>
+        @page { size: A4 landscape; margin: 12mm; }
+        ${PRINT_BASE_STYLES}
+        h1 { font-size: 18px; margin: 0 0 4px; }
+        .subtitle { font-size: 12px; color: #555; margin: 0 0 12px; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        th, td { padding: 5px 6px; border-bottom: 1px solid #ddd; text-align: left; }
+        th { font-size: 10px; text-transform: uppercase; color: #555; border-bottom: 2px solid #999; }
+        td.num, th.num { text-align: right; }
+      </style>
+    </head>
+    <body>
+      <h1>Reporte de separación</h1>
+      <div class="subtitle">${orders.length} pedido(s) · generado el ${formatFullDateTime(new Date().toISOString())}</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Pedido</th><th>Fecha de compra</th><th>Último pago</th><th>Cliente</th>
+            <th class="num">Días</th><th class="num">Total</th><th class="num">Pagado</th><th class="num">Restante</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </body>
+  </html>
+`;
+};
+
+const printSeparationReport = (orders: AdminOrder[]) => {
+  const printWindow = window.open("", "_blank", "width=900,height=1000");
+  if (!printWindow) {
+    toast.error("El navegador bloqueó la ventana de impresión");
+    return;
+  }
+  printWindow.document.write(buildSeparationReportHtml(orders));
+  printWindow.document.close();
+  printWindow.onload = () => {
+    printWindow.focus();
+    printWindow.print();
+  };
+};
+
 const printOrder = (order: AdminOrder, cornerLogos: Record<string, string>, deliveryLabels: Record<string, string>) => {
   const html =
     order.status === "Pendiente de envío" ||
@@ -1919,9 +1986,19 @@ const AdminOrders = () => {
               <h2 className="text-lg font-semibold">
                 Pedidos en separación ({separationReportOrders.length}) — del más antiguo al más reciente
               </h2>
-              <Button variant="ghost" size="sm" onClick={() => setShowSeparationReport(false)}>
-                <X className="w-4 h-4" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => printSeparationReport(separationReportOrders)}
+                >
+                  <Printer className="w-4 h-4" /> Imprimir
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setShowSeparationReport(false)}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
             <div className="overflow-auto p-4">
               <table className="w-full text-sm whitespace-nowrap">
