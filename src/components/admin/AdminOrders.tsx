@@ -1,7 +1,7 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ArchiveRestore, CalendarSearch, Check, ChevronDown, ChevronUp, ExternalLink, FileText, Flag, MessageCircle, Loader2, PackageCheck, Pencil, Plus, Printer, Search, Trash2, Truck, Unlock, Upload, Warehouse, X } from "lucide-react";
+import { Archive, ArchiveRestore, CalendarSearch, Check, ChevronDown, ChevronUp, ClipboardList, ExternalLink, FileText, Flag, MessageCircle, Loader2, PackageCheck, Pencil, Plus, Printer, Search, Trash2, Truck, Unlock, Upload, Warehouse, X } from "lucide-react";
 import {
   AdminOrder, ChargeType, DeliveryType, OrderItem, OrderStatus, PaymentInput, Service,
   addOrderItem, deleteOrder, deleteOrderItem, emitBoleta, fetchDeliveryCornerLogos, fetchOrders, fetchServices, fetchSettings,
@@ -41,6 +41,15 @@ const formatDayMonth = (iso: string) => {
   const d = new Date(iso);
   return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 };
+
+// Fecha y hora completas en zona horaria de Lima — para el reporte de
+// separación, donde sí importa el momento exacto (no solo día/mes como en
+// formatDate, que es para la columna angosta de la tabla principal).
+const formatFullDateTime = (iso: string) =>
+  new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Lima" });
+
+// Días calendario completos desde la fecha de compra hasta ahora.
+const daysSince = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24));
 
 // OJO: no usar toISOString() acá — convierte a UTC, y Perú (UTC-5) ya está
 // "mañana" en UTC después de las 7pm, lo que adelantaba la fecha por defecto
@@ -99,6 +108,15 @@ const isNearSeparationDeadline = (order: AdminOrder, separationDays: number, nea
 // Los dos estados que todavía requieren acción del equipo (separar/empacar
 // o despachar) — se priorizan en el listado con el filtro en "Todos".
 const isActionableListStatus = (status: OrderStatus) => status === "Separación" || status === "Pendiente de envío";
+
+// Los tres estados de "separado" que cubre el botón de reporte: a la espera
+// de pago, ya ubicado en almacén, o guardado a propósito para acumular con
+// otro pedido del mismo cliente antes de despachar.
+const SEPARATION_REPORT_STATUSES: OrderStatus[] = [
+  "Separación",
+  "Separado en almacén",
+  "Pendiente de envío en almacén por acumulación",
+];
 
 // Misma regla que decide si en la fila expandida se muestra el botón
 // "Emitir boleta"/"Reintentar" (vs. el badge de aceptada o el spinner de
@@ -1096,6 +1114,14 @@ const AdminOrders = () => {
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [periodMode, setPeriodMode] = useState<"dia" | "mes">("dia");
   const [periodValue, setPeriodValue] = useState("");
+  const [showSeparationReport, setShowSeparationReport] = useState(false);
+
+  // Reporte aparte (botón "Reporte de separación"): todos los pedidos en
+  // los 3 estados de separado, sin importar la búsqueda/filtro de la tabla
+  // principal, del más antiguo al más reciente.
+  const separationReportOrders = orders
+    .filter((o) => SEPARATION_REPORT_STATUSES.includes(o.status))
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
   // Con el filtro en "Todos", los pedidos que todavía requieren acción
   // (Separación y Pendiente de envío) van primero, del más antiguo al más
@@ -1389,11 +1415,16 @@ const AdminOrders = () => {
             ))}
           </select>
         </div>
-        <Link to="/registro-pedido" target="_blank" rel="noopener noreferrer">
-          <Button className="gap-2">
-            <Plus className="w-4 h-4" /> Registrar pedido
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2" onClick={() => setShowSeparationReport(true)}>
+            <ClipboardList className="w-4 h-4" /> Reporte de separación
           </Button>
-        </Link>
+          <Link to="/registro-pedido" target="_blank" rel="noopener noreferrer">
+            <Button className="gap-2">
+              <Plus className="w-4 h-4" /> Registrar pedido
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 mb-4 p-3 rounded-lg border border-border bg-muted/20">
@@ -1874,6 +1905,68 @@ const AdminOrders = () => {
       </div>
 
       <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+
+      {showSeparationReport && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/60"
+          onClick={() => setShowSeparationReport(false)}
+        >
+          <div
+            className="bg-background rounded-lg border border-border shadow-xl w-full max-w-6xl max-h-[85vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <h2 className="text-lg font-semibold">
+                Pedidos en separación ({separationReportOrders.length}) — del más antiguo al más reciente
+              </h2>
+              <Button variant="ghost" size="sm" onClick={() => setShowSeparationReport(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="overflow-auto p-4">
+              <table className="w-full text-sm whitespace-nowrap">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b border-border">
+                    <th className="py-2 pr-4">Pedido</th>
+                    <th className="py-2 pr-4">Fecha de compra</th>
+                    <th className="py-2 pr-4">Último pago</th>
+                    <th className="py-2 pr-4">Cliente</th>
+                    <th className="py-2 pr-4 text-right">Días separado</th>
+                    <th className="py-2 pr-4 text-right">Total</th>
+                    <th className="py-2 pr-4 text-right">Pagado</th>
+                    <th className="py-2 pr-4 text-right">Restante</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {separationReportOrders.map((order) => {
+                    const paid = order.payments.reduce((sum, p) => sum + p.amount, 0);
+                    const lastPay = lastPaymentDate(order);
+                    return (
+                      <tr key={order.id} className="border-b border-border/50">
+                        <td className="py-2 pr-4 font-medium text-primary">P{order.id}</td>
+                        <td className="py-2 pr-4">{formatFullDateTime(order.createdAt)}</td>
+                        <td className="py-2 pr-4">{lastPay ? formatFullDateTime(lastPay.toISOString()) : "—"}</td>
+                        <td className="py-2 pr-4">{order.customerName}</td>
+                        <td className="py-2 pr-4 text-right">{daysSince(order.createdAt)}</td>
+                        <td className="py-2 pr-4 text-right">S/.{order.total.toFixed(2)}</td>
+                        <td className="py-2 pr-4 text-right">S/.{paid.toFixed(2)}</td>
+                        <td className="py-2 pr-4 text-right">S/.{(order.total - paid).toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
+                  {separationReportOrders.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="py-8 text-center text-muted-foreground">
+                        No hay pedidos en separación.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
