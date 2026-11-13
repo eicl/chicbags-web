@@ -96,6 +96,10 @@ const isNearSeparationDeadline = (order: AdminOrder, separationDays: number, nea
   return order.total - paid > 0;
 };
 
+// Los dos estados que todavía requieren acción del equipo (separar/empacar
+// o despachar) — se priorizan en el listado con el filtro en "Todos".
+const isActionableListStatus = (status: OrderStatus) => status === "Separación" || status === "Pendiente de envío";
+
 // Misma regla que decide si en la fila expandida se muestra el botón
 // "Emitir boleta"/"Reintentar" (vs. el badge de aceptada o el spinner de
 // pendiente) — reusada también para decidir qué filas se pueden marcar por
@@ -1093,17 +1097,20 @@ const AdminOrders = () => {
   const [periodMode, setPeriodMode] = useState<"dia" | "mes">("dia");
   const [periodValue, setPeriodValue] = useState("");
 
-  // Con el filtro en "Todos", los pedidos con la banderita (cerca del plazo
-  // de separación) van primero — orden estable, así que dentro de cada
-  // grupo (con/sin bandera) se respeta el orden que ya traían.
+  // Con el filtro en "Todos", los pedidos que todavía requieren acción
+  // (Separación y Pendiente de envío) van primero, del más antiguo al más
+  // reciente — así se atiende primero lo que lleva más tiempo esperando.
+  // El resto de estados queda después, en el orden que ya traían (más
+  // reciente primero, tal como lo devuelve el backend).
   const filteredOrders = orders
     .filter((o) => matchesOrder(o, query) && (statusFilter === "Todos" || o.status === statusFilter))
     .sort((a, b) => {
       if (statusFilter !== "Todos") return 0;
-      return (
-        Number(isNearSeparationDeadline(b, separationDays, nearSeparationDeadlineDays)) -
-        Number(isNearSeparationDeadline(a, separationDays, nearSeparationDeadlineDays))
-      );
+      const aActionable = isActionableListStatus(a.status);
+      const bActionable = isActionableListStatus(b.status);
+      if (aActionable !== bActionable) return aActionable ? -1 : 1;
+      if (!aActionable) return 0;
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     });
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
   const pageOrders = filteredOrders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
