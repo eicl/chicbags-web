@@ -105,10 +105,6 @@ const isNearSeparationDeadline = (order: AdminOrder, separationDays: number, nea
   return order.total - paid > 0;
 };
 
-// Los dos estados que todavía requieren acción del equipo (separar/empacar
-// o despachar) — se priorizan en el listado con el filtro en "Todos".
-const isActionableListStatus = (status: OrderStatus) => status === "Separación" || status === "Pendiente de envío";
-
 // Los tres estados de "separado" que cubre el botón de reporte: a la espera
 // de pago, ya ubicado en almacén, o guardado a propósito para acumular con
 // otro pedido del mismo cliente antes de despachar.
@@ -1190,19 +1186,24 @@ const AdminOrders = () => {
     .filter((o) => SEPARATION_REPORT_STATUSES.includes(o.status))
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
-  // Con el filtro en "Todos", los pedidos que todavía requieren acción
-  // (Separación y Pendiente de envío) van primero, del más antiguo al más
-  // reciente — así se atiende primero lo que lleva más tiempo esperando.
-  // El resto de estados queda después, en el orden que ya traían (más
-  // reciente primero, tal como lo devuelve el backend).
+  // Con el filtro en "Todos": primero los pedidos "Pendiente de envío"
+  // (listos para despachar), luego los que tienen la banderita roja (cerca
+  // del plazo de separación o ya vencido) — ambos grupos del más antiguo
+  // al más reciente. El resto de estados queda después, en el orden que ya
+  // traían (más reciente primero, tal como lo devuelve el backend).
+  const listPriority = (order: AdminOrder) => {
+    if (order.status === "Pendiente de envío") return 0;
+    if (isNearSeparationDeadline(order, separationDays, nearSeparationDeadlineDays)) return 1;
+    return 2;
+  };
   const filteredOrders = orders
     .filter((o) => matchesOrder(o, query) && (statusFilter === "Todos" || o.status === statusFilter))
     .sort((a, b) => {
       if (statusFilter !== "Todos") return 0;
-      const aActionable = isActionableListStatus(a.status);
-      const bActionable = isActionableListStatus(b.status);
-      if (aActionable !== bActionable) return aActionable ? -1 : 1;
-      if (!aActionable) return 0;
+      const pa = listPriority(a);
+      const pb = listPriority(b);
+      if (pa !== pb) return pa - pb;
+      if (pa === 2) return 0;
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     });
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
